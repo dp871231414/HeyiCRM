@@ -114,12 +114,13 @@ PASS | 成员越权访问账号列表被拒 — status=403
 ## 八、复现命令
 
 ```bash
-# 后端测试
+# 后端测试（42 项）
 cd backend && pytest -q
 
-# 前端构建校验
+# 前端构建校验（类型检查 + 生产打包）
 cd frontend && npm run build
 
-# 端到端冒烟（需先起后端 8000 + 前端 5173）
-cd /path/to/workspace/node && node fleet_smoke.mjs
+# 端到端冒烟（需可访问的站点；脚本见 tools/e2e-smoke.mjs）
+BASE_URL=http://127.0.0.1:5173 node tools/e2e-smoke.mjs
+BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node tools/e2e-smoke.mjs
 ```
