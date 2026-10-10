@@ -41,10 +41,17 @@ def _project_out(db: Session, org: Organization) -> dict:
 
 @router.get("")
 def list_projects(db: Session = Depends(get_db), user: User = Depends(require_perm("metric.view"))):
+    from app.services import scope as scope_svc
+
+    visible = scope_svc.visible_org_ids(db, user)
     orgs = db.scalars(
         select(Organization).where(Organization.type == ORG_TYPE_PROJECT).order_by(Organization.id)
     ).all()
-    return [{"id": o.id, "name": o.name, "head": o.head, "parentId": o.parent_id, "impact": project_impact(db, o.id)} for o in orgs]
+    return [
+        {"id": o.id, "name": o.name, "head": o.head, "parentId": o.parent_id, "impact": project_impact(db, o.id)}
+        for o in orgs
+        if o.id in visible
+    ]
 
 
 @router.post("", status_code=201)

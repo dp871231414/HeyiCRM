@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.config import settings
@@ -58,3 +60,26 @@ async def unhandled_exception_handler(request: Request, exc: Exception):  # prag
 @app.get("/api/health", tags=["系统"])
 def health():
     return {"status": "ok", "app": settings.app_name, "env": settings.env}
+
+
+# ---------------------------------------------------------------------------
+# 单容器托管：设置 STATIC_DIR 指向前端构建产物（dist）时，由后端直接托管 SPA，
+# 实现「一个端口、同源」部署；不设置则保持前后端分离（由 Nginx 托管前端）。
+# ---------------------------------------------------------------------------
+_static_dir = Path(settings.static_dir).resolve() if settings.static_dir else None
+if _static_dir and _static_dir.is_dir():
+    _assets = _static_dir / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa_fallback(full_path: str):
+        """静态文件优先，其余路径回退到 index.html（前端 history 路由）。"""
+        if full_path.startswith("api/"):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        candidate = (_static_dir / full_path).resolve()
+        if full_path and candidate.is_file() and _static_dir in candidate.parents:
+            return FileResponse(str(candidate))
+        return FileResponse(str(_static_dir / "index.html"))
+
+    logger.info("已启用单容器托管，静态目录：%s", _static_dir)

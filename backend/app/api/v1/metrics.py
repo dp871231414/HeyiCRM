@@ -80,6 +80,7 @@ def build_row(def_: MetricDef, target, actual, idx, period: str, org_id: str, co
         "light": lig,
         "gap": ach["gap"] if ach else None,
         "hasCollection": bool(coll_defs.get(def_.id)),
+        "collMetricId": coll_defs[def_.id][0].id if coll_defs.get(def_.id) else None,
         "collActual": None,
         "collRate": None,
         "collLight": "none",

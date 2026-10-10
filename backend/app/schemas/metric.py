@@ -51,6 +51,7 @@ class MetricRowOut(BaseModel):
     light: str = "none"
     gap: float | None = None
     hasCollection: bool = False
+    collMetricId: str | None = None
     collActual: float | None = None
     collRate: float | None = None
     collLight: str = "none"

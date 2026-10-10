@@ -6,6 +6,9 @@
 .idea/
 .vscode/
 
+# ===== 本地工作记忆（不纳入源码仓库）=====
+.workbuddy/
+
 # ===== Python / 后端 =====
 __pycache__/
 *.py[cod]
@@ -14,11 +17,17 @@ venv/
 .pytest_cache/
 .mypy_cache/
 *.egg-info/
+*.db
+# 单容器托管用的前端产物副本（由 frontend/dist 构建后拷入）
+backend/static/
+.alembic_out*.txt
+.pytest_last.txt
 
 # ===== Node / 前端 =====
 node_modules/
 dist/
 .vite/
+.npm-cache/
 *.local
 
 # ===== 原型（独立仓库，不纳入正式工程）=====

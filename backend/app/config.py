@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # 跨域
     cors_origins: str = ""
 
+    # 单容器托管：命中该目录时由后端直接托管前端产物（前后端同源部署）
+    static_dir: str = ""
+
     # 导入
     import_max_mb: int = 5
     import_max_rows: int = 2000

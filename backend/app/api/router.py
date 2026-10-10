@@ -1,10 +1,11 @@
 """API 路由聚合。"""
 from fastapi import APIRouter
 
-from app.api.v1 import auth, dashboard, metrics, orgs, projects, roles, tasks, users
+from app.api.v1 import auth, dashboard, meta, metrics, orgs, projects, roles, tasks, users
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(meta.router)
 api_router.include_router(orgs.router)
 api_router.include_router(projects.router)
 api_router.include_router(roles.router)
