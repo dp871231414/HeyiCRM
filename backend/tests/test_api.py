@@ -387,3 +387,28 @@ def test_templates_downloadable(client, admin_headers):
         resp = client.get(url, headers=admin_headers)
         assert resp.status_code == 200
         assert resp.content[:2] == b"PK"  # xlsx 为 zip 容器
+
+
+# ---------------------------------------------------------------------------
+# 令牌解析健壮性：反代/网关可能重写 Authorization 头，Cookie 作为兜底
+# ---------------------------------------------------------------------------
+def test_auth_header_works(client):
+    headers, _ = login(client, "chenzm")
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+
+
+def test_overwritten_header_falls_back_to_cookie(client):
+    """头被网关替换为无效令牌时，登录种下的 Cookie 应能兜底放行。"""
+    login(client, "chenzm")  # 同时种下 HttpOnly Cookie
+    resp = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer gateway-injected-junk"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_invalid_token_without_cookie_rejected():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as fresh:
+        resp = fresh.get("/api/v1/auth/me", headers={"Authorization": "Bearer gateway-injected-junk"})
+    assert resp.status_code == 401

@@ -19,19 +19,33 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _extract_token(request: Request) -> str | None:
+def _candidate_tokens(request: Request) -> list[str]:
+    """按优先级收集候选令牌：Authorization 头 → HttpOnly Cookie。
+
+    两者都尝试的原因：反代/网关可能重写 Authorization 头（例如注入自身令牌），
+    此时 Cookie 中的会话令牌仍然有效，作为兜底，保证鉴权不被中间层破坏。
+    """
+    tokens: list[str] = []
     auth = request.headers.get("authorization")
     if auth and auth.lower().startswith("bearer "):
-        return auth[7:].strip()
-    return request.cookies.get(COOKIE_NAME)
+        tokens.append(auth[7:].strip())
+    cookie = request.cookies.get(COOKIE_NAME)
+    if cookie:
+        tokens.append(cookie)
+    return tokens
+
+
+def _decode_any(request: Request) -> dict | None:
+    for token in _candidate_tokens(request):
+        payload = decode_token(token)
+        if payload and payload.get("sub"):
+            return payload
+    return None
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = _extract_token(request)
-    if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录或登录已过期")
-    payload = decode_token(token)
-    if not payload or not payload.get("sub"):
+    payload = _decode_any(request)
+    if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录或登录已过期")
 
     user = db.get(User, payload["sub"])

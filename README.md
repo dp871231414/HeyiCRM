@@ -65,6 +65,23 @@ npm install
 npm run dev        # Vite 开发服务器，代理 /api 到 localhost:8000
 ```
 
+### 方式三：单容器同源部署（一个端口）
+
+把前端产物交给后端同源托管，无需 Nginx 与跨域配置：
+
+```bash
+cd frontend && npm run build && cp -R dist ../backend/static
+cd ../backend && sh start.sh          # 读取 PORT（默认 3000），自动建表 + 种子数据
+```
+
+或直接用环境变量启动：
+
+```bash
+STATIC_DIR=./static uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+`STATIC_DIR` 未设置或目录不存在时自动退化为纯 API 服务，不影响前后端分离部署。
+
 ## 演示账号
 
 种子数据内置 14 个账号，初始密码由 `SEED_PASSWORD` 控制（默认 `Demo#2026`）：
@@ -93,6 +110,6 @@ npm run dev        # Vite 开发服务器，代理 /api 到 localhost:8000
 
 ## 测试与文档
 
-- 后端测试：`cd backend && pytest -q`（39 项通过）
+- 后端测试：`cd backend && pytest -q`（42 项通过）
 - 接口文档：启动后访问 `http://localhost:8000/api/docs`
 - 完整规范见 `docs/` 目录，部署细节见 `docs/design.md` §12
