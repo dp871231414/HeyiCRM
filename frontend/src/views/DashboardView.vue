@@ -283,14 +283,17 @@ const snapshotHint = computed(() =>
   (overview.value?.annual ?? []).some((r) => r.snapshot) ? '；运营车辆为期末快照' : '',
 )
 
-const toneText = computed(() => ({ good: '整体良好', warn: '需要关注', bad: '存在风险' })[summary.value?.tone ?? 'good'])
+const toneText = computed(
+  () => ({ good: '整体良好', warn: '需要关注', bad: '存在风险', none: '暂无数据' })[summary.value?.tone ?? 'none'],
+)
 const toneChip = computed(
   () =>
     ({
       good: 'bg-good-50 text-good-700 border-good-100',
       warn: 'bg-warn-50 text-warn-700 border-warn-100',
       bad: 'bg-bad-50 text-bad-700 border-bad-100',
-    })[summary.value?.tone ?? 'good'],
+      none: 'bg-slate-100 text-slate-600 border-slate-200',
+    })[summary.value?.tone ?? 'none'],
 )
 const toneBorder = computed(() =>
   summary.value?.tone === 'bad' ? 'border-bad-100' : summary.value?.tone === 'warn' ? 'border-warn-100' : 'border-slate-200',

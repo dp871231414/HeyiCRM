@@ -129,7 +129,7 @@ def build_summary(db: Session, period: str, org_id: str, user: User) -> dict:
     if not metrics:
         return {
             "headline": "本周期暂无指标数据",
-            "tone": "good",
+            "tone": "none",
             "weighted": None,
             "timeProgress": time_progress_of(period),
             "vsTime": None,

@@ -185,7 +185,7 @@ export interface DeptTaskStat {
 
 export interface SummaryResult {
   headline: string
-  tone: 'good' | 'warn' | 'bad'
+  tone: 'good' | 'warn' | 'bad' | 'none'
   weighted: number | null
   timeProgress: number
   vsTime: number | null
