@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.constants import ORG_TYPE_PROJECT
+from app.constants import ORG_TYPE_COMPANY, ORG_TYPE_PROJECT
 from app.core.deps import get_user_perms, require_perm
 from app.db.session import get_db
 from app.models import MetricActual, MetricDef, MetricTarget, Organization, User
@@ -97,6 +97,13 @@ def build_row(def_: MetricDef, target, actual, idx, period: str, org_id: str, co
 
 
 def build_board(db: Session, period: str, org_id: str, visible_orgs: list[str] | None = None) -> dict:
+    """组织看板数据 · 全部按视角组织取数。
+
+    指标目标只下达在公司与项目公司层级（见原型 `primaryMetricGroup`），
+    因此部门/班组视角的指标数据为空，由前端给出说明性空态；
+    写入授权另见 board 接口（仅全公司数据可见范围可在全公司视角维护）。
+    """
+    company_org = org_id
     idx = load_index(db)
     defs = all_defs(db)
     coll_defs = children_by_parent(defs)
@@ -106,17 +113,17 @@ def build_board(db: Session, period: str, org_id: str, visible_orgs: list[str] |
     for d in defs_by_group(db, "annual"):
         if d.family == "collection":
             continue
-        target = resolve_target(d, period, org_id, idx)
-        actual = idx.actual(d.id, org_id, period)
-        row = build_row(d, target, actual, idx, period, org_id, cb)
+        target = resolve_target(d, period, company_org, idx)
+        actual = idx.actual(d.id, company_org, period)
+        row = build_row(d, target, actual, idx, period, company_org, cb)
         row["ownerOrgName"] = _owner(db, d.owner_org_id)
         annual.append(row)
 
     monitor = []
     for d in defs_by_group(db, "monitor"):
-        target = resolve_target(d, period, org_id, idx)
-        actual = idx.actual(d.id, org_id, period)
-        row = build_row(d, target, actual, idx, period, org_id, cb)
+        target = resolve_target(d, period, company_org, idx)
+        actual = idx.actual(d.id, company_org, period)
+        row = build_row(d, target, actual, idx, period, company_org, cb)
         row["ownerOrgName"] = _owner(db, d.owner_org_id)
         monitor.append(row)
 
@@ -154,7 +161,7 @@ def build_board(db: Session, period: str, org_id: str, visible_orgs: list[str] |
             }
         )
 
-    annual_counts = group_metric_stats(db, "annual", period, org_id, idx)["counts"]
+    annual_counts = group_metric_stats(db, "annual", period, company_org, idx)["counts"]
 
     return {
         "period": period,
@@ -162,6 +169,7 @@ def build_board(db: Session, period: str, org_id: str, visible_orgs: list[str] |
         "dataAsOf": reference_date().isoformat(),
         "timeProgress": time_progress_of(period),
         "orgId": org_id,
+        "orgType": db.get(Organization, org_id).type if db.get(Organization, org_id) else "",
         "annual": annual,
         "monitor": monitor,
         "project": {"companies": companies, "metrics": [{"id": d.id, "name": d.name, "unit": d.unit, "snapshot": bool(d.is_snapshot)} for d in proj_defs]},
@@ -216,12 +224,14 @@ def board(period: str = "", org_id: str = "CO", db: Session = Depends(get_db), u
     if not scope_svc.org_in_scope(db, user, org_id):
         raise HTTPException(status_code=403, detail="无权查看该组织的数据")
     data = build_board(db, period, org_id, scope_svc.visible_org_ids(db, user))
-    # 编辑范围：管理员全管；项目公司负责人仅本公司
+    # 编辑范围（对齐原型 metricEditScope）：仅具备全公司数据可见范围、且在全公司视角时
+    # 可维护公司整体目标与监控指标；项目公司指标由全公司范围或该公司负责人维护；其余只读。
     can_edit = "metric.edit" in get_user_perms(db, user)
-    data["canEditAll"] = can_edit and (org.type != ORG_TYPE_PROJECT)
+    all_scope = scope_svc.effective_scope(db, user) == "all"
+    data["canEditAll"] = can_edit and all_scope and org.type == ORG_TYPE_COMPANY
     data["editableProjects"] = (
         [o.id for o in db.scalars(select(Organization).where(Organization.type == ORG_TYPE_PROJECT)).all()]
-        if can_edit and org_id == "CO"
+        if can_edit and all_scope
         else ([org_id] if can_edit and org.type == ORG_TYPE_PROJECT else [])
     )
     return data

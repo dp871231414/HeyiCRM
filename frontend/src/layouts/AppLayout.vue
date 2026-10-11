@@ -163,6 +163,8 @@ const ALL_MENUS = [
 const menus = computed(() => ALL_MENUS.filter((m) => auth.hasPerm(m.perm)))
 
 async function loadContext() {
+  if (!auth.token) return
+  view.contextReady = false
   try {
     const p = await metricApi.periods()
     view.setPeriods(p.periods, p.current, p.dataAsOf)
@@ -172,15 +174,16 @@ async function loadContext() {
   }
   if (auth.hasPerm('metric.view')) {
     try {
-      const projects = await projectApi.list()
       if (auth.scope === 'all') {
+        const projects = await projectApi.list()
         view.orgOptions = [{ id: 'CO', name: '全公司' }, ...projects.map((p) => ({ id: p.id, name: p.name }))]
       } else if (auth.scope === 'dept_sub' || auth.scope === 'dept') {
         view.orgOptions = [{ id: auth.user!.deptId, name: auth.user!.deptName }]
         view.orgId = auth.user!.deptId
       } else {
-        view.orgOptions = projects.length ? projects.map((p) => ({ id: p.id, name: p.name })) : []
-        if (projects.length) view.orgId = projects[0].id
+        // 本人范围：按设计不看组织维度（visibleOrgs 为空），
+        // 因此不提供任何组织视角，由页面给出「范围说明」而非报错。
+        view.orgOptions = []
       }
       if (view.orgOptions.length && !view.orgOptions.some((o) => o.id === view.orgId)) {
         view.orgId = view.orgOptions[0].id
@@ -189,6 +192,7 @@ async function loadContext() {
       /* 忽略 */
     }
   }
+  view.contextReady = true
 }
 
 function onDocClick(e: MouseEvent) {
@@ -202,7 +206,13 @@ async function doLogout() {
   router.push({ name: 'login' })
 }
 
-watch(() => auth.user?.id, loadContext)
+// 仅在已登录时重载上下文；登出后不再发请求（避免 401 噪声）
+watch(
+  () => auth.user?.id,
+  (id) => {
+    if (id) loadContext()
+  },
+)
 onMounted(() => {
   document.addEventListener('click', onDocClick)
   loadContext()

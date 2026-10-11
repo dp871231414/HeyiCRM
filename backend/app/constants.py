@@ -71,6 +71,9 @@ METRIC_GROUP_META: dict[str, dict] = {
     "monitor": {"label": "监控指标", "desc": "无目标值 · 事故 / 故障 / 租金减免统计"},
 }
 
+# 全公司（根组织）ID · 公司整体指标的归属组织
+COMPANY_ORG_ID = "CO"
+
 # 组织类型
 ORG_TYPE_COMPANY = "company"
 ORG_TYPE_DEPT = "dept"

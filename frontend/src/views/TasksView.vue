@@ -334,7 +334,21 @@ async function save() {
   if (form.endDate < form.startDate) return (formError.value = '计划结束日期不能早于开始日期')
 
   saving.value = true
-  const payload = { ...form }
+  // 请求体使用后端约定的 snake_case 字段（见 docs/design.md §6.5）
+  const payload = {
+    parent: form.parent,
+    title: form.title || null,
+    description: form.description,
+    abnormal: form.abnormal,
+    target: form.target,
+    done: form.done,
+    unit: form.unit,
+    note: form.note,
+    start_date: form.startDate,
+    end_date: form.endDate,
+    dept_id: form.deptId,
+    owner: form.owner,
+  }
   try {
     if (form.id) await taskApi.update(form.id, payload)
     else await taskApi.create(payload)

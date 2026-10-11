@@ -141,6 +141,8 @@ export interface MetricBoard {
   dataAsOf: string
   timeProgress: number
   orgId: string
+  /** 当前视角组织类型 · 用于部门/班组视角的空态说明 */
+  orgType: string
   annual: MetricRow[]
   monitor: MetricRow[]
   project: { companies: ProjectCompanyBlock[]; metrics: { id: string; name: string; unit: string; snapshot: boolean }[] }

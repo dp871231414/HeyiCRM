@@ -16,13 +16,24 @@
     </div>
 
     <div v-if="board && view.orgId !== 'CO'" class="card p-3.5 border-brand-100 bg-brand-50 text-xs text-brand-700">
-      当前为「{{ board.orgId }}」视角。公司整体目标与项目公司指标仅在「全公司」视角维护，本页只展示与录入该组织的指标数据。
+      当前组织视角为「{{ board.orgId }}」。公司整体目标与监控指标仅具备全公司数据可见范围的管理员可维护；
+      项目公司指标按可见范围维护。指标目标只下达在公司与项目公司层级，部门视角无独立指标数据。
     </div>
 
     <div v-if="error" class="card p-4 border-bad-100 bg-bad-50 text-sm text-bad-600 flex items-center gap-3">
       加载失败：{{ error }} <button class="btn-ghost btn-sm" @click="load">重试</button>
     </div>
     <div v-if="loading" class="card p-10 text-center text-slate-400 text-sm">加载中…</div>
+
+    <!-- 本人范围：无组织维度数据 -->
+    <div v-else-if="noOrgDimension" class="card p-8 text-center space-y-2">
+      <div class="text-sm font-bold text-slate-700">当前账号的数据可见范围为「本人」</div>
+      <p class="text-xs text-slate-500 leading-relaxed">
+        指标按组织维度归集，「本人」范围不含任何组织的指标数据，因此本页无内容可维护。<br />
+        你仍可在「任务管理」中查看与维护本人负责的任务；如需录入指标，
+        请联系管理员将数据可见范围调整为「本部门」或更高。
+      </p>
+    </div>
 
     <template v-else-if="board">
       <!-- 模块一 · 公司整体目标 -->
@@ -31,7 +42,10 @@
           <h2 class="text-sm font-bold text-slate-900">一、公司整体目标</h2>
           <span class="text-xs text-slate-400">完成值为年初至今累计；运营车辆为期末快照</span>
         </div>
-        <div class="card overflow-x-auto">
+        <div v-if="deptView" class="card p-8 text-center text-xs text-slate-500 leading-relaxed">
+          指标目标只下达在<b class="text-slate-700">公司与项目公司</b>层级，{{ board.orgId }} 视角无独立指标数据。
+        </div>
+        <div v-else class="card overflow-x-auto">
           <table class="w-full min-w-[1080px]">
             <thead>
               <tr class="border-b border-slate-200">
@@ -115,7 +129,7 @@
       </section>
 
       <!-- 模块二 · 指标监控 -->
-      <section v-if="board.monitor.length">
+      <section v-if="board.monitor.length && !deptView">
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-slate-900">二、指标监控</h2>
           <span class="text-xs text-slate-400">无目标值、不判红黄绿灯，按当期快照录入</span>
@@ -194,7 +208,7 @@
                   <div class="text-[11px] text-slate-400">负责人 {{ c.head }} · 已录 {{ c.filled }}/{{ c.total }}</div>
                 </td>
                 <template v-for="m in board.project.metrics" :key="`${c.orgId}-${m.id}`">
-                  <td class="td">
+                  <td class="td" :data-cell="`${c.orgId}:${m.id}`">
                     <input
                       v-model="draft[cellKey(c.orgId, m.id)].t"
                       class="input !py-1 text-right font-mono !w-[92px]"
@@ -369,14 +383,18 @@ const importResult = ref<ImportResult | null>(null)
 
 const download = downloadFile
 const canAddProject = computed(() => !!board.value?.canEditAll)
+/** 部门/班组视角：指标目标只下达在公司与项目公司层级，故无独立指标数据 */
+const deptView = computed(() => ['dept', 'team'].includes(board.value?.orgType ?? ''))
 
 function cellKey(orgId: string, metricId: string) {
   return `${orgId}|${metricId}`
 }
 function canEdit(orgId: string) {
   if (!auth.hasPerm('metric.edit')) return false
-  if (board.value?.editableProjects?.includes(orgId)) return true
-  return false
+  // 公司整体目标 / 监控指标：仅具备「全公司」可见范围、且当前为全公司视角时可维护
+  if (orgId === board.value?.orgId) return !!board.value?.canEditAll
+  // 项目公司指标：全公司范围可维护全部，项目公司负责人仅本公司
+  return !!board.value?.editableProjects?.includes(orgId)
 }
 function cellOf(c: ProjectCompanyBlock, metricId: string) {
   return c.cells.find((x) => x.metricId === metricId)
@@ -403,12 +421,26 @@ function seedDraft(rows: MetricRow[], orgId: string) {
   })
 }
 
+/** 本人范围：无组织维度数据（与后端 visibleOrgs 口径一致） */
+const noOrgDimension = computed(() => auth.scope === 'self')
+
+let loadSeq = 0
 async function load() {
-  if (!view.period) return
+  if (!view.period || !view.contextReady) return
+  const seq = ++loadSeq
+  if (noOrgDimension.value) {
+    loading.value = false
+    error.value = ''
+    board.value = null
+    return
+  }
   loading.value = true
   error.value = ''
   try {
-    board.value = await metricApi.board(view.period, view.orgId)
+    const data = await metricApi.board(view.period, view.orgId)
+    // 并发加载时丢弃过期响应，避免先到的 403 覆盖后到的成功结果
+    if (seq !== loadSeq) return
+    board.value = data
     Object.keys(draft).forEach((k) => {
       delete draft[k]
       delete baseline[k]
@@ -417,13 +449,15 @@ async function load() {
     seedDraft(board.value.monitor, board.value.orgId)
     board.value.project.companies.forEach((c) => seedDraft(c.cells, c.orgId))
     await loadPrev()
-    await applyFocus()
   } catch (e) {
+    if (seq !== loadSeq) return
     error.value = (e as Error).message
     board.value = null
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
+  // 定位必须等 loading 关闭、表格真正渲染之后再做，否则查不到目标单元格
+  if (seq === loadSeq) await applyFocus()
 }
 
 async function loadPrev() {
@@ -445,14 +479,15 @@ async function loadPrev() {
 async function applyFocus() {
   const f = view.consumeFocus()
   if (!f) return
-  if (f.orgId && f.orgId !== view.orgId) view.orgId = f.orgId
   await nextTick()
+  // 只做定位与高亮，不改写全局组织视角：
+  // 「去维护」跳到本页后，用户返回驾驶舱应仍停留在原来的组织视角上。
   const el = document.querySelector(`[data-cell="${f.orgId}:${f.metricId}"]`)
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.classList.add('row-focus')
-    setTimeout(() => el.classList.remove('row-focus'), 2600)
-  }
+  if (!el) return
+  const target = el.tagName === 'TD' ? (el.closest('tr') ?? el) : el
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  target.classList.add('row-focus')
+  setTimeout(() => target.classList.remove('row-focus'), 2600)
 }
 
 function num(v: string): number | null {
@@ -593,5 +628,5 @@ function rateClass(light: string) {
   return { green: 'text-good-600', amber: 'text-warn-600', red: 'text-bad-600', none: 'text-slate-400' }[light] ?? 'text-slate-400'
 }
 
-watch([() => view.period, () => view.orgId], load, { immediate: true })
+watch([() => view.period, () => view.orgId, () => view.contextReady], load, { immediate: true })
 </script>

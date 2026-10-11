@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed top-4 right-4 z-[100] space-y-2 w-80">
+  <div data-testid="toast-host" class="fixed top-4 right-4 z-[100] space-y-2 w-80">
     <transition-group name="fade">
       <div
         v-for="t in app.toasts"

@@ -10,6 +10,8 @@ export const useViewStore = defineStore('view', () => {
   const orgOptions = ref<{ id: string; name: string }[]>([{ id: 'CO', name: '全公司' }])
   /** 从驾驶舱「去维护」跳转时的定位目标 */
   const focusMetric = ref<{ metricId: string; orgId: string } | null>(null)
+  /** 组织视角是否已按当前登录人的可见范围解析完成（未完成前页面不发请求，避免首帧越权 403） */
+  const contextReady = ref(false)
 
   function setPeriods(list: string[], current: string, asOf: string) {
     currentPeriod.value = current
@@ -31,5 +33,5 @@ export const useViewStore = defineStore('view', () => {
     return f
   }
 
-  return { period, currentPeriod, dataAsOf, orgId, orgOptions, focusMetric, setPeriods, gotoMetric, consumeFocus }
+  return { period, currentPeriod, dataAsOf, orgId, orgOptions, focusMetric, contextReady, setPeriods, gotoMetric, consumeFocus }
 })

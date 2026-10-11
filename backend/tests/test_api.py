@@ -412,3 +412,78 @@ def test_invalid_token_without_cookie_rejected():
     with TestClient(app) as fresh:
         resp = fresh.get("/api/v1/auth/me", headers={"Authorization": "Bearer gateway-injected-junk"})
     assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# 指标维护授权口径（对齐原型 metricEditScope）
+# ---------------------------------------------------------------------------
+def test_board_edit_scope_admin_at_company(client, admin_headers):
+    d = client.get("/api/v1/metrics/board", params={"org_id": "CO"}, headers=admin_headers).json()
+    assert d["canEditAll"] is True
+    assert set(d["editableProjects"]) == {"PC1", "PC2", "PC3"}
+
+
+def test_board_edit_scope_admin_at_project(client, admin_headers):
+    d = client.get("/api/v1/metrics/board", params={"org_id": "PC1"}, headers=admin_headers).json()
+    # 项目视角下不开放公司整体目标编辑（否则会写出项目维度的公司级目标）
+    assert d["canEditAll"] is False
+    # 但全公司范围仍可维护全部项目公司
+    assert set(d["editableProjects"]) == {"PC1", "PC2", "PC3"}
+
+
+def test_board_edit_scope_dept_head_readonly(client, head_headers):
+    d = client.get("/api/v1/metrics/board", params={"org_id": "D06"}, headers=head_headers).json()
+    assert d["canEditAll"] is False
+    assert d["editableProjects"] == []
+
+
+def test_board_project_head_only_own(client, project_headers):
+    d = client.get("/api/v1/metrics/board", params={"org_id": "PC1"}, headers=project_headers).json()
+    assert d["canEditAll"] is False
+    assert d["editableProjects"] == ["PC1"]
+
+
+def test_board_org_type_exposed(client, admin_headers):
+    d = client.get("/api/v1/metrics/board", params={"org_id": "D06"}, headers=admin_headers).json()
+    assert d["orgType"] == "dept"
+    assert d["orgId"] == "D06"
+
+
+# ---------------------------------------------------------------------------
+# 任务接口请求体契约（snake_case，见 docs/design.md §6.5）
+# ---------------------------------------------------------------------------
+def test_task_create_and_update_contract(client, admin_headers):
+    body = {
+        "parent": "契约验证任务",
+        "title": "二级分类",
+        "description": "",
+        "abnormal": False,
+        "target": 4,
+        "done": 1,
+        "unit": "项",
+        "note": "",
+        "start_date": "2026-10-01",
+        "end_date": "2026-12-31",
+        "dept_id": "D03",
+        "owner": "吴敏",
+    }
+    created = client.post("/api/v1/tasks", json=body, headers=admin_headers)
+    assert created.status_code == 201, created.text
+    tid = created.json()["id"]
+    assert created.json()["startDate"] == "2026-10-01"
+    assert created.json()["deptId"] == "D03"
+
+    upd = client.patch(f"/api/v1/tasks/{tid}", json={**body, "done": 4}, headers=admin_headers)
+    assert upd.status_code == 200, upd.text
+    assert upd.json()["progress"] == 100
+
+    assert client.delete(f"/api/v1/tasks/{tid}", headers=admin_headers).status_code == 200
+
+
+def test_task_create_missing_fields_returns_422_detail(client, admin_headers):
+    # 缺少 snake_case 必填字段时应返回 422 且 detail 为可读的数组
+    resp = client.post("/api/v1/tasks", json={"parent": "缺字段"}, headers=admin_headers)
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert isinstance(detail, list) and detail
+    assert all("msg" in e for e in detail)
