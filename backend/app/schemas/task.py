@@ -23,6 +23,9 @@ class TaskOut(BaseModel):
     daysLeft: int | None = None
     statusLevel: str = "normal"
     statusLabel: str = "正常"
+    # 系统自动记录，只读（不接受前端写入）
+    createdAt: str = ""
+    updatedAt: str = ""
 
 
 class TaskCreate(BaseModel):

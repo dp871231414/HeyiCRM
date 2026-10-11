@@ -149,6 +149,8 @@ export interface MetricBoard {
   counts: { total: number; green: number; amber: number; red: number; none: number; filled: number }
   canEditAll?: boolean
   editableProjects?: string[]
+  /** 当前账号的指标维护权限（后端按权限返回，与角色属性无关） */
+  perms?: { edit: boolean; editCompany: boolean; editProject: boolean }
 }
 
 export interface TaskItem {
@@ -170,6 +172,9 @@ export interface TaskItem {
   daysLeft: number | null
   statusLevel: 'done' | 'overdue' | 'due_soon' | 'normal' | 'risk'
   statusLabel: string
+  /** 系统自动记录，只读 */
+  createdAt: string
+  updatedAt: string
 }
 
 export interface DeptTaskStat {

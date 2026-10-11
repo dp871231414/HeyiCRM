@@ -18,6 +18,22 @@
       <button class="btn-ghost" @click="load">查询</button>
 
       <div class="ml-auto flex items-center gap-2">
+        <div class="flex items-center rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+          <button
+            class="px-2.5 py-1 rounded-md text-xs font-semibold transition"
+            :class="!groupByDept ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+            @click="groupByDept = false"
+          >
+            列表
+          </button>
+          <button
+            class="px-2.5 py-1 rounded-md text-xs font-semibold transition"
+            :class="groupByDept ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+            @click="groupByDept = true"
+          >
+            按部门分组
+          </button>
+        </div>
         <button class="btn-ghost" @click="download(taskApi.templateUrl(), '重点任务导入标准模板.xlsx')">下载模板</button>
         <button class="btn-ghost" @click="download(taskApi.exportUrl(), '重点任务清单.xlsx')">导出</button>
         <label v-if="auth.hasPerm('task.import')" class="btn-ghost cursor-pointer">
@@ -42,7 +58,7 @@
       <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
       <div v-else-if="!tasks.length" class="p-10 text-center text-slate-400 text-sm">暂无任务</div>
       <div v-else class="overflow-x-auto">
-        <table class="table-freeze w-full min-w-[1360px]">
+        <table class="table-freeze w-full min-w-[1640px]">
           <thead>
             <tr class="border-b border-slate-200">
               <th class="th col-id w-[96px]">任务ID</th>
@@ -54,43 +70,57 @@
               <th class="th w-[110px] text-right">已完成</th>
               <th class="th w-[130px]">完成进度</th>
               <th class="th w-[180px]">计划起止</th>
+              <th class="th w-[140px]">创建时间</th>
+              <th class="th w-[140px]">更新时间</th>
               <th class="th w-[110px]">状态</th>
               <th class="th col-ops w-[120px] text-right">操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="t in tasks" :key="t.id" class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-              <td class="td col-id font-mono text-xs text-slate-500">{{ t.id }}</td>
-              <td class="td col-name">
-                <div class="font-semibold text-slate-800 truncate" :title="t.parent">{{ t.parent }}</div>
-              </td>
-              <td class="td text-slate-500">{{ t.title || '—' }}</td>
-              <td class="td">{{ t.owner }}</td>
-              <td class="td">{{ t.deptName }}</td>
-              <td class="td text-right font-mono">{{ fmt(t.target) }}<span class="text-[11px] text-slate-400 ml-0.5">{{ t.unit }}</span></td>
-              <td class="td text-right font-mono">{{ fmt(t.done) }}</td>
-              <td class="td">
-                <div class="flex items-center gap-2">
-                  <div class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden min-w-[46px]">
-                    <div class="h-full rounded-full" :class="progressBar(t)" :style="{ width: Math.min(100, t.progress) + '%' }" />
+            <template v-for="row in rows" :key="row.key">
+              <!-- 分组小标题（按部门分组视图） -->
+              <tr v-if="row.kind === 'group'" class="bg-slate-100/70 border-b border-slate-200">
+                <td :colspan="COL_COUNT" class="td font-bold text-slate-700">
+                  {{ row.deptName }}
+                  <span class="ml-1.5 text-[11px] font-normal text-slate-400">{{ row.count }} 项任务</span>
+                </td>
+              </tr>
+              <!-- 任务行 -->
+              <tr v-else class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                <td class="td col-id font-mono text-xs text-slate-500">{{ row.task.id }}</td>
+                <td class="td col-name">
+                  <div class="font-semibold text-slate-800 truncate" :title="row.task.parent">{{ row.task.parent }}</div>
+                </td>
+                <td class="td text-slate-500">{{ row.task.title || '—' }}</td>
+                <td class="td">{{ row.task.owner }}</td>
+                <td class="td">{{ row.task.deptName }}</td>
+                <td class="td text-right font-mono">{{ fmt(row.task.target) }}<span class="text-[11px] text-slate-400 ml-0.5">{{ row.task.unit }}</span></td>
+                <td class="td text-right font-mono">{{ fmt(row.task.done) }}</td>
+                <td class="td">
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden min-w-[46px]">
+                      <div class="h-full rounded-full" :class="progressBar(row.task)" :style="{ width: Math.min(100, row.task.progress) + '%' }" />
+                    </div>
+                    <span class="text-xs font-bold text-slate-600 w-9 text-right">{{ row.task.progress }}%</span>
                   </div>
-                  <span class="text-xs font-bold text-slate-600 w-9 text-right">{{ t.progress }}%</span>
-                </div>
-              </td>
-              <td class="td text-xs text-slate-500">{{ t.startDate }} ~ {{ t.endDate }}</td>
-              <td class="td"><StatusBadge :status="t.statusLevel" :text="t.statusLabel" /></td>
-              <td class="td col-ops text-right">
-                <button v-if="auth.hasPerm('task.edit')" class="btn-ghost btn-sm" @click="openForm(t)">编辑</button>
-                <button
-                  v-if="auth.hasPerm('task.delete')"
-                  class="btn-danger btn-sm ml-1.5"
-                  @click="confirmDelete(t)"
-                >
-                  删除
-                </button>
-                <span v-if="!auth.hasAnyPerm(['task.edit', 'task.delete'])" class="text-xs text-slate-300">—</span>
-              </td>
-            </tr>
+                </td>
+                <td class="td text-xs text-slate-500">{{ row.task.startDate }} ~ {{ row.task.endDate }}</td>
+                <td class="td text-xs text-slate-500">{{ fmtTime(row.task.createdAt) }}</td>
+                <td class="td text-xs text-slate-500">{{ fmtTime(row.task.updatedAt) }}</td>
+                <td class="td"><StatusBadge :status="row.task.statusLevel" :text="row.task.statusLabel" /></td>
+                <td class="td col-ops text-right">
+                  <button v-if="auth.hasPerm('task.edit')" class="btn-ghost btn-sm" @click="openForm(row.task)">编辑</button>
+                  <button
+                    v-if="auth.hasPerm('task.delete')"
+                    class="btn-danger btn-sm ml-1.5"
+                    @click="confirmDelete(row.task)"
+                  >
+                    删除
+                  </button>
+                  <span v-if="!auth.hasAnyPerm(['task.edit', 'task.delete'])" class="text-xs text-slate-300">—</span>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -231,6 +261,51 @@ const deptFilter = ref('')
 const statusFilter = ref('')
 const orgs = ref<{ id: string; name: string; depth: number }[]>([])
 const owners = ref<{ id: string; name: string }[]>([])
+
+/** 视图模式：false=平铺列表，true=按部门分组（每组带小标题） */
+const groupByDept = ref(false)
+
+type TaskRow =
+  | { kind: 'group'; key: string; deptName: string; count: number }
+  | { kind: 'task'; key: string; task: TaskItem }
+
+/**
+ * 表格渲染行。分组模式下在每个部门前插入一行小标题，
+ * 与任务行共用同一张表 —— 既不必为分组复制一遍行模板，列宽也保持一致。
+ */
+const rows = computed<TaskRow[]>(() => {
+  if (!groupByDept.value) return tasks.value.map((t) => ({ kind: 'task', key: t.id, task: t }))
+  const buckets = new Map<string, TaskItem[]>()
+  for (const t of tasks.value) {
+    const k = t.deptId || '__none__'
+    const list = buckets.get(k)
+    if (list) list.push(t)
+    else buckets.set(k, [t])
+  }
+  const out: TaskRow[] = []
+  for (const [k, items] of buckets) {
+    out.push({
+      kind: 'group',
+      key: `g:${k}`,
+      deptName: items[0]?.deptName || '未指定部门',
+      count: items.length,
+    })
+    for (const t of items) out.push({ kind: 'task', key: t.id, task: t })
+  }
+  return out
+})
+
+/** 表格列数（分组标题行需整行跨列） */
+const COL_COUNT = 13
+
+/** ISO 时间 → 本地可读格式。后端返回带时区，须转本地时区展示 */
+function fmtTime(iso: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
 const formOpen = ref(false)
 const saving = ref(false)

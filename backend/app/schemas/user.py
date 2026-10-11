@@ -20,6 +20,8 @@ class RoleCreate(BaseModel):
     description: str = ""
     scope: str = "self"
     permissions: list[str] = []
+    # 是否标记为内置角色（内置角色默认受删除保护，可由具备 account.role 权限者调整）
+    isSystem: bool = False
 
 
 class RoleUpdate(BaseModel):
@@ -27,6 +29,8 @@ class RoleUpdate(BaseModel):
     description: str = ""
     scope: str = "self"
     permissions: list[str] = []
+    # 不传表示保持原值
+    isSystem: bool | None = None
 
 
 class UserOut(BaseModel):

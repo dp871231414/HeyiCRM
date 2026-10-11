@@ -51,7 +51,7 @@ def create_role(
         name=name,
         description=payload.description.strip(),
         scope=payload.scope if payload.scope in SCOPES else "self",
-        is_system=False,
+        is_system=bool(payload.isSystem),
         permissions=perms,
     )
     db.add(role)
@@ -82,6 +82,9 @@ def update_role(
     role.description = payload.description.strip()
     role.scope = payload.scope if payload.scope in SCOPES else role.scope
     role.permissions = [p for p in payload.permissions if p in ALL_PERM_KEYS]
+    # 内置标记可配置：不传则保持原值，避免前端未携带时被误清空
+    if payload.isSystem is not None:
+        role.is_system = bool(payload.isSystem)
     write_log(db, user, "update", "role", role_id, {"name": name}, request)
     db.commit()
     db.refresh(role)

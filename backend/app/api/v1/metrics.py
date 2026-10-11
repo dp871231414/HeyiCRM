@@ -1,4 +1,4 @@
-"""指标路由：定义 / 周期 / 维护看板 / 目标与完成值录入 / 导入。"""
+"""指标路由：定义 / 周期 / 维护看板 / 目标与累计完成值录入 / 导入。"""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -223,17 +223,27 @@ def board(period: str = "", org_id: str = "CO", db: Session = Depends(get_db), u
         raise HTTPException(status_code=404, detail="组织不存在")
     if not scope_svc.org_in_scope(db, user, org_id):
         raise HTTPException(status_code=403, detail="无权查看该组织的数据")
-    data = build_board(db, period, org_id, scope_svc.visible_org_ids(db, user))
-    # 编辑范围（对齐原型 metricEditScope）：仅具备全公司数据可见范围、且在全公司视角时
-    # 可维护公司整体目标与监控指标；项目公司指标由全公司范围或该公司负责人维护；其余只读。
-    can_edit = "metric.edit" in get_user_perms(db, user)
-    all_scope = scope_svc.effective_scope(db, user) == "all"
-    data["canEditAll"] = can_edit and all_scope and org.type == ORG_TYPE_COMPANY
+    visible = scope_svc.visible_org_ids(db, user)
+    data = build_board(db, period, org_id, visible)
+    # 维护范围完全由权限决定，与角色属性（含默认可见范围）无关：
+    #   metric.edit           —— 可录入 / 修改指标
+    #   metric.edit_company   —— 可维护公司整体目标与监控指标
+    #   metric.edit_project   —— 可维护项目公司指标
+    # 权限决定「能否改」，可见范围决定「改哪些」——后者属数据隔离，不是操作门槛。
+    perms = get_user_perms(db, user)
+    can_edit = "metric.edit" in perms
+    can_company = "metric.edit_company" in perms
+    can_project = "metric.edit_project" in perms
+    data["canEditAll"] = can_edit and can_company and org.type == ORG_TYPE_COMPANY
+    all_projects = [o.id for o in db.scalars(select(Organization).where(Organization.type == ORG_TYPE_PROJECT)).all()]
     data["editableProjects"] = (
-        [o.id for o in db.scalars(select(Organization).where(Organization.type == ORG_TYPE_PROJECT)).all()]
-        if can_edit and all_scope
-        else ([org_id] if can_edit and org.type == ORG_TYPE_PROJECT else [])
+        [pid for pid in all_projects if pid in visible] if (can_edit and can_project) else []
     )
+    data["perms"] = {
+        "edit": can_edit,
+        "editCompany": can_company,
+        "editProject": can_project,
+    }
     return data
 
 
@@ -263,7 +273,7 @@ def _validate_write(db: Session, payload: MetricValueIn, user: User, perm: str) 
     if not d:
         raise HTTPException(status_code=404, detail="指标不存在")
     if d.no_target and d.group == "monitor":
-        pass  # 监控指标只能录完成值
+        pass  # 监控指标只能录累计完成值
     org = db.get(Organization, payload.org_id)
     if not org:
         raise HTTPException(status_code=404, detail="组织不存在")

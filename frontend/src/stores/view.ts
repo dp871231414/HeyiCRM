@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import { clampMonth } from '@/constants/period'
+
 /** 跨页面共享的视图上下文：周期、组织视角、指标定位 */
 export const useViewStore = defineStore('view', () => {
   const period = ref('')
@@ -13,14 +15,20 @@ export const useViewStore = defineStore('view', () => {
   /** 组织视角是否已按当前登录人的可见范围解析完成（未完成前页面不发请求，避免首帧越权 403） */
   const contextReady = ref(false)
 
-  function setPeriods(list: string[], current: string, asOf: string) {
+  /**
+   * 记录服务端给出的当前周期与数据截至日。
+   *
+   * 周期本身由页面内的月份选择器维护（可选范围见 constants/period），
+   * 这里只负责初始化与范围收敛，不再从「有数据的月份」推导可选项。
+   */
+  function setPeriods(current: string, asOf: string) {
     currentPeriod.value = current
     dataAsOf.value = asOf
-    if (!period.value) period.value = current
-    if (list.length) {
-      const available = list.includes(period.value) ? list : [period.value, ...list].filter(Boolean)
-      period.value = available.includes(period.value) ? period.value : current
-    }
+    period.value = clampMonth(period.value || current)
+  }
+
+  function setPeriod(value: string) {
+    period.value = clampMonth(value)
   }
 
   function gotoMetric(metricId: string, orgIdValue: string) {
@@ -33,5 +41,17 @@ export const useViewStore = defineStore('view', () => {
     return f
   }
 
-  return { period, currentPeriod, dataAsOf, orgId, orgOptions, focusMetric, contextReady, setPeriods, gotoMetric, consumeFocus }
+  return {
+    period,
+    currentPeriod,
+    dataAsOf,
+    orgId,
+    orgOptions,
+    focusMetric,
+    contextReady,
+    setPeriods,
+    setPeriod,
+    gotoMetric,
+    consumeFocus,
+  }
 })

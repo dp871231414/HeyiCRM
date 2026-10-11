@@ -53,13 +53,6 @@
         <h1 class="text-[15px] font-bold text-slate-900">{{ title }}</h1>
 
         <div class="ml-auto flex items-center gap-2">
-          <label class="hidden md:flex items-center gap-1.5 text-xs text-slate-500">
-            统计周期
-            <select v-model="view.period" class="input !py-1.5 !px-2 !w-auto text-xs font-semibold">
-              <option v-for="p in periods" :key="p" :value="p">{{ p }}</option>
-            </select>
-          </label>
-
           <label v-if="view.orgOptions.length > 1" class="hidden md:flex items-center gap-1.5 text-xs text-slate-500">
             组织视角
             <select v-model="view.orgId" class="input !py-1.5 !px-2 !w-auto text-xs font-semibold">
@@ -133,8 +126,6 @@ const router = useRouter()
 const collapsed = computed(() => app.sidebarCollapsed)
 const title = computed(() => (route.meta.title as string) || '')
 const menuOpen = ref(false)
-const periods = ref<string[]>([])
-
 const SCOPE_TEXT: Record<string, string> = {
   self: '本人',
   dept: '本部门',
@@ -167,8 +158,7 @@ async function loadContext() {
   view.contextReady = false
   try {
     const p = await metricApi.periods()
-    view.setPeriods(p.periods, p.current, p.dataAsOf)
-    periods.value = Array.from(new Set([...p.periods, p.current])).sort()
+    view.setPeriods(p.current, p.dataAsOf)
   } catch {
     /* 无 metric.view 权限时忽略 */
   }

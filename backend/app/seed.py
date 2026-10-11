@@ -50,7 +50,7 @@ ORGS = [
 
 METRIC_DEFS = [
     dict(id="REV_SALE", name="销售收入", unit="万元", group="annual", family="revenue", direction="positive", cycle="month", weight=20, warn=0.95, danger=0.85, rate_target=0.95, owner_org_id="D01", description="重卡销售口径确认收入，累计完成口径"),
-    dict(id="COLL_SALE", name="销售收入回款", unit="万元", group="annual", family="collection", parent_id="REV_SALE", direction="positive", cycle="month", weight=0, owner_org_id="D06", description="销售收入对应累计回款，回款率=回款/销售收入完成值"),
+    dict(id="COLL_SALE", name="销售收入回款", unit="万元", group="annual", family="collection", parent_id="REV_SALE", direction="positive", cycle="month", weight=0, owner_org_id="D06", description="销售收入对应累计回款，回款率=回款/销售收入累计完成值"),
     dict(id="REV_TRANS", name="运力收入", unit="万元", group="annual", family="revenue", direction="positive", cycle="month", weight=20, warn=0.95, danger=0.85, rate_target=0.95, owner_org_id="D03", description="运力运营服务收入，累计完成口径"),
     dict(id="COLL_TRANS", name="运力收入回款", unit="万元", group="annual", family="collection", parent_id="REV_TRANS", direction="positive", cycle="month", weight=0, owner_org_id="D06", description="运力收入对应累计回款"),
     dict(id="REV_ENER", name="补能收入", unit="万元", group="annual", family="revenue", direction="positive", cycle="month", weight=15, warn=0.95, danger=0.85, rate_target=0.95, owner_org_id="D03", description="充/换电、加气等补能服务收入，累计完成口径"),
@@ -140,9 +140,9 @@ TASKS = [
 
 ROLES = [
     dict(id="admin", name="系统管理员", description="全部菜单与操作权限，可管理账号与角色", scope="all", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.import", "account.view", "account.edit", "account.role"]),
+         permissions=["dashboard.view", "task.view", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "metric.import", "account.view", "account.edit", "account.role"]),
     dict(id="dept_head", name="部门负责人", description="本部门及下属部门的任务与指标全权", scope="dept_sub", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.edit", "task.import", "metric.view", "metric.edit", "metric.import"]),
+         permissions=["dashboard.view", "task.view", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import"]),
     dict(id="member", name="普通成员", description="仅维护本人任务与指标", scope="self", is_system=True,
          permissions=["dashboard.view", "task.view", "task.edit", "metric.view", "metric.edit"]),
 ]
@@ -175,7 +175,7 @@ def seed(db: Session, reset: bool = False) -> dict:
             db.execute(delete(model))
         db.commit()
 
-    created = {"orgs": 0, "metrics": 0, "targets": 0, "actuals": 0, "tasks": 0, "roles": 0, "users": 0}
+    created = {"orgs": 0, "metrics": 0, "targets": 0, "actuals": 0, "tasks": 0, "roles": 0, "users": 0, "roles_synced": 0}
 
     if not db.scalar(select(Organization).limit(1)):
         for i, (oid, name, otype, parent, head) in enumerate(ORGS):
@@ -191,6 +191,17 @@ def seed(db: Session, reset: bool = False) -> dict:
         for r in ROLES:
             db.add(Role(**r))
             created["roles"] += 1
+    else:
+        # 内置角色的权限清单会随版本新增权限点（如 metric.edit_company / metric.edit_project）。
+        # 已存在的库需要对齐一次，否则升级后拿不到新权限；自定义角色不受影响。
+        for spec in ROLES:
+            role = db.get(Role, spec["id"])
+            if role is None or not role.is_system:
+                continue
+            if sorted(role.permissions or []) != sorted(spec["permissions"]):
+                role.permissions = list(spec["permissions"])
+                role.scope = spec["scope"]
+                created["roles_synced"] += 1
 
     if not db.scalar(select(User).limit(1)):
         pwd = hash_password(SEED_PASSWORD)

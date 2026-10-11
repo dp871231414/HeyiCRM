@@ -5,6 +5,7 @@
         数据截至 <b class="text-slate-700">{{ board?.dataAsOf || '—' }}</b> · 年度时间进度
         <b class="text-slate-700">{{ fmtPct(board?.timeProgress) }}</b> · 目标按年度存储，全年各月度周期共用
       </p>
+      <MonthPicker v-model="view.period" />
       <div class="ml-auto flex items-center gap-2">
         <button class="btn-ghost" @click="download(metricApi.templateUrl(), '指标数据导入标准模板.xlsx')">下载模板</button>
         <label v-if="auth.hasPerm('metric.import')" class="btn-ghost cursor-pointer">
@@ -16,8 +17,9 @@
     </div>
 
     <div v-if="board && view.orgId !== 'CO'" class="card p-3.5 border-brand-100 bg-brand-50 text-xs text-brand-700">
-      当前组织视角为「{{ board.orgId }}」。公司整体目标与监控指标仅具备全公司数据可见范围的管理员可维护；
-      项目公司指标按可见范围维护。指标目标只下达在公司与项目公司层级，部门视角无独立指标数据。
+      当前组织视角为「{{ board.orgId }}」。能否维护只看权限：公司整体目标需「维护公司整体目标」权限，
+      项目公司指标需「维护项目公司指标」权限；数据可见范围决定你能看到哪些组织。
+      指标目标只下达在公司与项目公司层级，部门视角无独立指标数据。
     </div>
 
     <div v-if="error" class="card p-4 border-bad-100 bg-bad-50 text-sm text-bad-600 flex items-center gap-3">
@@ -40,7 +42,7 @@
       <section>
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-slate-900">一、公司整体目标</h2>
-          <span class="text-xs text-slate-400">完成值为年初至今累计；运营车辆为期末快照</span>
+          <span class="text-xs text-slate-400">累计完成值为「截止当月」的累计值；运营车辆为期末快照</span>
         </div>
         <div v-if="deptView" class="card p-8 text-center text-xs text-slate-500 leading-relaxed">
           指标目标只下达在<b class="text-slate-700">公司与项目公司</b>层级，{{ board.orgId }} 视角无独立指标数据。
@@ -51,7 +53,7 @@
               <tr class="border-b border-slate-200">
                 <th class="th">指标</th>
                 <th class="th w-[150px]">年度目标</th>
-                <th class="th w-[140px]">完成值</th>
+                <th class="th w-[140px]">累计完成值</th>
                 <th class="th w-[168px]">完成率</th>
                 <th class="th w-[130px]">回款</th>
                 <th class="th w-[150px]">回款率</th>
@@ -188,7 +190,7 @@
               <tr class="border-b border-slate-200">
                 <template v-for="m in board.project.metrics" :key="`${m.id}-sub`">
                   <th class="th text-right !bg-slate-50/70">目标</th>
-                  <th class="th text-right !bg-slate-50/70">完成</th>
+                  <th class="th text-right !bg-slate-50/70">累计完成</th>
                   <th class="th text-right !bg-slate-50/70">达成</th>
                   <template v-if="m.id === 'OP_REV'">
                     <th class="th text-right !bg-slate-50/70">回款率</th>
@@ -299,7 +301,7 @@
         <p>将删除「{{ projectDelete.name }}」，并连带清理其指标数据与任务：</p>
         <ul class="list-disc pl-5 text-xs text-slate-500 space-y-1">
           <li>年度目标 {{ projectDelete.impact.targets }} 条</li>
-          <li>完成值 {{ projectDelete.impact.actuals }} 条</li>
+          <li>累计完成值 {{ projectDelete.impact.actuals }} 条</li>
           <li>关联任务 {{ projectDelete.impact.tasks }} 条</li>
           <li>关联账号 {{ projectDelete.impact.users }} 个（将停用，不删除）</li>
         </ul>
@@ -349,6 +351,7 @@ import { useRouter } from 'vue-router'
 
 import { dashboardApi, downloadFile, metricApi, projectApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
+import MonthPicker from '@/components/MonthPicker.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -391,9 +394,10 @@ function cellKey(orgId: string, metricId: string) {
 }
 function canEdit(orgId: string) {
   if (!auth.hasPerm('metric.edit')) return false
-  // 公司整体目标 / 监控指标：仅具备「全公司」可见范围、且当前为全公司视角时可维护
+  // 维护范围完全由权限决定，与角色属性无关：
+  //   公司整体目标 / 监控指标 → metric.edit_company
+  //   项目公司指标            → metric.edit_project
   if (orgId === board.value?.orgId) return !!board.value?.canEditAll
-  // 项目公司指标：全公司范围可维护全部，项目公司负责人仅本公司
   return !!board.value?.editableProjects?.includes(orgId)
 }
 function cellOf(c: ProjectCompanyBlock, metricId: string) {

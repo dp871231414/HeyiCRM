@@ -35,6 +35,8 @@ PERM_GROUPS: list[dict] = [
         "items": [
             {"key": "metric.view", "label": "查看指标数据", "type": "menu"},
             {"key": "metric.edit", "label": "录入 / 修改指标", "type": "action"},
+            {"key": "metric.edit_company", "label": "维护公司整体目标", "type": "action"},
+            {"key": "metric.edit_project", "label": "维护项目公司指标", "type": "action"},
             {"key": "metric.import", "label": "批量导入指标", "type": "action"},
         ],
     },
@@ -66,8 +68,8 @@ PAGE_PERM: dict[str, str] = {
 
 # 指标分组元数据
 METRIC_GROUP_META: dict[str, dict] = {
-    "annual": {"label": "年度目标", "desc": "公司级年度目标 · 完成值为年初至今累计"},
-    "project": {"label": "项目公司目标", "desc": "按项目公司单独核算"},
+    "annual": {"label": "年度目标", "desc": "公司级年度目标 · 累计完成值为截止当月累计"},
+    "project": {"label": "项目公司目标", "desc": "按项目公司单独核算 · 累计完成值为截止当月累计"},
     "monitor": {"label": "监控指标", "desc": "无目标值 · 事故 / 故障 / 租金减免统计"},
 }
 

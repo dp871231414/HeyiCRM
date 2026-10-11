@@ -1,5 +1,11 @@
 <template>
   <div class="space-y-5">
+    <!-- 统计周期（页面内选择；顶栏不再展示，任务管理页亦不展示） -->
+    <div class="flex flex-wrap items-center gap-3">
+      <MonthPicker v-model="view.period" />
+      <span class="text-xs text-slate-400">数据截至 {{ view.dataAsOf || '—' }}</span>
+    </div>
+
     <!-- 错误态 -->
     <div v-if="error" class="card p-4 border-bad-100 bg-bad-50 flex items-center gap-3">
       <span class="text-bad-600">加载失败：{{ error }}</span>
@@ -56,7 +62,7 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-sm font-bold text-slate-900">核心指标 · 年度目标</h2>
           <span class="text-xs text-slate-400">
-            完成值为年初至今累计{{ snapshotHint }}
+            累计完成值为「截止当月」的累计值{{ snapshotHint }}
           </span>
         </div>
 
@@ -257,6 +263,7 @@ import { useRouter } from 'vue-router'
 
 import { dashboardApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
+import MonthPicker from '@/components/MonthPicker.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useAuthStore } from '@/stores/auth'

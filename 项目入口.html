@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>合一重卡生态经营看板 · 启动台</title>
+<style>
+  :root{
+    --bg:#F8FAFC; --surface:#FFFFFF; --brand:#4F46E5; --brand-2:#7C3AED;
+    --text:#0F172A; --muted:#64748B; --border:#E2E8F0;
+    --good:#10B981; --good-bg:#ECFDF5;
+    --shadow:0 4px 20px -2px rgba(79,70,229,.12);
+    --shadow-hover:0 10px 25px -5px rgba(79,70,229,.18), 0 8px 10px -6px rgba(79,70,229,.1);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:"Plus Jakarta Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    line-height:1.6; padding:32px 20px 56px;
+  }
+  .wrap{max-width:960px;margin:0 auto}
+
+  header{margin-bottom:28px}
+  h1{
+    font-size:26px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px;
+    background:linear-gradient(90deg,var(--brand),var(--brand-2));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .sub{color:var(--muted);font-size:13px;margin:0}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:16px}
+
+  .card{
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:20px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s;
+  }
+  .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
+  .card h2{font-size:14px;font-weight:700;margin:0 0 4px}
+  .card .note{font-size:12px;color:var(--muted);margin:0 0 14px}
+
+  a.entry{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    text-decoration:none;background:linear-gradient(90deg,var(--brand),var(--brand-2));
+    color:#fff;font-size:14px;font-weight:600;padding:11px 16px;border-radius:8px;
+    box-shadow:0 4px 14px 0 rgba(79,70,229,.3);transition:transform .2s;
+  }
+  a.entry:hover{transform:translateY(-1px)}
+  a.entry .url{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;opacity:.9;font-weight:400}
+  a.entry.secondary{
+    background:var(--surface);color:#334155;border:1px solid var(--border);
+    box-shadow:none;font-weight:500;margin-top:10px;
+  }
+  a.entry.secondary:hover{background:#F8FAFC;border-color:#CBD5E1;transform:none}
+
+  .tag{
+    display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;
+    background:#EEF2FF;color:var(--brand);border:1px solid #E0E7FF;margin-left:8px;vertical-align:2px;
+  }
+  .tag.on{background:var(--good-bg);color:#047857;border-color:#A7F3D0}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  td.k{color:var(--muted);width:34%}
+
+  pre{
+    background:#0F172A;color:#E2E8F0;border-radius:8px;padding:12px 14px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+    overflow-x:auto;margin:0;line-height:1.7;
+  }
+  pre .c{color:#94A3B8}
+  code.inline{
+    background:#F1F5F9;border:1px solid var(--border);border-radius:4px;
+    padding:1px 6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;
+  }
+  .foot{margin-top:24px;font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>合一重卡生态经营看板</h1>
+    <p class="sub">本地启动台 · 双击 <code class="inline">启动看板.command</code> 即可拉起全部服务</p>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <h2>生产形态<span class="tag on">推荐</span></h2>
+      <p class="note">后端同源托管前端构建产物，单端口访问</p>
+      <a class="entry" href="http://127.0.0.1:8000" target="_blank" rel="noopener">
+        <span>打开看板</span><span class="url">127.0.0.1:8000</span>
+      </a>
+    </div>
+    <div class="card">
+      <h2>开发形态</h2>
+      <p class="note">Vite 开发服务，改前端代码即时热更新</p>
+      <a class="entry secondary" href="http://127.0.0.1:5173" target="_blank" rel="noopener">
+        <span>打开开发服务</span><span class="url">127.0.0.1:5173</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>演示账号</h2>
+      <p class="note">初始密码统一为 <code class="inline">Demo#2026</code></p>
+      <table>
+        <tr><td class="k">chenzm</td><td>陈志明 · 系统管理员 · 全公司</td></tr>
+        <tr><td class="k">linxue</td><td>林雪 · 部门负责人 · 市场部</td></tr>
+        <tr><td class="k">wangjg</td><td>王建国 · 部门负责人 · 财务部</td></tr>
+        <tr><td class="k">zhengkai</td><td>郑凯 · 成员 · 市场部</td></tr>
+        <tr><td class="k">liqiang</td><td>李强 · 部门负责人 · 合一重卡运营公司</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>服务与日志</h2>
+      <p class="note">服务在后台运行，日志写在项目根目录</p>
+      <table>
+        <tr><td class="k">后端日志</td><td><code class="inline">.backend.log</code></td></tr>
+        <tr><td class="k">前端日志</td><td><code class="inline">.frontend.log</code></td></tr>
+        <tr><td class="k">接口文档</td><td><a href="http://127.0.0.1:8000/api/docs" target="_blank" rel="noopener">/api/docs</a></td></tr>
+        <tr><td class="k">健康检查</td><td><a href="http://127.0.0.1:8000/api/health" target="_blank" rel="noopener">/api/health</a></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>常用命令</h2>
+    <p class="note">改完前端代码需要重新构建，8000 才会用上新版本</p>
+<pre><span class="c"># 启动（也可以直接在访达里双击 启动看板.command）</span>
+./启动看板.command
+
+<span class="c"># 前端构建 → 同步给后端同源托管（让 8000 用上新版本）</span>
+cd frontend &amp;&amp; npm run build
+rm -rf ../backend/static/assets &amp;&amp; cp -R dist/assets ../backend/static/assets
+cp dist/index.html ../backend/static/index.html
+
+<span class="c"># 后端测试（应为 49 passed）</span>
+cd backend &amp;&amp; .venv/bin/python -m pytest -q
+
+<span class="c"># 停止全部服务</span>
+pkill -f "uvicorn app.main:app"; pkill -f "vite"</pre>
+  </div>
+
+  <p class="foot">线上地址：https://heyi-fleet-dashboard.app.workbuddy.host/</p>
+</div>
+</body>
+</html>

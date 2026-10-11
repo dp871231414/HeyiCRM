@@ -264,6 +264,15 @@
             <label class="label">说明</label>
             <input v-model.trim="roleForm.description" class="input" />
           </div>
+          <div class="md:col-span-2">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" v-model="roleForm.isSystem" class="w-4 h-4 accent-brand-600" />
+              <span class="text-xs text-slate-600">
+                标记为内置角色
+                <span class="text-slate-400">（内置角色受删除保护；可按需取消，取消后该角色即可被删除）</span>
+              </span>
+            </label>
+          </div>
         </div>
 
         <div>
@@ -359,7 +368,7 @@ const orgForm = reactive({ id: '', name: '', head: '', parentId: 'CO' })
 
 const roleFormOpen = ref(false)
 const roleError = ref('')
-const roleForm = reactive<{ id: string; name: string; description: string; scope: ScopeKey; permissions: string[] }>({ id: '', name: '', description: '', scope: 'self', permissions: [] })
+const roleForm = reactive<{ id: string; name: string; description: string; scope: ScopeKey; permissions: string[]; isSystem: boolean }>({ id: '', name: '', description: '', scope: 'self', permissions: [], isSystem: false })
 
 const deleteMsg = ref('')
 let deleteAction: (() => Promise<void>) | null = null
@@ -542,9 +551,9 @@ function askDeleteOrg(o: OrgNode) {
 function openRoleForm(r?: RoleItem) {
   roleError.value = ''
   if (r) {
-    Object.assign(roleForm, { id: r.id, name: r.name, description: r.description, scope: r.scope, permissions: [...r.permissions] })
+    Object.assign(roleForm, { id: r.id, name: r.name, description: r.description, scope: r.scope, permissions: [...r.permissions], isSystem: !!r.isSystem })
   } else {
-    Object.assign(roleForm, { id: '', name: '', description: '', scope: 'self', permissions: ['dashboard.view'] })
+    Object.assign(roleForm, { id: '', name: '', description: '', scope: 'self', permissions: ['dashboard.view'], isSystem: false })
   }
   roleFormOpen.value = true
 }
@@ -579,7 +588,7 @@ async function saveRole() {
   }
   saving.value = 'role'
   try {
-    const payload = { name: roleForm.name, description: roleForm.description, scope: roleForm.scope, permissions: roleForm.permissions }
+    const payload = { name: roleForm.name, description: roleForm.description, scope: roleForm.scope, permissions: roleForm.permissions, isSystem: roleForm.isSystem }
     if (roleForm.id) await roleApi.update(roleForm.id, payload)
     else await roleApi.create(payload)
     app.toast('已保存')

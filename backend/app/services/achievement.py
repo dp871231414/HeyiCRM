@@ -3,8 +3,8 @@
 本模块为纯业务逻辑，与 Web 框架无关，可独立单测。
 口径：
 - 年度目标 / 项目公司目标按「年份」存一份（period='2026'），全年各月度周期共用；
-- 完成值为「年初至今累计」（收入/消化/利润）或「期末快照」（运营车辆）；
-- 回款率 = 累计回款 / 累计收入完成值；
+- 累计完成值为「截止当月」的累计值（收入/消化/利润），每月维护最新累计数；运营车辆为期末快照；
+- 回款率 = 累计回款 / 累计收入累计完成值；
 - 时间进度 = 年初至数据截至日的天数 / 全年天数。
 """
 from __future__ import annotations
@@ -344,4 +344,7 @@ def task_to_dict(task) -> dict:
         "daysLeft": health["days"],
         "statusLevel": health["level"],
         "statusLabel": health["label"],
+        # 系统自动记录，只读：创建时间 / 更新时间
+        "createdAt": task.created_at.isoformat() if task.created_at else "",
+        "updatedAt": task.updated_at.isoformat() if task.updated_at else "",
     }
