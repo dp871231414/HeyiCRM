@@ -89,8 +89,8 @@ STATIC_DIR=./static uvicorn app.main:app --host 0.0.0.0 --port 8000
 如果要在新设备上继续开发或重新发布，按下面步骤：
 
 1. 把源码放到新设备（推荐用 `合一重卡经营看板-源码包.zip`，含完整 git 历史；或 `git clone` 后 checkout 到 `main`）。
-2. **保持与原设备一致的目录结构**：当前为 `~/WorkBuddy/2026-10-09-17-02-38/`，其中发布目录是 `backend/`。发布工具是按「本地目录」匹配已有应用的，
-   路径不同可能被识别为新应用并生成新链接；若只想更新现有链接，建议仍在原设备上发布。
+2. **保持与本机一致的目录结构**：项目根目录为 `~/WorkBuddy/heyi-fleet-dashboard/`，其中发布目录是 `backend/`。发布工具是按「本地目录」匹配已有应用的，
+   路径不同可能被识别为新应用并生成新链接；若只想更新现有链接，请沿用同一路径。
 3. 恢复依赖并启动：
 
 ```bash
@@ -140,3 +140,20 @@ cd ../frontend && npm install && npm run dev
 - 后端测试：`cd backend && pytest -q`（42 项通过）
 - 接口文档：启动后访问 `http://localhost:8000/api/docs`
 - 完整规范见 `docs/` 目录，部署细节见 `docs/design.md` §12
+
+## 本机运行状态（迁移后）
+
+| 入口 | 地址 | 说明 |
+|------|------|------|
+| 生产形态（推荐） | http://127.0.0.1:8000 | 后端同源托管前端构建产物，单端口即可访问 |
+| 开发形态 | http://127.0.0.1:5173 | Vite 开发服务（热更新），`/api` 反向代理到 8000 |
+
+启动命令：
+
+```bash
+# 后端（同源托管前端；先确保已执行 frontend 构建并拷入 backend/static）
+cd backend && DATABASE_URL="sqlite:///./dev.db" STATIC_DIR=./static uvicorn app.main:app --port 8000
+
+# 前端开发服务
+cd frontend && npm run dev
+```
