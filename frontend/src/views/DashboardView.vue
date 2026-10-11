@@ -50,14 +50,15 @@
           </div>
         </div>
 
-        <!-- AI 经营点评（云服务 · 免密钥大模型，失败时回退为规则化分析） -->
+        <!-- AI 经营点评（自定义模型优先，失败回退云服务，再失败展示规则化分析） -->
         <div v-if="aiLoading" class="mt-4 pt-4 border-t border-slate-100 flex items-center gap-2 text-sm text-slate-400">
           <span class="inline-block w-3 h-3 border-2 border-slate-200 border-t-brand-600 rounded-full animate-spin"></span>
-          AI 经营点评生成中…
+          AI 经营点评生成中<span v-if="aiElapsed > 3"> · 已用 {{ aiElapsed }}s</span>…
         </div>
         <div v-else-if="aiInsight" class="mt-4 pt-4 border-t border-slate-100">
           <div class="flex items-center gap-1.5 mb-1.5">
             <span class="chip bg-brand-50 text-brand-700 border border-brand-100">AI 经营点评</span>
+            <span v-if="aiSource" class="text-[11px] text-slate-400">{{ aiSource === 'custom' ? '自定义模型' : '云服务' }}</span>
           </div>
           <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{{ aiInsight }}</p>
         </div>
@@ -296,6 +297,10 @@ const trendLoading = ref(false)
 const aiInsight = ref('')
 const aiLoading = ref(false)
 const aiError = ref(false)
+/** 命中的模型通道：custom=自定义模型，cloud=云服务兜底 */
+const aiSource = ref<'custom' | 'cloud' | ''>('')
+/** 生成已耗时（秒），用于展示「已用 Ns」，避免长时间等待时像卡死 */
+const aiElapsed = ref(0)
 
 const revenueRows = computed(() => (overview.value?.annual ?? []).filter((r) => r.family === 'revenue'))
 const simpleRows = computed(() => (overview.value?.annual ?? []).filter((r) => r.family !== 'revenue'))
@@ -437,15 +442,30 @@ async function runInsight() {
   aiLoading.value = true
   aiError.value = false
   aiInsight.value = ''
+  aiSource.value = ''
+  aiElapsed.value = 0
+
+  // 计时器：让等待过程可见，同时兜住「loading 永不结束」的情况
+  const startedAt = Date.now()
+  const ticker = window.setInterval(() => {
+    if (seq === insightSeq) aiElapsed.value = Math.floor((Date.now() - startedAt) / 1000)
+  }, 1000)
+
   try {
-    const text = await generateInsight(buildInsightContext())
+    const { text, source } = await generateInsight(buildInsightContext())
     if (seq !== insightSeq) return
     aiInsight.value = text
-  } catch {
+    aiSource.value = source
+  } catch (err) {
     if (seq !== insightSeq) return
+    console.warn('[AI] 两条通道均失败，回退规则化分析：', err)
     aiError.value = true
   } finally {
-    if (seq === insightSeq) aiLoading.value = false
+    window.clearInterval(ticker)
+    if (seq === insightSeq) {
+      aiLoading.value = false
+      aiElapsed.value = 0
+    }
   }
 }
 

@@ -120,6 +120,18 @@ export const dashboardApi = {
     http.get<TrendResult>(`/dashboard/metrics/${metricId}/trend`, { params: { org_id: orgId } }).then((r) => r.data),
 }
 
+/* ---------------- AI 能力 ---------------- */
+/**
+ * 经营点评走服务端代理：自定义模型的 API Key 只存在后端环境变量，
+ * 前端不持有、也拿不到，避免 Key 暴露在浏览器里。
+ */
+export const aiApi = {
+  insight: (context: string) =>
+    http.post<{ text: string; source: string }>('/ai/insight', { context }).then((r) => r.data),
+  status: () =>
+    http.get<{ customEnabled: boolean; model: string }>('/ai/status').then((r) => r.data),
+}
+
 /** 带令牌下载文件（模板/导出） */
 export async function downloadFile(url: string, filename: string) {
   const token = localStorage.getItem('fleet_token')

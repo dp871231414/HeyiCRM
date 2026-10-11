@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     import_max_mb: int = 5
     import_max_rows: int = 2000
 
+    # 自定义大模型（OpenAI 兼容协议），用于驾驶舱「AI 经营点评」。
+    # Key 只存在于服务端环境变量，绝不下发到前端；未配置时该能力自动降级。
+    ai_base_url: str = ""
+    ai_api_key: str = ""
+    ai_model: str = ""
+    ai_timeout: float = 30.0
+
+    @property
+    def ai_enabled(self) -> bool:
+        return bool(self.ai_base_url and self.ai_api_key and self.ai_model)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
