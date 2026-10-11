@@ -82,6 +82,33 @@ STATIC_DIR=./static uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 `STATIC_DIR` 未设置或目录不存在时自动退化为纯 API 服务，不影响前后端分离部署。
 
+## 换设备 / 迁移到另一台机器
+
+在线分享链接是**公网地址，与本地源码无关**，直接浏览器打开即可访问，不需要源码、也不需要 WorkBuddy 在本机。
+
+如果要在新设备上继续开发或重新发布，按下面步骤：
+
+1. 把源码放到新设备（推荐用 `合一重卡经营看板-源码包.zip`，含完整 git 历史；或 `git clone` 后 checkout 到 `main`）。
+2. **保持与原设备一致的目录结构**：当前为 `~/WorkBuddy/2026-10-09-17-02-38/`，其中发布目录是 `backend/`。发布工具是按「本地目录」匹配已有应用的，
+   路径不同可能被识别为新应用并生成新链接；若只想更新现有链接，建议仍在原设备上发布。
+3. 恢复依赖并启动：
+
+```bash
+# 后端
+cd backend && python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+DATABASE_URL="sqlite:///./dev.db" python -m app.seed
+uvicorn app.main:app --port 8000
+
+# 前端
+cd ../frontend && npm install && npm run dev
+```
+
+4. 自检：`cd backend && pytest -q`（应为 49 passed）。
+
+> WorkBuddy 的「发布的应用」卡片记录的是「哪个本地目录发布了该应用」。换设备后本机没有那个目录，会提示「找不到本地工程目录」——
+> 这只影响本地预览与重新发布，**不影响已上线的分享链接**。
+
 ## 演示账号
 
 种子数据内置 14 个账号，初始密码由 `SEED_PASSWORD` 控制（默认 `Demo#2026`）：
