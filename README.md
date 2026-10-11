@@ -157,3 +157,14 @@ cd backend && DATABASE_URL="sqlite:///./dev.db" STATIC_DIR=./static uvicorn app.
 # 前端开发服务
 cd frontend && npm run dev
 ```
+
+## 云服务接入（WorkBuddy Cloud Service）
+
+应用已开通 WorkBuddy 云服务（复用 `wbapp_qceQci7k713KUpJUCItWaO` 环境），并接入**免密钥大模型**能力：
+
+- **客户端**：`frontend/src/services/cloud.ts`，用 `publicConfig`（endpoint / oauthRelayBaseUrl / publishableKey）初始化 SDK。
+- **接入点**：驾驶舱「分析总结」卡片新增「AI 经营点评」——基于当前周期的达成率、亮点、风险与建议，生成一段客观的经营点评；调用失败或配额受限时自动回退为规则化分析，不影响页面。
+- **自检**：`cd frontend && node cloud-smoke.mjs`（列出可用模型并做一次流式补全）。
+
+> 备注：应用本身已有 FastAPI 后端（含自有账号/数据库），云服务的数据库/文件/用户认证模块属另一套体系，
+> 如需把这些模块也接入（例如跨设备偏好、附件上传、面向终端用户的登录），需单独评估并调整架构，属后续项。

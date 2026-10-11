@@ -49,6 +49,21 @@
             <span class="text-brand-600 font-bold shrink-0">建议 {{ i + 1 }}</span><span>{{ p }}</span>
           </div>
         </div>
+
+        <!-- AI 经营点评（云服务 · 免密钥大模型，失败时回退为规则化分析） -->
+        <div v-if="aiLoading" class="mt-4 pt-4 border-t border-slate-100 flex items-center gap-2 text-sm text-slate-400">
+          <span class="inline-block w-3 h-3 border-2 border-slate-200 border-t-brand-600 rounded-full animate-spin"></span>
+          AI 经营点评生成中…
+        </div>
+        <div v-else-if="aiInsight" class="mt-4 pt-4 border-t border-slate-100">
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="chip bg-brand-50 text-brand-700 border border-brand-100">AI 经营点评</span>
+          </div>
+          <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{{ aiInsight }}</p>
+        </div>
+        <div v-else-if="aiError" class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
+          AI 点评暂不可用，已回退为规则化分析。
+        </div>
       </section>
 
       <!-- 核心指标 -->
@@ -259,6 +274,7 @@ import { dashboardApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
+import { generateInsight } from '@/services/cloud'
 import { useAuthStore } from '@/stores/auth'
 import { useViewStore } from '@/stores/view'
 import type { MetricRow, OverviewResult, ProjectCompanyBlock, SummaryResult, TrendResult } from '@/types'
@@ -276,6 +292,10 @@ const overview = ref<OverviewResult | null>(null)
 const drill = ref<MetricRow | null>(null)
 const trend = ref<TrendResult | null>(null)
 const trendLoading = ref(false)
+
+const aiInsight = ref('')
+const aiLoading = ref(false)
+const aiError = ref(false)
 
 const revenueRows = computed(() => (overview.value?.annual ?? []).filter((r) => r.family === 'revenue'))
 const simpleRows = computed(() => (overview.value?.annual ?? []).filter((r) => r.family !== 'revenue'))
@@ -393,6 +413,39 @@ async function load() {
     overview.value = null
   } finally {
     if (seq === loadSeq) loading.value = false
+  }
+  if (seq === loadSeq) runInsight()
+}
+
+function buildInsightContext(): string {
+  const s = summary.value
+  const o = overview.value
+  if (!s || !o) return ''
+  const lines = [
+    `统计周期：${o.period}；组织：${o.orgName}。`,
+    `综合加权达成率：${s.weighted === null ? '—' : fmtPct(s.weighted)}；年度时间进度：${fmtPct(s.timeProgress)}。`,
+  ]
+  if (s.wins.length) lines.push('亮点：' + s.wins.join('；'))
+  if (s.risks.length) lines.push('风险：' + s.risks.map((r) => r.text).join('；'))
+  if (s.points.length) lines.push('规则化建议：' + s.points.join('；'))
+  return lines.join('\n')
+}
+
+let insightSeq = 0
+async function runInsight() {
+  const seq = ++insightSeq
+  aiLoading.value = true
+  aiError.value = false
+  aiInsight.value = ''
+  try {
+    const text = await generateInsight(buildInsightContext())
+    if (seq !== insightSeq) return
+    aiInsight.value = text
+  } catch {
+    if (seq !== insightSeq) return
+    aiError.value = true
+  } finally {
+    if (seq === insightSeq) aiLoading.value = false
   }
 }
 
