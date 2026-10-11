@@ -9,6 +9,13 @@ export DATABASE_URL="${DATABASE_URL:-sqlite:///./app.db}"
 # 监听端口（发布沙箱注入 PORT）
 PORT="${PORT:-3000}"
 
-python -m app.seed || true
+echo "[start] python=$(python -V 2>&1) port=${PORT} cwd=$(pwd)"
+echo "[start] static_dir=${STATIC_DIR} exists=$([ -d "${STATIC_DIR}" ] && echo yes || echo no)"
+echo "[start] database_url=${DATABASE_URL}"
 
-exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
+python -c "import fastapi, uvicorn, sqlalchemy; print('[start] deps ok')" || echo "[start] deps check failed"
+
+python -m app.seed || echo "[start] seed skipped or failed (non-fatal)"
+
+# 用 python -m 调用，避免 uvicorn 可执行文件不在 PATH 上
+exec python -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT}" --log-level info
