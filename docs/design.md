@@ -483,3 +483,35 @@
 
 - `views/MetricsView.vue`：移除「下载模板」「批量导入」按钮、导入结果弹窗、`onImport()`、`importOpen`/`importResult` 状态，以及 `downloadFile`/`ImportResult` 引用。
 - 后端 `/metrics/import/template`、`/metrics/import` **保留**，仍受 `metric.import` 权限保护，供 API 直接调用。
+
+### 13.2 2026-10-12 · 移除 Google Fonts 外链
+
+**问题**：`index.html` 通过 `<link rel="stylesheet">` 引入 Google Fonts 的 Plus Jakarta Sans。
+该域名国内访问不稳定，实测本地与线上均出现 `ERR_TIMED_OUT`；而 `<link rel="stylesheet">`
+**属于渲染阻塞资源**，浏览器要等它失败（数秒）才开始首屏渲染。
+
+**判断依据**：Plus Jakarta Sans 是**纯拉丁字体，不含中文字形**。浏览器按字符逐字回退，
+页面中文**本来就**由 `PingFang SC` / `Microsoft YaHei` 渲染，该字体只影响英文字母与数字。
+
+**改动**
+
+| 文件 | 变更 |
+|---|---|
+| `frontend/index.html` | 删除 3 个 `<link>`（2 个 `preconnect` + 1 个样式表），留注释说明原因 |
+| `frontend/tailwind.config.js` | `fontFamily.sans` 移除 `'Plus Jakarta Sans'`，改为纯系统字体栈 |
+| `项目入口.html` | 本地启动台同步改为系统字体栈（一致性） |
+
+**字体栈（现）**：`-apple-system` → `BlinkMacSystemFont` → `PingFang SC` → `Microsoft YaHei` → `Segoe UI` → `sans-serif`
+
+**验证**（`tools/verify-no-external-font.mjs`）
+
+| 项 | 结果 |
+|---|---|
+| 外部请求 | 0 个 |
+| 字体文件请求 | 0 个（全走系统字体） |
+| 控制台错误 | 0 个（此前为 `ERR_TIMED_OUT`） |
+| `load` 事件耗时 | 77 ms |
+
+**若日后需要跨机器一致的字体观感**：不要改回外链，改为**自托管** —— 下载 woff2 放入
+`frontend/public/fonts/`，用 `@font-face` 引入（只需 latin 子集，约 80–100 KB），
+可同时保留外观与零外链。

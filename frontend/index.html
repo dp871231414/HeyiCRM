@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>合一重卡生态经营看板</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      字体：全部使用系统字体栈（见 tailwind.config.js fontFamily.sans）。
+      原先引用 Google Fonts 的 Plus Jakarta Sans，但它是纯拉丁字体、不含中文字形，
+      中文本就由 PingFang SC / 微软雅黑 渲染；而外链在国内会超时，且 <link rel="stylesheet">
+      属渲染阻塞，故移除。改用系统字体后无任何外部字体请求。
+    -->
   </head>
   <body>
     <div id="app"></div>

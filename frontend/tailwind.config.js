@@ -27,8 +27,9 @@ export default {
         bad: { 50: '#FEF2F2', 100: '#FEE2E2', 500: '#EF4444', 600: '#DC2626', 700: '#B91C1C' },
       },
       fontFamily: {
+        // 纯系统字体栈：不引用任何外部字体，避免渲染阻塞与国内网络不可达。
+        // 中西文分工由浏览器逐字回退完成（拉丁数字走 -apple-system/Segoe UI，中文走 PingFang SC/微软雅黑）。
         sans: [
-          'Plus Jakarta Sans',
           '-apple-system',
           'BlinkMacSystemFont',
           'PingFang SC',
