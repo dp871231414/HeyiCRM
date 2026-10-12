@@ -87,9 +87,7 @@
                 <td :colspan="COL_COUNT" class="td font-bold text-slate-700">
                   <span class="group-title">
                     {{ row.deptName }}
-                    <span class="ml-1.5 text-[11px] font-normal text-slate-400">
-                      {{ row.count }} 项任务<span v-if="row.pageCount > 1"> · 第 {{ row.page }}/{{ row.pageCount }} 页</span>
-                    </span>
+                    <span class="ml-1.5 text-[11px] font-normal text-slate-400">{{ row.count }} 项任务</span>
                   </span>
                 </td>
               </tr>
@@ -146,12 +144,12 @@
           </tbody>
         </table>
       </div>
-      <!-- 平铺视图分页器 -->
+      <!-- 平铺视图分页器：始终显示（只有一页时按钮为禁用态），便于随时看到页数与总数 -->
       <div
-        v-if="!groupByDept && pageCount > 1"
+        v-if="!groupByDept"
         class="flex items-center justify-between border-t border-slate-100 px-3.5 py-2.5"
       >
-        <span class="text-xs text-slate-400">每页 {{ PAGE_SIZE }} 条</span>
+        <span class="text-xs text-slate-400">每页最多 {{ PAGE_SIZE }} 条</span>
         <PaginationBar :page="page" :page-count="pageCount" :total="total" @update:page="goPage" />
       </div>
     </div>
@@ -351,9 +349,8 @@ const rows = computed<TaskRow[]>(() => {
     for (const t of items.slice(start, start + GROUP_PAGE_SIZE)) {
       out.push({ kind: 'task', key: t.id, task: t })
     }
-    if (pc > 1) {
-      out.push({ kind: 'pager', key: `p:${k}`, deptId: k, page: cur, pageCount: pc, total: items.length })
-    }
+    // 每个部门都带分页器（只有一页时按钮为禁用态），页序与总数在分页器里体现
+    out.push({ kind: 'pager', key: `p:${k}`, deptId: k, page: cur, pageCount: pc, total: items.length })
   }
   return out
 })

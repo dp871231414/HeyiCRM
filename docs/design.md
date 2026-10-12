@@ -664,3 +664,51 @@
   保持同一套语义；否则会出现「分页在 SQL 层、过滤在 Python 层」，页数与总数对不上。
   回归用例 `test_task_status_filter_matches_computed_status` 会逐个状态比对两侧结果。
 - `size` 设上限 2000（`Query(ge=1, le=2000)`），避免一次拉取过多数据。
+
+### 13.6 2026-10-12 · 数据维护工具与种子语义收敛
+
+#### 维护工具 `app/maintenance.py`
+
+删除账号、清空任务属于**不可逆**动作，不需要在日常界面上常驻暴露，因此做成命令行工具而非 HTTP 接口：
+
+```bash
+# 预演（只打印将删除的内容）
+.venv/bin/python -m app.maintenance purge --keep chenzm,huguohai --dry-run
+# 执行
+.venv/bin/python -m app.maintenance purge --keep chenzm,huguohai
+```
+
+**安全护栏**（都会在违反时直接拒绝执行）：
+
+| 护栏 | 原因 |
+|---|---|
+| `--keep` 不能为空 | 否则会删光全部账号，没人能登录 |
+| 保留账号中须至少有一个具备 `account.role` 的账号 | 否则清理后无人能管理角色与权限 |
+| `--keep` 中不存在的账号会明确提示 | 避免"以为保留了、其实被删掉" |
+| `--dry-run` 支持先看清单 | 执行前确认范围 |
+
+**关联引用的处理**：`operation_log.user_id`、`metric_actual.created_by`、`task.created_by` 都指向账号。
+删除账号前先**把这些引用置空**——保留操作日志与指标数据本身，只解除指向已删账号的引用，
+不留下悬空值。清理动作本身也会写一条 `purge` 日志便于日后追溯。
+
+#### 种子数据的语义收敛（重要）
+
+原先各段演示数据是**独立判断**"该表是否为空"来决定是否灌入，导致一个副作用：
+**管理员清空任务后，服务重启会把 14 条任务重新灌回来**，等于清理没生效。
+
+现改为：以「库中是否连一个账号都没有」作为**首次初始化**的判据，
+演示数据（账号 / 任务）只在这一刻灌入：
+
+```python
+first_init = not db.scalar(select(User).limit(1))   # 必须在灌账号之前取值
+if first_init:
+    ...账号...
+if first_init and not db.scalar(select(Task).limit(1)):
+    ...任务...
+```
+
+- 全新库：一次性灌入全部演示数据（行为不变）
+- 已有库：不再因为"某张表空了"而回填 —— **删掉的数据不会复活**
+- 内置角色权限对齐（`roles_synced`）保持独立，仍按升级逻辑每次执行
+
+> 需要回到完整演示数据时，用 §13.3 的 `SEED_RESET=1 sh start.sh` 显式重置。

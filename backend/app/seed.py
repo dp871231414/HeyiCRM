@@ -203,7 +203,12 @@ def seed(db: Session, reset: bool = False) -> dict:
                 role.scope = spec["scope"]
                 created["roles_synced"] += 1
 
-    if not db.scalar(select(User).limit(1)):
+    # 是否「首次初始化」：库里连一个账号都没有。
+    # 演示数据只在首次初始化时灌入 —— 否则管理员清空任务后，服务重启会把数据"复活"。
+    # 注意必须在灌账号之前取值（之后 add 的记录会被 autoflush 查到）。
+    first_init = not db.scalar(select(User).limit(1))
+
+    if first_init:
         pwd = hash_password(SEED_PASSWORD)
         for uid, name, account, dept, role, status in USERS:
             db.add(User(id=uid, name=name, account=account, password_hash=pwd, dept_id=dept, role_id=role, status=status))
@@ -220,7 +225,8 @@ def seed(db: Session, reset: bool = False) -> dict:
                 db.add(MetricActual(metric_id=metric_id, org_id=org_id, period=period, value=Decimal(str(value)), created_by="U001"))
                 created["actuals"] += 1
 
-    if not db.scalar(select(Task).limit(1)):
+    # 任务同样只在首次初始化时灌入（见上：清空后不应被重启"复活"）
+    if first_init and not db.scalar(select(Task).limit(1)):
         for t in TASKS:
             db.add(
                 Task(
