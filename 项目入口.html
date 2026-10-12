@@ -102,7 +102,10 @@
 
   <header>
     <h1>合一重卡生态经营看板</h1>
-    <p class="sub">本地启动台 · 双击 <code class="inline">启动看板.command</code> 即可拉起全部服务</p>
+    <p class="sub">
+      本地启动台 · 双击 <code class="inline">启动看板.command</code> 拉起全部服务；启动逻辑在
+      <code class="inline">启动看板.sh</code>（可在编辑器 / 预览中直接查看与修改）
+    </p>
   </header>
 
   <div class="grid">
@@ -167,8 +170,12 @@
   <div class="card">
     <h2>常用命令</h2>
     <p class="note">改完前端代码需要重新构建，8000 才会用上新版本</p>
-<pre><span class="c"># 启动（也可以直接在访达里双击 启动看板.command）</span>
+<pre><span class="c"># 启动（也可以在访达里双击 启动看板.command）</span>
+<span class="c"># 真正的启动逻辑在同目录的 启动看板.sh —— 双击的 .command 只是转调它，</span>
+<span class="c"># 这样脚本内容能直接在编辑器里查看与修改（.command 后缀多数编辑器不识别）</span>
 ./启动看板.command
+<span class="c"># 等价写法：</span>
+./启动看板.sh
 
 <span class="c"># 前端构建 → 同步给后端同源托管（让 8000 用上新版本）</span>
 cd frontend &amp;&amp; npm run build
