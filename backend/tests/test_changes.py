@@ -382,3 +382,138 @@ def test_export_has_no_blank_row_after_header(client, admin_headers):
     ws = _load_xlsx(client.get("/api/v1/tasks/export", headers=admin_headers).content).worksheets[0]
     assert ws.cell(row=HEADER_ROW, column=1).value == "任务ID"
     assert ws.cell(row=HEADER_ROW + 1, column=1).value, "表头下一行应直接是数据"
+
+
+# ---------------------------------------------------------------- 项目公司权限与删除（本轮新增）
+
+
+def test_perm_catalog_exposes_project_actions(client, admin_headers):
+    """权限目录暴露项目公司的增 / 改 / 删三个独立权限项，供角色按需勾选。"""
+    catalog = client.get("/api/v1/permissions", headers=admin_headers).json()
+    keys = {item["key"] for g in catalog["groups"] for item in g["items"]}
+    assert {"project.create", "project.edit", "project.delete"} <= keys
+
+
+def test_admin_role_includes_project_actions(client, admin_headers):
+    roles = {r["id"]: r for r in client.get("/api/v1/roles", headers=admin_headers).json()}
+    assert {"project.create", "project.edit", "project.delete"} <= set(roles["admin"]["permissions"])
+
+
+def test_role_without_project_perm_cannot_manage_projects(client, admin_headers, head_headers):
+    """部门负责人可维护项目公司指标（metric.edit_project），但没有项目公司管理权限。
+
+    回归点：此前增删改的门是「具备公司整体目标权限且当前视角为全公司」，
+    导致这类角色看得到数据却无法操作。现改为纯权限点判定。
+    """
+    denied_create = client.post(
+        "/api/v1/projects", json={"name": "不应创建", "head": "x", "targets": []}, headers=head_headers
+    )
+    assert denied_create.status_code == 403
+    assert client.patch("/api/v1/projects/PC1", json={"name": "不应改名", "head": "x"}, headers=head_headers).status_code == 403
+    assert client.delete("/api/v1/projects/PC1", headers=head_headers).status_code == 403
+    # 未被波及
+    assert any(p["id"] == "PC1" for p in client.get("/api/v1/projects", headers=admin_headers).json())
+
+
+def test_project_manage_configurable_via_custom_role(client, admin_headers):
+    """给自定义角色勾上项目公司权限后即可操作——能力由权限决定，与角色标识无关。"""
+    import time
+
+    suffix = str(int(time.time() * 1000))[-6:]
+    role = client.post(
+        "/api/v1/roles",
+        json={
+            "name": f"项目管理员{suffix}",
+            "description": "",
+            "scope": "all",
+            "permissions": ["metric.view", "project.create", "project.edit", "project.delete"],
+        },
+        headers=admin_headers,
+    )
+    assert role.status_code == 201, role.text
+    rid = role.json()["id"]
+
+    account = f"pm{suffix}"
+    created_user = client.post(
+        "/api/v1/users",
+        json={
+            "name": f"项目管理员{suffix}",
+            "account": account,
+            "password": "Demo#2026",
+            "dept_id": "CO",
+            "role_id": rid,
+            "status": "active",
+        },
+        headers=admin_headers,
+    )
+    assert created_user.status_code == 201, created_user.text
+    uid = created_user.json()["id"]
+
+    try:
+        headers, _ = login(client, account)
+        made = client.post(
+            "/api/v1/projects", json={"name": f"权限验证公司{suffix}", "head": "x", "targets": []}, headers=headers
+        )
+        assert made.status_code == 201, made.text
+        pid = made.json()["data"]["id"]
+
+        renamed = client.patch(f"/api/v1/projects/{pid}", json={"name": f"权限验证公司{suffix}b", "head": "y"}, headers=headers)
+        assert renamed.status_code == 200, renamed.text
+        assert client.delete(f"/api/v1/projects/{pid}", headers=headers).status_code == 200
+    finally:
+        client.delete(f"/api/v1/users/{uid}", headers=admin_headers)
+        client.delete(f"/api/v1/roles/{rid}", headers=admin_headers)
+
+
+def test_project_delete_reassigns_dangling_refs(client, admin_headers):
+    """删除项目公司：关联账号与子组织迁移到上级组织，不留悬空引用。
+
+    回归点：此前只把账号置为停用、未改 dept_id，删除后 dept_id 会指向不存在的组织。
+    """
+    from sqlalchemy import select
+
+    from app.db.session import SessionLocal
+    from app.models import Organization, User
+
+    made = client.post(
+        "/api/v1/projects", json={"name": "待删除项目公司X", "head": "测试", "targets": []}, headers=admin_headers
+    )
+    assert made.status_code == 201, made.text
+    pid = made.json()["data"]["id"]
+
+    with SessionLocal() as db:
+        db.add(Organization(id="DPX", name="待删除项目公司的子部门", type="dept", parent_id=pid, head="—", sort_order=900))
+        db.add(
+            User(
+                id="U9X",
+                name="临时账号X",
+                account="tmpx",
+                password_hash="x",
+                dept_id=pid,
+                role_id="member",
+                status="active",
+            )
+        )
+        db.commit()
+
+    assert client.delete(f"/api/v1/projects/{pid}", headers=admin_headers).status_code == 200
+
+    with SessionLocal() as db:
+        assert db.get(Organization, pid) is None, "项目公司应已删除"
+        child = db.get(Organization, "DPX")
+        moved = db.get(User, "U9X")
+        assert child is not None and child.parent_id == "CO", "子组织应上移到 CO，而非悬空"
+        assert moved is not None and moved.dept_id == "CO", "账号归属应迁移到 CO"
+        assert moved.status == "disabled", "账号应被停用而非删除"
+
+        # 全库不应存在指向已删除组织的引用
+        org_ids = {o.id for o in db.scalars(select(Organization)).all()}
+        assert all(u.dept_id in org_ids for u in db.scalars(select(User)).all())
+        assert all(o.parent_id is None or o.parent_id in org_ids for o in db.scalars(select(Organization)).all())
+
+        # 清理临时数据
+        if child is not None:
+            db.delete(child)
+        if moved is not None:
+            db.delete(moved)
+        db.commit()

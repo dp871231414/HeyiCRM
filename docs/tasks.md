@@ -188,3 +188,15 @@
 | T20-6 | 导入/导出模板美化（说明栏 + 表头背景 + 蓝色清新） | `importer` 样式层、`export_tasks` | ✅ |
 | T20-7 | 指标维护下线模板下载与批量导入入口 | `MetricsView.vue` | ✅ |
 | T20-8 | 文档与用例同步、输出测试报告 | `proposal.md`、`design.md`、`test-report.md`、`tests/test_changes.py`、`tests/test_api.py` | ✅ |
+
+## T21 第三批变更（2026-10-12）
+
+对应 proposal §12.3 / design §13.4。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T21-1 | 月份选择组件重做（面板式：触发器 + 12 月网格 + 年份分页跳转 + 越界禁用 + 外部点击/Esc 关闭） | `components/MonthPicker.vue`、`styles/main.css` | ✅ |
+| T21-2 | 项目公司增 / 改 / 删改为独立权限点，入口不再依赖当前视角 | `constants.py`、`seed.py`、`api/v1/projects.py`、`views/MetricsView.vue` | ✅ |
+| T21-3 | 删除项目公司时清理悬空引用（子组织上移、账号迁移并停用） | `api/v1/projects.py` | ✅ |
+| T21-4 | 回归用例与验收脚本（新增 5 条后端用例 + `tools/verify-round3.mjs`） | `tests/test_changes.py`、`tools/` | ✅ |
+| T21-5 | 文档同步与测试报告 | `proposal.md`、`design.md`、`tasks.md`、`test-report.md` | ✅ |

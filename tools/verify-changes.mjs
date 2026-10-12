@@ -99,41 +99,77 @@ ok('顶栏不再显示统计周期', !headerHasPeriod)
 
 await gotoMenu('经营驾驶舱', '核心指标')
 const dashPicker = await page.evaluate(() => {
-  const el = [...document.querySelectorAll('main input[type="month"]')]
-  return el.length
-    ? { n: el.length, min: el[0].min, max: el[0].max, value: el[0].value }
-    : null
+  const btns = [...document.querySelectorAll('main button[aria-haspopup="dialog"]')]
+  return btns.length ? { n: btns.length, text: btns[0].innerText.trim() } : null
 })
-ok('驾驶舱内展示统计周期', !!dashPicker, dashPicker ? `min=${dashPicker.min} max=${dashPicker.max} value=${dashPicker.value}` : '未找到')
-ok('驾驶舱为月份选择组件', dashPicker?.min === '2026-09' && dashPicker?.max === '2099-12', dashPicker ? `范围 ${dashPicker.min} ~ ${dashPicker.max}` : '')
-ok('默认可选起点为 2026-09', dashPicker?.min === '2026-09')
+ok('驾驶舱内展示统计周期', !!dashPicker, dashPicker ? `触发器=${dashPicker.text}` : '未找到')
+ok('统计周期为面板式月份选择器', /^\d{4}年\d{1,2}月$/.test(dashPicker?.text || ''), dashPicker?.text || '')
+ok('不再使用原生 type=month 输入框', (await page.locator('main input[type="month"]').count()) === 0)
 
 await gotoMenu('指标维护', '公司整体目标')
 const metricPicker = await page.evaluate(() =>
-  [...document.querySelectorAll('main input[type="month"]')].map((e) => ({ min: e.min, max: e.max, value: e.value })),
+  [...document.querySelectorAll('main button[aria-haspopup="dialog"]')].map((e) => e.innerText.trim()),
 )
-ok('指标维护内展示统计周期', metricPicker.length > 0, JSON.stringify(metricPicker[0] ?? {}))
+ok('指标维护内展示统计周期', metricPicker.length > 0, JSON.stringify(metricPicker[0] ?? ''))
 
 await gotoMenu('任务管理', '按部门分组')
 await waitForTaskTable()
 const taskHasPeriod = await page.evaluate(() => {
   const h = document.querySelector('header')
-  const body = document.body.innerText
-  return !!(h && /统计周期/.test(h.innerText)) || (/统计周期/.test(body) && document.querySelectorAll('main input[type="month"]').length > 0)
+  return (
+    !!(h && /统计周期/.test(h.innerText)) ||
+    document.querySelectorAll('main button[aria-haspopup="dialog"]').length > 0
+  )
 })
 ok('任务管理不显示统计周期', !taskHasPeriod)
 
 // 选到 2099-12 边界不报错
 await gotoMenu('经营驾驶舱', '核心指标')
+// 走面板真实交互：年份跳转 → 选 2099 → 选 12 月
 const boundary = await page.evaluate(async () => {
-  const el = document.querySelector('main input[type="month"]')
-  if (!el) return { ok: false, reason: 'no input' }
-  el.value = '2099-12'
-  el.dispatchEvent(new Event('change', { bubbles: true }))
-  await new Promise((r) => setTimeout(r, 2500))
-  return { ok: !document.body.innerText.includes('加载失败'), text: document.body.innerText.slice(0, 80) }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  const trigger = document.querySelector('main button[aria-haspopup="dialog"]')
+  if (!trigger) return { ok: false, reason: 'no trigger' }
+  trigger.click()
+  await sleep(400)
+  const panel = document.querySelector('[role="dialog"][aria-label="选择统计周期"]')
+  if (!panel) return { ok: false, reason: 'panel not open' }
+
+  const title = [...panel.querySelectorAll('button')].find((b) => /^\d{4}年$/.test(b.innerText.trim()))
+  if (!title) return { ok: false, reason: 'no year title' }
+  title.click()
+  await sleep(300)
+
+  let guard = 0
+  while (guard++ < 12) {
+    const years = [...panel.querySelectorAll('button')]
+      .map((b) => b.innerText.trim())
+      .filter((t) => /^\d{4}$/.test(t))
+    if (years.includes('2099')) break
+    const next = [...panel.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') || '') === '下一页')
+    if (!next || next.disabled) return { ok: false, reason: '无法翻到 2099' }
+    next.click()
+    await sleep(250)
+  }
+
+  const y2099 = [...panel.querySelectorAll('button')].find((b) => b.innerText.trim() === '2099')
+  if (!y2099) return { ok: false, reason: '未找到 2099' }
+  y2099.click()
+  await sleep(300)
+
+  const dec = [...panel.querySelectorAll('button')].find((b) => b.innerText.trim() === '12月')
+  if (!dec) return { ok: false, reason: '未找到 12月' }
+  dec.click()
+  await sleep(2200)
+
+  const label = document.querySelector('main button[aria-haspopup="dialog"]')?.innerText.trim()
+  return {
+    ok: !document.body.innerText.includes('加载失败') && label === '2099年12月',
+    label,
+    reason: label === '2099年12月' ? '' : `触发器=${label}`,
+  }
 })
-ok('可选到 2099-12 且不报错', boundary.ok, boundary.reason || '')
+ok('可选到 2099-12 且不报错', boundary.ok, boundary.reason || `触发器=${boundary.label}`)
 
 // ---------------- 2 累计完成值 ----------------
 console.log('\n──── 2. 累计完成值口径 ────')

@@ -212,3 +212,60 @@ cd frontend && npm run build
 # 浏览器验收（30 项；需后端可访问）
 cd tools && BASE_URL=http://127.0.0.1:8000 node verify-changes.mjs
 ```
+
+---
+
+## 十、第三轮变更测试（2026-10-12）
+
+### 10.1 后端用例（77 项，含本轮新增 5 项）
+
+| 用例 | 断言要点 | 结果 |
+|---|---|---|
+| `test_perm_catalog_exposes_project_actions` | 权限目录含 `project.create` / `project.edit` / `project.delete` | ✅ |
+| `test_admin_role_includes_project_actions` | 系统管理员默认具备三个新权限点 | ✅ |
+| `test_role_without_project_perm_cannot_manage_projects` | 持 `metric.edit_project` 但无项目公司权限的角色，增 / 改 / 删均 403 | ✅ |
+| `test_project_manage_configurable_via_custom_role` | 新建角色勾选后即可增 / 改 / 删（与角色标识无关），且能通过可见范围校验 | ✅ |
+| `test_project_delete_reassigns_dangling_refs` | 删除后子组织上移到 CO、账号迁移并停用，全库无悬空 `dept_id` / `parent_id` | ✅ |
+
+> 本轮修复的缺陷（**D-5**）：删除项目公司后，关联账号的 `dept_id` 仍指向已被删除的组织。
+> 实测确认（删 PC3 后 `U014.dept_id == 'PC3'` 且 organization 中已无 PC3）。
+
+### 10.2 浏览器验收（54 项）
+
+| 脚本 | 覆盖 | 项数 | 结果 |
+|---|---|---|---|
+| `tools/verify-round3.mjs`（**本轮新增**） | 月份组件交互（面板 / 年份跳转 / 越界禁用 / 关闭方式）、项目公司编辑删除入口 | 24 | ✅ 24/24 |
+| `tools/verify-changes.mjs`（已适配新组件） | 统计周期位置与范围、累计完成值、任务管理、权限可配置、模板与入口 | 30 | ✅ 30/30 |
+
+本轮专项要点：
+
+| 分组 | 覆盖点 | 结果 |
+|---|---|---|
+| 组件交互 | 触发器格式与图标、展开面板、12 月网格、选中主色填充、范围标注 | ✅ |
+| 范围约束 | 2026 年 1-8 月禁用、9-12 月可选；年份面板 2100 起禁用；2099 整年可选 | ✅ |
+| 年份跳转 | 点年份标题切到年份面板，翻页可直达 2099（无需逐年点击） | ✅ |
+| 关闭行为 | 选中后自动关闭并同步触发器、点击外部关闭、Esc 关闭、可还原当前周期 | ✅ |
+| 项目公司入口 | 全公司视角与**项目公司视角**下删除 / 编辑入口均可见（本轮修复点） | ✅ |
+| 删除确认 | 弹确认框并展示连带影响（目标 / 累计完成值 / 任务 / 账号） | ✅ |
+
+运行结果：**本地 54/54 通过，控制台零错误**。
+
+> 断言修正记录：初版脚本写「2099 年时 1-11 月禁用」是**错误假设**——上限为 `2099-12`，
+> 该年 12 个月均有效；越界体现在年份面板（2100 起禁用）。已按实际语义修正断言。
+
+### 10.3 前端构建
+
+`vue-tsc --noEmit` 类型检查通过；`vite build` 构建成功（MonthPicker 独立分块 6.21 kB / gzip 2.52 kB）。
+
+### 10.4 复现命令
+
+```bash
+# 后端（77 项）
+cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q
+
+# 月份组件 + 项目公司入口专项（24 项）
+cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round3.mjs
+
+# 全量验收（30 项）
+cd tools && BASE_URL=http://127.0.0.1:8000 node verify-changes.mjs
+```

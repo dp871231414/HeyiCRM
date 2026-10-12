@@ -97,6 +97,12 @@ body {
   .chip {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
   }
+  /* 月份选择面板的翻页按钮 */
+  .picker-nav {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500
+      transition hover:bg-slate-100 hover:text-slate-800
+      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent;
+  }
 }
 
 /* 表格冻结列 */

@@ -13,7 +13,8 @@
 
     <div v-if="board && view.orgId !== 'CO'" class="card p-3.5 border-brand-100 bg-brand-50 text-xs text-brand-700">
       当前组织视角为「{{ board.orgId }}」。能否维护只看权限：公司整体目标需「维护公司整体目标」权限，
-      项目公司指标需「维护项目公司指标」权限；数据可见范围决定你能看到哪些组织。
+      项目公司指标需「维护项目公司指标」权限，项目公司的新增 / 编辑 / 删除各有独立权限项；
+      数据可见范围决定你能看到哪些组织。
       指标目标只下达在公司与项目公司层级，部门视角无独立指标数据。
     </div>
 
@@ -164,7 +165,7 @@
       <section>
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-slate-900">三、项目公司指标</h2>
-          <button v-if="canAddProject" class="btn-primary btn-sm" @click="openProjectForm()">+ 新增项目公司</button>
+          <button v-if="canCreateProject" class="btn-primary btn-sm" @click="openProjectForm()">+ 新增项目公司</button>
         </div>
 
         <div v-if="!board.project.companies.length" class="card p-8 text-center text-sm text-slate-400">
@@ -252,10 +253,8 @@
                   >
                     {{ saving === c.orgId ? '保存中…' : hasDirty(c.orgId) ? '保存' : '已保存' }}
                   </button>
-                  <template v-if="canAddProject">
-                    <button class="btn-ghost btn-sm ml-1.5" @click="openProjectForm(c)">编辑</button>
-                    <button class="btn-danger btn-sm ml-1.5" @click="askDeleteProject(c)">删除</button>
-                  </template>
+                  <button v-if="canEditProject" class="btn-ghost btn-sm ml-1.5" @click="openProjectForm(c)">编辑</button>
+                  <button v-if="canDeleteProject" class="btn-danger btn-sm ml-1.5" @click="askDeleteProject(c)">删除</button>
                 </td>
               </tr>
             </tbody>
@@ -346,7 +345,10 @@ const projectForm = reactive<{ id: string; name: string; head: string; targets: 
 })
 const projectError = ref('')
 const projectDelete = ref<ProjectItem | null>(null)
-const canAddProject = computed(() => !!board.value?.canEditAll)
+/** 项目公司的增 / 改 / 删各自独立权限点，不再依赖「当前视角是否为全公司」 */
+const canCreateProject = computed(() => auth.hasPerm('project.create'))
+const canEditProject = computed(() => auth.hasPerm('project.edit'))
+const canDeleteProject = computed(() => auth.hasPerm('project.delete'))
 /** 部门/班组视角：指标目标只下达在公司与项目公司层级，故无独立指标数据 */
 const deptView = computed(() => ['dept', 'team'].includes(board.value?.orgType ?? ''))
 
