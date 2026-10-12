@@ -307,6 +307,12 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-changes.mjs
 > 分页用例需造数（55 条任务），仅在**本机**执行并在结束时清理（实测删除 55/55）；
 > 对线上运行时会自动跳过该段，只验证只读部分。
 
+**线上结果**：`verify-round4` 14/14（造数场景按设计跳过，避免污染线上演示数据）、
+`verify-round3` 24/24、`verify-changes` 30/30，合计 **68/68**，控制台零错误。
+线上核对：入口产物 hash 与本地一致（`index-BJR1srVI.js`）；
+静态资源响应头为 `content-encoding: gzip` + `cache-control: public, immutable, max-age=31536000`；
+首页 `cache-control: no-cache`；`size=99999` 返回 422；指标看板 gzip 后 2236 B。
+
 ### 11.3 性能实测
 
 | 项 | 改前 | 改后 | 变化 |
