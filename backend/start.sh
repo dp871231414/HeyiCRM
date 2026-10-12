@@ -15,7 +15,16 @@ echo "[start] database_url=${DATABASE_URL}"
 
 python -c "import fastapi, uvicorn, sqlalchemy; print('[start] deps ok')" || echo "[start] deps check failed"
 
-python -m app.seed || echo "[start] seed skipped or failed (non-fatal)"
+# 种子数据。
+#   默认：幂等补齐（已有数据不动，仅新增缺失项与内置角色权限对齐）
+#   SEED_RESET=1：先清空业务表再重新灌入，用于把演示环境恢复到初始状态
+# 例如部署时以 `SEED_RESET=1 sh start.sh` 启动一次即可完成重置，之后正常启动即可。
+if [ "${SEED_RESET}" = "1" ]; then
+  echo "[start] SEED_RESET=1 → 清空并重建种子数据"
+  python -m app.seed --reset || echo "[start] reset skipped or failed (non-fatal)"
+else
+  python -m app.seed || echo "[start] seed skipped or failed (non-fatal)"
+fi
 
 # 用 python -m 调用，避免 uvicorn 可执行文件不在 PATH 上
 exec python -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT}" --log-level info
