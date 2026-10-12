@@ -105,6 +105,11 @@ const highlights = [
 
 onMounted(() => {
   if (route.query.reason === 'expired') error.value = '登录已过期，请重新登录'
+
+  // 用户输入账号密码期间，提前把主界面代码取回来：
+  // 登录成功后就不必再等一轮 chunk 下载（线上单次网络往返约 300-400ms）。
+  import('@/layouts/AppLayout.vue')
+  import('@/views/DashboardView.vue')
 })
 
 async function submit() {

@@ -156,30 +156,32 @@ const menus = computed(() => ALL_MENUS.filter((m) => auth.hasPerm(m.perm)))
 async function loadContext() {
   if (!auth.token) return
   view.contextReady = false
-  try {
-    const p = await metricApi.periods()
-    view.setPeriods(p.current, p.dataAsOf)
-  } catch {
-    /* 无 metric.view 权限时忽略 */
-  }
-  if (auth.hasPerm('metric.view')) {
-    try {
-      if (auth.scope === 'all') {
-        const projects = await projectApi.list()
-        view.orgOptions = [{ id: 'CO', name: '全公司' }, ...projects.map((p) => ({ id: p.id, name: p.name }))]
-      } else if (auth.scope === 'dept_sub' || auth.scope === 'dept') {
-        view.orgOptions = [{ id: auth.user!.deptId, name: auth.user!.deptName }]
-        view.orgId = auth.user!.deptId
-      } else {
-        // 本人范围：按设计不看组织维度（visibleOrgs 为空），
-        // 因此不提供任何组织视角，由页面给出「范围说明」而非报错。
-        view.orgOptions = []
-      }
-      if (view.orgOptions.length && !view.orgOptions.some((o) => o.id === view.orgId)) {
-        view.orgId = view.orgOptions[0].id
-      }
-    } catch {
-      /* 忽略 */
+  const canViewMetric = auth.hasPerm('metric.view')
+  const needProjects = canViewMetric && auth.scope === 'all'
+
+  // 周期与项目公司互不依赖，合并成一批并发请求。
+  // 原先串行等待，相当于白白多等一次网络往返（线上约 300-400ms）。
+  const [periodRes, projectsRes] = await Promise.all([
+    metricApi.periods().catch(() => null),
+    needProjects ? projectApi.list().catch(() => null) : Promise.resolve(null),
+  ])
+
+  if (periodRes) view.setPeriods(periodRes.current, periodRes.dataAsOf)
+
+  if (canViewMetric) {
+    if (auth.scope === 'all') {
+      const projects = projectsRes ?? []
+      view.orgOptions = [{ id: 'CO', name: '全公司' }, ...projects.map((p) => ({ id: p.id, name: p.name }))]
+    } else if (auth.scope === 'dept_sub' || auth.scope === 'dept') {
+      view.orgOptions = [{ id: auth.user!.deptId, name: auth.user!.deptName }]
+      view.orgId = auth.user!.deptId
+    } else {
+      // 本人范围：按设计不看组织维度（visibleOrgs 为空），
+      // 因此不提供任何组织视角，由页面给出「范围说明」而非报错。
+      view.orgOptions = []
+    }
+    if (view.orgOptions.length && !view.orgOptions.some((o) => o.id === view.orgId)) {
+      view.orgId = view.orgOptions[0].id
     }
   }
   view.contextReady = true

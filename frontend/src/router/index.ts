@@ -1,6 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
+// 登录页是首屏必经路径（未登录必然停在这里），改为静态导入打进主包：
+// 懒加载会让首屏多一轮「主包 → 登录页 chunk」的网络往返，线上约 300-400ms。
+import LoginView from '@/views/LoginView.vue'
 
 /** 页面 → 所需菜单权限（与后端 constants.PAGE_PERM 一致） */
 export const PAGE_PERM: Record<string, string> = {
@@ -16,7 +19,7 @@ const router = createRouter({
     {
       path: '/login',
       name: 'login',
-      component: () => import('@/views/LoginView.vue'),
+      component: LoginView,
       meta: { public: true, title: '登录' },
     },
     {
