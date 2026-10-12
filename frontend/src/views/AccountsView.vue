@@ -105,7 +105,8 @@
 
             <div v-if="auth.hasPerm('account.edit')" class="ml-auto flex items-center gap-1.5">
               <button class="btn-ghost btn-sm" @click="openOrgForm(null, o.id)">+ 子部门</button>
-              <button v-if="o.type !== 'company'" class="btn-ghost btn-sm" @click="openOrgForm(o)">编辑</button>
+              <!-- 公司节点（全公司）同样可编辑名称与负责人；删除仍不允许 -->
+              <button class="btn-ghost btn-sm" @click="openOrgForm(o)">编辑</button>
               <button
                 v-if="o.type !== 'company'"
                 class="btn-danger btn-sm"
@@ -417,14 +418,19 @@ function deleteReason(o: OrgNode) {
 }
 
 /* ---------------- 加载 ---------------- */
-async function loadOrgs() {
-  orgLoading.value = true
+/**
+ * 加载组织列表。
+ * silent=true 时不显示「加载中」占位 —— 用于保存 / 删除后的刷新，
+ * 避免整块列表被替换成加载态（原先保存一次就会闪一下）。
+ */
+async function loadOrgs(silent = false) {
+  if (!silent) orgLoading.value = true
   try {
     orgs.value = await orgApi.list()
   } catch (e) {
     app.toast((e as Error).message, 'error')
   } finally {
-    orgLoading.value = false
+    if (!silent) orgLoading.value = false
   }
 }
 
@@ -553,11 +559,17 @@ async function saveOrg() {
   }
   saving.value = 'org'
   try {
-    if (orgForm.id) await orgApi.update(orgForm.id, { name: orgForm.name, head: orgForm.head })
-    else await orgApi.create({ name: orgForm.name, parent_id: orgForm.parentId, head: orgForm.head })
+    if (orgForm.id) {
+      // 编辑：用接口返回的节点就地替换，不重拉整棵组织树
+      const saved = await orgApi.update(orgForm.id, { name: orgForm.name, head: orgForm.head })
+      upsertOrg(saved)
+    } else {
+      // 新建：节点在树中的位置需要按层级顺序排列，静默重拉（不显示加载态）
+      await orgApi.create({ name: orgForm.name, parent_id: orgForm.parentId, head: orgForm.head })
+      await loadOrgs(true)
+    }
     app.toast('已保存')
     orgFormOpen.value = false
-    await loadOrgs()
   } catch (e) {
     orgError.value = (e as Error).message
   } finally {
@@ -565,12 +577,27 @@ async function saveOrg() {
   }
 }
 
+/**
+ * 把保存后的组织就地写回列表，并同步账号列表里显示的部门名。
+ * 不重拉整棵树：那会让列表整块闪成「加载中」，也会丢失滚动位置。
+ */
+function upsertOrg(node: OrgNode) {
+  const i = orgs.value.findIndex((o) => o.id === node.id)
+  if (i >= 0) orgs.value[i] = { ...orgs.value[i], ...node }
+  else orgs.value = [...orgs.value, node]
+  // 部门改名后，账号列表里的部门名跟着更新，避免同一屏出现新旧两个名字
+  users.value.forEach((u) => {
+    if (u.deptId === node.id) u.deptName = node.name
+  })
+}
+
 function askDeleteOrg(o: OrgNode) {
   deleteMsg.value = `将删除部门「${o.name}」。该部门下的任务会上移到其上级部门。`
   deleteAction = async () => {
     await orgApi.remove(o.id)
     app.toast('已删除')
-    await loadOrgs()
+    // 删除后子部门会上移，层级顺序变了 → 静默重拉，不显示加载态
+    await loadOrgs(true)
   }
 }
 

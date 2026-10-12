@@ -724,3 +724,72 @@ def test_trends_batch_edge_cases(client, admin_headers):
         headers=admin_headers,
     ).json()
     assert [s["metricId"] for s in partial["series"]] == ["INC_TOT"]
+
+
+# ------------------------------------------------- 组织编辑：返回真实数据 + 公司节点可编辑
+
+
+def test_org_update_returns_real_payload(client, admin_headers):
+    """更新接口要返回真实的 depth 与统计数。
+
+    前端保存后用它就地替换列表节点（不再重拉整棵树），
+    若返回占位值（原先 update 恒为 depth=0、各项计数为 0），
+    列表的缩进层级与统计数字会立即错乱。
+    """
+    orgs = client.get("/api/v1/orgs", params={"flat": 1}, headers=admin_headers).json()
+    dept = next(o for o in orgs if o["type"] == "dept")
+
+    resp = client.patch(
+        f"/api/v1/orgs/{dept['id']}",
+        json={"name": dept["name"], "head": "测试负责人"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert body["depth"] == dept["depth"], "depth 应与组织树中的层级一致"
+    assert body["userCount"] == dept["userCount"]
+    assert body["childCount"] == dept["childCount"]
+    assert body["taskCount"] == dept["taskCount"]
+    assert body["head"] == "测试负责人"
+    assert body["parentId"] == dept["parentId"]
+
+
+def test_company_node_is_editable_but_not_deletable(client, admin_headers):
+    """「全公司」根节点可以改名称与负责人，但不能删除。"""
+    orgs = client.get("/api/v1/orgs", params={"flat": 1}, headers=admin_headers).json()
+    co = next(o for o in orgs if o["id"] == "CO")
+
+    edited = client.patch(
+        "/api/v1/orgs/CO", json={"name": co["name"], "head": "总经理"}, headers=admin_headers
+    )
+    assert edited.status_code == 200, edited.text
+    body = edited.json()
+    assert body["id"] == "CO"
+    assert body["depth"] == 0, "根节点层级应为 0"
+    assert body["head"] == "总经理"
+
+    assert client.delete("/api/v1/orgs/CO", headers=admin_headers).status_code == 409, "根节点不可删除"
+
+
+def test_create_org_returns_real_depth(client, admin_headers):
+    """新建子部门返回的 depth 应为真实层级（原先硬编码为 1）。"""
+    import time
+
+    orgs = client.get("/api/v1/orgs", params={"flat": 1}, headers=admin_headers).json()
+    parent = next(o for o in orgs if o["type"] == "dept")
+    name = f"临时子部门{str(int(time.time() * 1000))[-5:]}"
+
+    created = client.post(
+        "/api/v1/orgs",
+        json={"name": name, "parent_id": parent["id"], "head": "临时"},
+        headers=admin_headers,
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    try:
+        assert body["depth"] == parent["depth"] + 1, "子部门层级应为父级 + 1（而不是固定的 1）"
+        assert body["parentId"] == parent["id"]
+        assert body["childCount"] == 0 and body["userCount"] == 0
+    finally:
+        client.delete(f"/api/v1/orgs/{body['id']}", headers=admin_headers)

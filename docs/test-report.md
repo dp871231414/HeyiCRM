@@ -406,3 +406,51 @@ cd tools && BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node verify
 # 指标维护页性能诊断
 cd tools && BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node diag-metrics.mjs
 ```
+
+---
+
+## 十三、第六轮变更测试（2026-10-12）
+
+### 13.1 后端用例（88 项，含本轮新增 3 项）
+
+| 用例 | 断言要点 | 结果 |
+|---|---|---|
+| `test_org_update_returns_real_payload` | 更新接口返回的 `depth` 与各项计数与组织树中的真实值一致（原先恒为 0） | ✅ |
+| `test_company_node_is_editable_but_not_deletable` | 「全公司」可改名称与负责人、`depth=0`；删除返回 409 | ✅ |
+| `test_create_org_returns_real_depth` | 新建子部门的 `depth` 为父级 + 1（原先硬编码为 1） | ✅ |
+
+### 13.2 浏览器验收（12 项）
+
+`tools/verify-round6.mjs`（本轮新增）——本地 12/12、线上 12/12，控制台零错误：
+
+| 检查 | 本地 | 线上 |
+|---|---|---|
+| 组织结构列表渲染、节点数 | ✅ 12 个 | ✅ 12 个 |
+| 「全公司」出现在列表且有编辑按钮 | ✅ | ✅ |
+| 「全公司」可打开编辑表单并保存 | ✅ | ✅ |
+| **保存过程中不出现「加载中」** | ✅ | ✅ |
+| 保存后列表条目数不变 | ✅ 12 → 12 | ✅ 12 → 12 |
+| 负责人 / 名称立即更新，无需刷新 | ✅ | ✅ |
+| 层级缩进保持不变 | ✅ 40px | ✅ 40px |
+| 验收后数据已还原 | ✅ | ✅ |
+
+### 13.3 本轮修复的缺陷
+
+| 编号 | 缺陷 | 影响 | 处理 |
+|---|---|---|---|
+| D-12 | `saveOrg()` 保存后全量重载，且重载会切换 `orgLoading` | 每次保存列表整块闪成「加载中」，观感等同刷新页面 | 编辑就地更新；新建 / 删除静默重载 |
+| D-13 | 组织创建 / 更新接口返回硬编码的 `depth` 与统计占位值 | 一旦前端就地更新，缩进层级与统计数字会立即错乱 | 新增 `_org_payload()` 返回真实数据（含回归用例） |
+| D-14 | 「全公司」根节点无法编辑名称与负责人 | 公司名或负责人变更时无处维护 | 放开编辑（保留不可删除） |
+
+> 说明：D-13 是在实施 D-12 的过程中发现的 —— 就地更新的前提是接口返回可信数据。
+> 这两个缺陷有依赖关系，先补接口再改前端。
+
+### 13.4 复现命令
+
+```bash
+# 后端（88 项）
+cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q
+
+# 本轮专项（12 项；会改动组织数据，脚本内已还原）
+cd tools && BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node verify-round6.mjs
+```

@@ -28,6 +28,36 @@ def _next_dept_id(db: Session) -> str:
     return f"D{max_n + 1:02d}"
 
 
+def _org_payload(db: Session, org: Organization, depth: int | None = None) -> dict:
+    """单个组织节点的完整信息（含真实 depth 与统计数）。
+
+    创建 / 更新接口原先返回硬编码的 depth 与统计值（update 恒为 depth=0、各项计数为 0），
+    前端若拿它就地更新列表，缩进层级和统计数字都会出错。这里统一给出真实值，
+    前端保存后即可直接替换本地节点，无需重拉整棵组织树。
+    """
+    if depth is None:
+        depth = 0
+        cursor = org
+        while cursor.parent_id:
+            parent = db.get(Organization, cursor.parent_id)
+            if not parent:
+                break
+            depth += 1
+            cursor = parent
+    counts = org_counts(db)
+    return {
+        "id": org.id,
+        "name": org.name,
+        "type": org.type,
+        "parentId": org.parent_id,
+        "head": org.head,
+        "depth": depth,
+        "userCount": counts["users"].get(org.id, 0),
+        "childCount": counts["children"].get(org.id, 0),
+        "taskCount": counts["tasks"].get(org.id, 0),
+    }
+
+
 def _build_tree(db: Session, include_project: bool = False) -> list[dict]:
     rows = list(db.scalars(select(Organization).order_by(Organization.sort_order, Organization.id)).all())
     counts = org_counts(db)
@@ -121,10 +151,7 @@ def create_org(
     write_log(db, user, "create", "org", oid, {"name": name, "parent": parent}, request)
     db.commit()
     db.refresh(org)
-    return {
-        "id": org.id, "name": org.name, "type": org.type, "parentId": org.parent_id,
-        "head": org.head, "depth": 1, "userCount": 0, "childCount": 0, "taskCount": 0,
-    }
+    return _org_payload(db, org)
 
 
 @router.patch("/{org_id}", response_model=OrgOut)
@@ -138,8 +165,7 @@ def update_org(
     org = db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="组织不存在")
-    if org.type == ORG_TYPE_COMPANY:
-        raise HTTPException(status_code=422, detail="仅可编辑部门")
+    # 公司节点（全公司）同样允许编辑名称与负责人；删除仍受限（见 delete_org）
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="部门名称不能为空")
@@ -151,7 +177,7 @@ def update_org(
     write_log(db, user, "update", "org", org_id, {"name": name}, request)
     db.commit()
     db.refresh(org)
-    return {"id": org.id, "name": org.name, "type": org.type, "parentId": org.parent_id, "head": org.head, "depth": 0, "userCount": 0, "childCount": 0, "taskCount": 0}
+    return _org_payload(db, org)
 
 
 @router.get("/{org_id}/impact", response_model=ImpactOut)

@@ -225,3 +225,14 @@
 | T23-3 | 批量趋势接口 + 前端不再阻塞渲染 | `api/v1/dashboard.py`、`api/index.ts`、`MetricsView.vue` | ✅ |
 | T23-4 | 用例（按块权限独立性、批量与单个一致性）与验收脚本 | `tests/test_changes.py`、`tools/verify-round5.mjs`、`tools/diag-metrics.mjs` | ✅ |
 | T23-5 | 文档与上线 | `docs/` | ✅ |
+
+## T24 第六批变更（2026-10-12）
+
+对应 proposal §12.9 / design §13.9。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T24-1 | 创建 / 更新组织接口返回真实的深度与统计数（原先为硬编码占位值） | `api/v1/orgs.py` | ✅ |
+| T24-2 | 保存后就地更新列表，不整块进入加载态；新建 / 删除用静默重载 | `views/AccountsView.vue` | ✅ |
+| T24-3 | 「全公司」允许编辑名称与负责人（删除仍受限） | `api/v1/orgs.py`、`AccountsView.vue` | ✅ |
+| T24-4 | 用例与验收脚本 | `tests/test_changes.py`、`tools/verify-round6.mjs` | ✅ |
