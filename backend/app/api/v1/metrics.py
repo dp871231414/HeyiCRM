@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.constants import ORG_TYPE_COMPANY, ORG_TYPE_PROJECT
+from app.constants import ORG_TYPE_COMPANY, ORG_TYPE_PROJECT, PERM_LABELS
 from app.core.deps import get_user_perms, require_perm
 from app.db.session import get_db
 from app.models import MetricActual, MetricDef, MetricTarget, Organization, User
@@ -225,26 +225,35 @@ def board(period: str = "", org_id: str = "CO", db: Session = Depends(get_db), u
         raise HTTPException(status_code=403, detail="无权查看该组织的数据")
     visible = scope_svc.visible_org_ids(db, user)
     data = build_board(db, period, org_id, visible)
-    # 维护范围完全由权限决定，与角色属性（含默认可见范围）无关：
-    #   metric.edit           —— 可录入 / 修改指标
-    #   metric.edit_company   —— 可维护公司整体目标与监控指标
-    #   metric.edit_project   —— 可维护项目公司指标
+    # 编辑权限与角色配置界面的三块一一对应，各自独立（没有隐含的全局前置权限）：
+    #   公司整体目标   → metric.edit_company
+    #   指标监控       → metric.edit
+    #   项目公司指标   → metric.edit_project
     # 权限决定「能否改」，可见范围决定「改哪些」——后者属数据隔离，不是操作门槛。
     perms = get_user_perms(db, user)
-    can_edit = "metric.edit" in perms
     can_company = "metric.edit_company" in perms
+    can_monitor = "metric.edit" in perms
     can_project = "metric.edit_project" in perms
-    data["canEditAll"] = can_edit and can_company and org.type == ORG_TYPE_COMPANY
+    data["canEditAll"] = can_company and org.type == ORG_TYPE_COMPANY
+    data["canEditMonitor"] = can_monitor
     all_projects = [o.id for o in db.scalars(select(Organization).where(Organization.type == ORG_TYPE_PROJECT)).all()]
-    data["editableProjects"] = (
-        [pid for pid in all_projects if pid in visible] if (can_edit and can_project) else []
-    )
+    data["editableProjects"] = [pid for pid in all_projects if pid in visible] if can_project else []
     data["perms"] = {
-        "edit": can_edit,
+        "edit": can_monitor,
         "editCompany": can_company,
         "editProject": can_project,
     }
     return data
+
+
+def required_metric_perm(db: Session, metric: MetricDef, org_id: str) -> str:
+    """按「这条指标属于页面上的哪一块」决定所需权限，与角色配置界面的分组一致。"""
+    org = db.get(Organization, org_id)
+    if org and org.type == ORG_TYPE_PROJECT:
+        return "metric.edit_project"
+    if metric.group == "monitor":
+        return "metric.edit"
+    return "metric.edit_company"
 
 
 def _upsert(db: Session, model, metric_id: str, org_id: str, period: str, value: float | None, user: User):
@@ -266,12 +275,17 @@ def _upsert(db: Session, model, metric_id: str, org_id: str, period: str, value:
         db.add(model(**kwargs))
 
 
-def _validate_write(db: Session, payload: MetricValueIn, user: User, perm: str) -> MetricDef:
-    if perm not in get_user_perms(db, user):
-        raise HTTPException(status_code=403, detail="无此操作权限")
+def _validate_write(db: Session, payload: MetricValueIn, user: User, perm: str | None = None) -> MetricDef:
     d = db.get(MetricDef, payload.metric_id)
     if not d:
         raise HTTPException(status_code=404, detail="指标不存在")
+    # 未显式指定权限时，按「这条指标属于哪一块」判定 —— 与角色配置界面的分组一一对应
+    required = perm or required_metric_perm(db, d, payload.org_id)
+    if required not in get_user_perms(db, user):
+        raise HTTPException(
+            status_code=403,
+            detail=f"无「{PERM_LABELS.get(required, required)}」权限",
+        )
     if d.no_target and d.group == "monitor":
         pass  # 监控指标只能录累计完成值
     org = db.get(Organization, payload.org_id)
@@ -283,8 +297,9 @@ def _validate_write(db: Session, payload: MetricValueIn, user: User, perm: str) 
 
 
 @router.put("/targets")
-def put_target(payload: MetricValueIn, request: Request, db: Session = Depends(get_db), user: User = Depends(require_perm("metric.edit"))):
-    d = _validate_write(db, payload, user, "metric.edit")
+def put_target(payload: MetricValueIn, request: Request, db: Session = Depends(get_db), user: User = Depends(require_perm("metric.view"))):
+    # 具体要哪个权限由指标所属的分块决定，见 _validate_write
+    d = _validate_write(db, payload, user)
     if d.no_target:
         raise HTTPException(status_code=422, detail="监控指标无目标值")
     period = target_period_of(d, payload.period)
@@ -295,8 +310,9 @@ def put_target(payload: MetricValueIn, request: Request, db: Session = Depends(g
 
 
 @router.put("/actuals")
-def put_actual(payload: MetricValueIn, request: Request, db: Session = Depends(get_db), user: User = Depends(require_perm("metric.edit"))):
-    d = _validate_write(db, payload, user, "metric.edit")
+def put_actual(payload: MetricValueIn, request: Request, db: Session = Depends(get_db), user: User = Depends(require_perm("metric.view"))):
+    # 具体要哪个权限由指标所属的分块决定，见 _validate_write
+    d = _validate_write(db, payload, user)
     _upsert(db, MetricActual, payload.metric_id, payload.org_id, payload.period, payload.value, user)
     write_log(db, user, "metric_actual", "metric", payload.metric_id, {"org": payload.org_id, "period": payload.period, "value": payload.value}, request)
     db.commit()

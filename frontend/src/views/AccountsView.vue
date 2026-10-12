@@ -289,17 +289,23 @@
                 <span class="text-sm font-semibold text-slate-800">{{ g.label }}</span>
                 <span class="text-[11px] text-slate-400">菜单权限</span>
               </label>
-              <div class="mt-2 ml-6 flex flex-wrap gap-x-5 gap-y-2">
-                <label v-for="item in g.items.filter((i) => i.type === 'action')" :key="item.key" class="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    class="w-4 h-4 accent-brand-600"
-                    :checked="roleForm.permissions.includes(item.key)"
-                    :disabled="!isMenuChecked(g.menu)"
-                    @change="togglePerm(item.key, ($event.target as HTMLInputElement).checked)"
-                  />
-                  <span class="text-xs text-slate-600">{{ item.label }}</span>
-                </label>
+              <!-- 动作权限按子分组展示，让「这个权限管页面哪一块」一眼可见 -->
+              <div v-for="sec in actionSections(g)" :key="sec.name" class="mt-2 ml-6">
+                <div v-if="sec.name" class="mb-1.5 text-[11px] font-semibold text-slate-400">
+                  {{ sec.name }}
+                </div>
+                <div class="flex flex-wrap gap-x-5 gap-y-2">
+                  <label v-for="item in sec.items" :key="item.key" class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      class="w-4 h-4 accent-brand-600"
+                      :checked="roleForm.permissions.includes(item.key)"
+                      :disabled="!isMenuChecked(g.menu)"
+                      @change="togglePerm(item.key, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span class="text-xs text-slate-600">{{ item.label }}</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -330,7 +336,7 @@ import { orgApi, roleApi, userApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import type { OrgNode, PermCatalog, RoleItem, ScopeKey, UserItem } from '@/types'
+import type { OrgNode, PermCatalog, PermGroup, PermItem, RoleItem, ScopeKey, UserItem } from '@/types'
 
 const auth = useAuthStore()
 const app = useAppStore()
@@ -347,6 +353,27 @@ const roles = ref<RoleItem[]>([])
 const users = ref<UserItem[]>([])
 const catalog = ref<PermCatalog | null>(null)
 const scopes = computed(() => catalog.value?.scopes ?? [])
+
+/**
+ * 把某个菜单下的动作权限按子分组归类，供角色表单分块展示。
+ * 保持原顺序；没有 group 的项归入一个无名分组，显示在其首次出现的位置。
+ */
+function actionSections(g: PermGroup): { name: string; items: PermItem[] }[] {
+  const out: { name: string; items: PermItem[] }[] = []
+  const index = new Map<string, number>()
+  for (const item of g.items) {
+    if (item.type !== 'action') continue
+    const name = item.group ?? ''
+    let i = index.get(name)
+    if (i === undefined) {
+      i = out.length
+      index.set(name, i)
+      out.push({ name, items: [] })
+    }
+    out[i].items.push(item)
+  }
+  return out
+}
 
 const orgLoading = ref(false)
 const usersLoading = ref(false)

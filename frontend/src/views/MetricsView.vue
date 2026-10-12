@@ -75,7 +75,7 @@
                   <input
                     v-model="draft[cellKey(board.orgId, row.metricId)].t"
                     class="input !py-1.5 text-right font-mono"
-                    :disabled="!canEdit(board.orgId)"
+                    :disabled="!canEditAnnual()"
                     inputmode="decimal"
                   />
                 </td>
@@ -83,7 +83,7 @@
                   <input
                     v-model="draft[cellKey(board.orgId, row.metricId)].a"
                     class="input !py-1.5 text-right font-mono"
-                    :disabled="!canEdit(board.orgId)"
+                    :disabled="!canEditAnnual()"
                     inputmode="decimal"
                   />
                 </td>
@@ -100,7 +100,7 @@
                     v-if="row.hasCollection"
                     v-model="draft[cellKey(board.orgId, row.metricId)].c"
                     class="input !py-1.5 text-right font-mono"
-                    :disabled="!canEdit(board.orgId)"
+                    :disabled="!canEditAnnual()"
                     inputmode="decimal"
                   />
                   <span v-else class="text-slate-300">—</span>
@@ -114,7 +114,7 @@
                   <button
                     class="btn-sm"
                     :class="isDirty(board.orgId, row.metricId) ? 'btn-primary' : 'btn-ghost'"
-                    :disabled="!canEdit(board.orgId) || saving === cellKey(board.orgId, row.metricId) || !isDirty(board.orgId, row.metricId)"
+                    :disabled="!canEditAnnual() || saving === cellKey(board.orgId, row.metricId) || !isDirty(board.orgId, row.metricId)"
                     @click="saveRow(row, board.orgId)"
                   >
                     {{ saving === cellKey(board.orgId, row.metricId) ? '保存中…' : isDirty(board.orgId, row.metricId) ? '保存修改' : '已保存' }}
@@ -143,7 +143,7 @@
             <input
               v-model="draft[cellKey(board.orgId, row.metricId)].a"
               class="input !py-1.5 mt-1.5 text-lg font-bold font-mono"
-              :disabled="!canEdit(board.orgId)"
+              :disabled="!canEditMonitor()"
               inputmode="decimal"
             />
             <div class="mt-2 flex items-center justify-between">
@@ -151,7 +151,7 @@
               <button
                 class="btn-sm"
                 :class="isDirty(board.orgId, row.metricId) ? 'btn-primary' : 'btn-ghost'"
-                :disabled="!canEdit(board.orgId) || !isDirty(board.orgId, row.metricId)"
+                :disabled="!canEditMonitor() || !isDirty(board.orgId, row.metricId)"
                 @click="saveRow(row, board.orgId)"
               >
                 保存
@@ -355,12 +355,16 @@ const deptView = computed(() => ['dept', 'team'].includes(board.value?.orgType ?
 function cellKey(orgId: string, metricId: string) {
   return `${orgId}|${metricId}`
 }
+/** 模块一 · 公司整体目标：需「维护公司整体目标」，且当前视角为公司 */
+function canEditAnnual() {
+  return !!board.value?.canEditAll
+}
+/** 模块二 · 指标监控：需「维护监控指标」 */
+function canEditMonitor() {
+  return !!board.value?.canEditMonitor
+}
+/** 模块三 · 项目公司指标：需「维护项目公司指标」，且该组织在可见范围内 */
 function canEdit(orgId: string) {
-  if (!auth.hasPerm('metric.edit')) return false
-  // 维护范围完全由权限决定，与角色属性无关：
-  //   公司整体目标 / 监控指标 → metric.edit_company
-  //   项目公司指标            → metric.edit_project
-  if (orgId === board.value?.orgId) return !!board.value?.canEditAll
   return !!board.value?.editableProjects?.includes(orgId)
 }
 function cellOf(c: ProjectCompanyBlock, metricId: string) {
@@ -415,7 +419,9 @@ async function load() {
     seedDraft(board.value.annual, board.value.orgId)
     seedDraft(board.value.monitor, board.value.orgId)
     board.value.project.companies.forEach((c) => seedDraft(c.cells, c.orgId))
-    await loadPrev()
+    // 上期值不阻塞首屏：先让表格渲染出来，趋势数据回来后再填入。
+    // （原先这里是 await，等于要等全部趋势请求结束才显示表格）
+    void loadPrev(seq)
   } catch (e) {
     if (seq !== loadSeq) return
     error.value = (e as Error).message
@@ -427,20 +433,25 @@ async function load() {
   if (seq === loadSeq) await applyFocus()
 }
 
-async function loadPrev() {
-  // 监控指标的上期值：用趋势接口取倒数第二个点
+async function loadPrev(seq?: number) {
+  // 监控指标的上期值：一次请求取回全部指标的趋势，再取每个序列的倒数第二个点。
+  // 原先是「每个指标发一个请求」，10 个并发会互相争抢（实测尾请求 TTFB 达 2.4 秒）。
   const monitor = board.value?.monitor ?? []
-  await Promise.all(
-    monitor.map(async (m) => {
-      try {
-        const t = await dashboardApi.trend(m.metricId, view.orgId)
-        const pts = t.points
-        prevMap[m.metricId] = pts.length >= 2 ? pts[pts.length - 2].value : NaN
-      } catch {
-        prevMap[m.metricId] = NaN
-      }
-    }),
-  )
+  if (!monitor.length) return
+  const orgId = view.orgId
+  try {
+    const { series } = await dashboardApi.trends(
+      monitor.map((m) => m.metricId),
+      orgId,
+    )
+    if (seq !== undefined && seq !== loadSeq) return // 期间已切换到其他组织 / 周期，丢弃
+    for (const s of series) {
+      const pts = s.points
+      prevMap[s.metricId] = pts.length >= 2 ? pts[pts.length - 2].value : NaN
+    }
+  } catch {
+    monitor.forEach((m) => (prevMap[m.metricId] = NaN))
+  }
 }
 
 async function applyFocus() {

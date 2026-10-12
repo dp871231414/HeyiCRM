@@ -349,3 +349,60 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-changes.mjs
 # 压缩与缓存头
 curl -s -H "Accept-Encoding: gzip" -D - -o /dev/null http://127.0.0.1:8000/assets/index-*.js
 ```
+
+---
+
+## 十二、第五轮变更测试（2026-10-12）
+
+### 12.1 后端用例（85 项，含本轮新增 4 项）
+
+| 用例 | 断言要点 | 结果 |
+|---|---|---|
+| `test_perm_catalog_groups_metric_blocks` | 权限目录中三块分组齐全，各块下的权限 key 正确 | ✅ |
+| `test_metric_edits_are_independent_per_block` | 只给「维护公司整体目标」时：能改公司目标、改监控指标被拒（提示含「监控指标」）、改项目公司被拒；只给「维护监控指标」时反之 | ✅ |
+| `test_trends_batch_matches_single` | 批量接口结果与逐个调用**逐字段一致**，且保持请求顺序 | ✅ |
+| `test_trends_batch_edge_cases` | 空 ids 返回空列表；不存在的指标被跳过而非报错 | ✅ |
+
+### 12.2 浏览器验收
+
+| 脚本 | 覆盖 | 项数 | 结果 |
+|---|---|---|---|
+| `tools/verify-round5.mjs`（**本轮新增**） | 权限三块分组、指标维护页渲染耗时与请求数 | 8 | ✅ 本地 8/8、线上 8/8 |
+| `tools/verify-changes.mjs` | 历史需求 | 30 | ✅ 25/25（3 项空数据跳过） |
+| `tools/verify-round3.mjs` | 月份组件、项目公司入口 | 24 | ✅ 24/24 |
+| `tools/verify-round4.mjs` | 分页、冻结列、分组标题 | 22 | ✅ 9/9（4 项跳过） |
+
+本轮要点：
+
+| 检查 | 结果 |
+|---|---|
+| 三个分组标题展示 | ✅ 公司整体目标 / 指标监控 / 项目公司指标 |
+| 各块权限归属 | ✅ 项目公司指标块含 维护 + 新增 + 编辑 + 删除 |
+| 旧的笼统项已移除 | ✅ 不再出现「录入 / 修改指标」 |
+| 指标维护页渲染耗时（线上） | ✅ 928 / 982 / 1121 ms（本地 257ms） |
+| 趋势请求数 | ✅ 批量 1 次 / 逐个 0 次（原为 10 次） |
+
+### 12.3 本轮修复的缺陷
+
+| 编号 | 缺陷 | 影响 | 处理 |
+|---|---|---|---|
+| D-10 | `metric.edit` 是所有指标编辑的**隐含前置权限** | 勾了「维护公司整体目标」仍无法编辑，界面上看不出依赖关系 | 取消前置，三块权限各自独立；权限按块分组展示 |
+| D-11 | 指标维护页为每个监控指标各发一个趋势请求且阻塞渲染 | 10 个并发互相争抢（尾请求 TTFB 2427ms），表格要等全部返回才显示 | 新增批量趋势接口（10→1），并改为不阻塞渲染 |
+
+### 12.4 新增诊断工具
+
+`tools/diag-metrics.mjs`：测量「点击指标维护 → 表格渲染完成」的耗时，
+并按接口聚合统计请求数与 TTFB，用于定位是哪个环节在拖慢页面。
+
+### 12.5 复现命令
+
+```bash
+# 后端（85 项）
+cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q
+
+# 本轮专项（8 项）
+cd tools && BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node verify-round5.mjs
+
+# 指标维护页性能诊断
+cd tools && BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node diag-metrics.mjs
+```

@@ -86,6 +86,8 @@ export interface PermItem {
   key: string
   label: string
   type: 'menu' | 'action'
+  /** 可选的子分组名：用于把权限按「页面上的哪一块」归类显示（如 公司整体目标 / 指标监控） */
+  group?: string
 }
 export interface PermGroup {
   menu: string
@@ -147,7 +149,10 @@ export interface MetricBoard {
   monitor: MetricRow[]
   project: { companies: ProjectCompanyBlock[]; metrics: { id: string; name: string; unit: string; snapshot: boolean }[] }
   counts: { total: number; green: number; amber: number; red: number; none: number; filled: number }
+  /** 能否编辑「公司整体目标」（需 metric.edit_company，且当前视角为公司） */
   canEditAll?: boolean
+  /** 能否编辑「指标监控」（需 metric.edit） */
+  canEditMonitor?: boolean
   editableProjects?: string[]
   /** 当前账号的指标维护权限（后端按权限返回，与角色属性无关） */
   perms?: { edit: boolean; editCompany: boolean; editProject: boolean }

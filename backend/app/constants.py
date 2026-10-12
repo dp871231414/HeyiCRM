@@ -34,12 +34,26 @@ PERM_GROUPS: list[dict] = [
         "label": "指标维护",
         "items": [
             {"key": "metric.view", "label": "查看指标数据", "type": "menu"},
-            {"key": "metric.edit", "label": "录入 / 修改指标", "type": "action"},
-            {"key": "metric.edit_company", "label": "维护公司整体目标", "type": "action"},
-            {"key": "metric.edit_project", "label": "维护项目公司指标", "type": "action"},
-            {"key": "project.create", "label": "新增项目公司", "type": "action"},
-            {"key": "project.edit", "label": "编辑项目公司", "type": "action"},
-            {"key": "project.delete", "label": "删除项目公司", "type": "action"},
+            # 编辑权限按页面上的三块组织（公司整体目标 / 指标监控 / 项目公司指标），
+            # 让「这个权限管页面哪一块」在角色配置界面一眼可见。
+            # 三块各自独立：勾了哪一块就能编辑哪一块，没有隐含的全局前置权限。
+            {
+                "key": "metric.edit_company",
+                "label": "维护公司整体目标",
+                "type": "action",
+                "group": "公司整体目标",
+            },
+            {"key": "metric.edit", "label": "维护监控指标", "type": "action", "group": "指标监控"},
+            {
+                "key": "metric.edit_project",
+                "label": "维护项目公司指标",
+                "type": "action",
+                "group": "项目公司指标",
+            },
+            {"key": "project.create", "label": "新增项目公司", "type": "action", "group": "项目公司指标"},
+            {"key": "project.edit", "label": "编辑项目公司", "type": "action", "group": "项目公司指标"},
+            {"key": "project.delete", "label": "删除项目公司", "type": "action", "group": "项目公司指标"},
+            # 不带 group：渲染时排在上述分组之后
             {"key": "metric.import", "label": "批量导入指标", "type": "action"},
         ],
     },
@@ -55,6 +69,9 @@ PERM_GROUPS: list[dict] = [
 ]
 
 ALL_PERM_KEYS: set[str] = {item["key"] for g in PERM_GROUPS for item in g["items"]}
+
+# 权限 key → 中文名（用于报错提示，让用户知道缺哪个权限）
+PERM_LABELS: dict[str, str] = {item["key"]: item["label"] for g in PERM_GROUPS for item in g["items"]}
 
 # 权限 → 归属菜单（用于「取消菜单权限时联动取消按钮权限」）
 PERM_TO_MENU: dict[str, str] = {

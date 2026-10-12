@@ -118,6 +118,13 @@ export const dashboardApi = {
     http.get<OverviewResult>('/dashboard/overview', { params: { period, org_id: orgId } }).then((r) => r.data),
   trend: (metricId: string, orgId: string) =>
     http.get<TrendResult>(`/dashboard/metrics/${metricId}/trend`, { params: { org_id: orgId } }).then((r) => r.data),
+  /** 批量取趋势：一次请求代替 N 次（避免并发争抢把尾请求拖慢） */
+  trends: (metricIds: string[], orgId: string) =>
+    http
+      .get<{ series: TrendResult[] }>('/dashboard/metrics/trends', {
+        params: { ids: metricIds.join(','), org_id: orgId },
+      })
+      .then((r) => r.data),
 }
 
 /** 带令牌下载文件（模板/导出） */

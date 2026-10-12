@@ -776,3 +776,63 @@ if first_init and not db.scalar(select(Task).limit(1)):
 
 > 托管环境的网络往返是固有成本（约 300 ms/次）。已把客户端可控的串行轮次压到最少：
 > 文档 → 资源 → 登录（与主界面代码并行）→ 上下文（两个接口并行）→ 业务数据。
+
+### 13.8 2026-10-12 · 编辑权限分块与指标维护页加载
+
+#### 编辑权限按页面三块分组（M-19）
+
+**改前的模型**（界面上看不出对应关系）：
+
+| 权限 | 实际作用 |
+|---|---|
+| `metric.edit` | **所有**指标编辑的前置条件（隐含） |
+| `metric.edit_company` | 公司整体目标 **与监控指标** |
+| `metric.edit_project` | 项目公司指标 |
+
+两个问题：① `metric.edit` 是隐藏前置，勾了「维护公司整体目标」也不能编辑；
+② 一个 `metric.edit_company` 同时管两块，看不出「指标监控」由谁负责。
+
+**改后：三块各自独立，与页面一一对应**
+
+| 页面上的一块 | 权限 | 说明 |
+|---|---|---|
+| 一、公司整体目标 | `metric.edit_company` | 编辑 annual 指标（公司视角） |
+| 二、指标监控 | `metric.edit`（label 改为「维护监控指标」） | 编辑 monitor 指标 |
+| 三、项目公司指标 | `metric.edit_project` + `project.create/edit/delete` | 编辑项目公司指标与项目公司本身 |
+
+- **复用 `metric.edit` 这个 key 而不是新增权限点**：零迁移成本，现有角色的配置继续有效；
+  只是把它的语义从「笼统的录入权」收敛为「指标监控」这一块。
+- 权限目录新增可选的 `group` 字段，前端按它分块渲染（`AccountsView.actionSections`）。
+- 后端 `required_metric_perm()` 按「这条指标属于哪一块 + 属于什么组织」决定所需权限，
+  由 `_validate_write` 统一校验；拒绝时提示缺的是哪个权限（`PERM_LABELS` 映射中文名）。
+- 判定不再要求 `metric.edit` 作为前置：
+  `canEditAll = metric.edit_company ∧ 视角为公司`、`canEditMonitor = metric.edit`、
+  `editableProjects = 可见范围内的项目公司（需 metric.edit_project）`。
+
+> **行为变化**：`dept_head` 与 `member` 原本就有 `metric.edit`，改后「可编辑监控指标」。
+> 但监控指标挂在公司层级，而这两个角色的可见范围不含公司 → 实际仍无法编辑，无实质影响。
+> 如需收紧，在角色配置里取消勾选「维护监控指标」即可。
+
+#### 指标维护页加载优化（M-20）
+
+**根因**：`loadPrev()` 为**每个监控指标**各发一个 `trend` 请求（共 10 个），
+且被 `await` 在 `load()` 里 —— 表格必须等全部返回才渲染。
+实测 10 个并发互相争抢，尾请求 TTFB 从 299ms 递增到 **2427ms**：
+
+| 指标 | TTFB |
+|---|---|
+| INC_AMT / RD_AMT | ~300 ms |
+| INC_DOING | 871 ms |
+| FAU_AMT | 1626 ms |
+| FAU_TOT | 2427 ms |
+
+**改动**：
+
+1. 新增批量接口 `GET /dashboard/metrics/trends?ids=A,B,C&org_id=CO`，
+   一次查询取回多个指标的趋势（`series` 保持调用方给定顺序，不存在的指标跳过）。
+2. 前端改用该接口；并把 `await loadPrev()` 改为 `void loadPrev(seq)`
+   —— 表格先渲染，上期值回来后再填入，同时用 `loadSeq` 丢弃过期响应。
+
+**效果**：趋势请求 **10 个 → 1 个**；从点击菜单到表格出现 **928 / 982 / 1121 ms**
+（本地 257ms）。回归用例 `test_trends_batch_matches_single` 逐个字段比对
+批量与单个接口的输出，确保合并没有改变结果。

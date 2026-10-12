@@ -578,3 +578,149 @@ def test_task_list_filters_can_combine_with_pagination(client, admin_headers):
     got = client.get("/api/v1/tasks", params={"dept_id": dept_id, "size": 1}, headers=admin_headers).json()
     assert got["total"] == len(in_dept), "total 应为该部门的任务数"
     assert len(got["items"]) == 1, "单页条数应受 size 限制"
+
+
+# ------------------------------------------------- 指标编辑权限分块 + 批量趋势（本轮新增）
+
+
+def _role_user(client, admin_headers, perms, tag):
+    """建一个角色 + 一个挂在 CO 的账号，返回 (role_id, user_id, account)。"""
+    import time
+
+    suffix = f"{tag}{str(int(time.time() * 1000))[-5:]}"
+    role = client.post(
+        "/api/v1/roles",
+        json={"name": f"指标权限{suffix}", "description": "", "scope": "all", "permissions": perms},
+        headers=admin_headers,
+    )
+    assert role.status_code == 201, role.text
+    rid = role.json()["id"]
+    created = client.post(
+        "/api/v1/users",
+        json={
+            "name": f"指标权限{suffix}",
+            "account": f"mp{suffix}",
+            "password": "Demo#2026",
+            "dept_id": "CO",
+            "role_id": rid,
+            "status": "active",
+        },
+        headers=admin_headers,
+    )
+    assert created.status_code == 201, created.text
+    return rid, created.json()["id"], f"mp{suffix}"
+
+
+def test_perm_catalog_groups_metric_blocks(client, admin_headers):
+    """权限目录里，指标维护的编辑权限按页面三块分组呈现。"""
+    catalog = client.get("/api/v1/permissions", headers=admin_headers).json()
+    metric = next(g for g in catalog["groups"] if g["menu"] == "metric")
+    grouped: dict[str, list[str]] = {}
+    for it in metric["items"]:
+        if it.get("group"):
+            grouped.setdefault(it["group"], []).append(it["key"])
+
+    assert set(grouped) == {"公司整体目标", "指标监控", "项目公司指标"}
+    assert grouped["公司整体目标"] == ["metric.edit_company"]
+    assert grouped["指标监控"] == ["metric.edit"]
+    assert set(grouped["项目公司指标"]) == {
+        "metric.edit_project",
+        "project.create",
+        "project.edit",
+        "project.delete",
+    }
+
+
+def test_metric_edits_are_independent_per_block(client, admin_headers):
+    """三块编辑权限互相独立，没有隐含的全局前置权限。
+
+    回归点：此前 metric.edit 是所有指标编辑的前置条件 —— 即使勾了
+    「维护公司整体目标」，缺 metric.edit 也无法编辑，页面上看不出这层依赖。
+    """
+    period = "2026-10"
+
+    # 只给「维护公司整体目标」
+    rid, uid, account = _role_user(client, admin_headers, ["metric.view", "metric.edit_company"], "co")
+    try:
+        headers, _ = login(client, account)
+        # 公司整体目标（annual 指标 + 公司组织）→ 应允许
+        ok = client.put(
+            "/api/v1/metrics/targets",
+            json={"metric_id": "REV_TRANS", "org_id": "CO", "period": period, "value": 1234},
+            headers=headers,
+        )
+        assert ok.status_code == 200, ok.text
+
+        # 指标监控 → 应拒绝，且提示缺的是哪个权限
+        denied_monitor = client.put(
+            "/api/v1/metrics/actuals",
+            json={"metric_id": "INC_TOT", "org_id": "CO", "period": period, "value": 3},
+            headers=headers,
+        )
+        assert denied_monitor.status_code == 403, denied_monitor.text
+        assert "监控指标" in denied_monitor.json()["detail"]
+
+        # 项目公司指标 → 应拒绝
+        denied_project = client.put(
+            "/api/v1/metrics/targets",
+            json={"metric_id": "OP_REV", "org_id": "PC1", "period": period, "value": 100},
+            headers=headers,
+        )
+        assert denied_project.status_code == 403, denied_project.text
+    finally:
+        client.delete(f"/api/v1/users/{uid}", headers=admin_headers)
+        client.delete(f"/api/v1/roles/{rid}", headers=admin_headers)
+
+    # 只给「维护监控指标」
+    rid2, uid2, account2 = _role_user(client, admin_headers, ["metric.view", "metric.edit"], "mo")
+    try:
+        headers2, _ = login(client, account2)
+        ok2 = client.put(
+            "/api/v1/metrics/actuals",
+            json={"metric_id": "INC_TOT", "org_id": "CO", "period": period, "value": 5},
+            headers=headers2,
+        )
+        assert ok2.status_code == 200, ok2.text
+
+        denied_annual = client.put(
+            "/api/v1/metrics/targets",
+            json={"metric_id": "REV_TRANS", "org_id": "CO", "period": period, "value": 999},
+            headers=headers2,
+        )
+        assert denied_annual.status_code == 403, denied_annual.text
+        assert "公司整体目标" in denied_annual.json()["detail"]
+    finally:
+        client.delete(f"/api/v1/users/{uid2}", headers=admin_headers)
+        client.delete(f"/api/v1/roles/{rid2}", headers=admin_headers)
+
+
+def test_trends_batch_matches_single(client, admin_headers):
+    """批量趋势接口的结果必须与逐个调用完全一致，且保持请求顺序。"""
+    ids = ["INC_TOT", "FAU_TOT", "RD_CNT", "INC_AMT"]
+    singles = {
+        mid: client.get(
+            f"/api/v1/dashboard/metrics/{mid}/trend", params={"org_id": "CO"}, headers=admin_headers
+        ).json()
+        for mid in ids
+    }
+    batch = client.get(
+        "/api/v1/dashboard/metrics/trends", params={"ids": ",".join(ids), "org_id": "CO"}, headers=admin_headers
+    ).json()
+
+    assert [s["metricId"] for s in batch["series"]] == ids, "应保持调用方给定的顺序"
+    for s in batch["series"]:
+        assert s == singles[s["metricId"]], f"{s['metricId']} 的批量结果与单个接口不一致"
+        assert s["points"], f"{s['metricId']} 应有趋势点"
+
+
+def test_trends_batch_edge_cases(client, admin_headers):
+    """空 ids 返回空列表；不存在的指标被跳过而不是报错。"""
+    empty = client.get("/api/v1/dashboard/metrics/trends", params={"ids": ""}, headers=admin_headers).json()
+    assert empty == {"series": []}
+
+    partial = client.get(
+        "/api/v1/dashboard/metrics/trends",
+        params={"ids": "NOT_EXIST,INC_TOT", "org_id": "CO"},
+        headers=admin_headers,
+    ).json()
+    assert [s["metricId"] for s in partial["series"]] == ["INC_TOT"]

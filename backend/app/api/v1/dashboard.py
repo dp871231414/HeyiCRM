@@ -74,3 +74,49 @@ def trend(metric_id: str, org_id: str = "CO", db: Session = Depends(get_db), use
         "direction": d.direction,
         "points": [{"period": str(p), "value": float(v)} for p, v in rows],
     }
+
+
+@router.get("/metrics/trends")
+def trends(
+    ids: str = "",
+    org_id: str = "CO",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("dashboard.view")),
+):
+    """批量取多个指标的趋势（一次请求代替 N 次）。
+
+    指标维护页原先为每个监控指标各发一个 trend 请求。在单次往返约 300ms 的环境下，
+    10 个并发会互相争抢（实测尾请求 TTFB 被拖到 2.4 秒），而表格又必须等全部返回。
+    合并成一次请求后只剩一个往返，且只查一次库。
+    """
+    metric_ids = [i.strip() for i in ids.split(",") if i.strip()]
+    if not metric_ids:
+        return {"series": []}
+    if not scope_svc.org_in_scope(db, user, org_id):
+        raise HTTPException(status_code=403, detail="无权查看该组织的数据")
+
+    defs = {d.id: d for d in db.scalars(select(MetricDef).where(MetricDef.id.in_(metric_ids))).all()}
+    rows = db.execute(
+        select(MetricActual.metric_id, MetricActual.period, MetricActual.value)
+        .where(MetricActual.metric_id.in_(metric_ids), MetricActual.org_id == org_id)
+        .order_by(MetricActual.metric_id, MetricActual.period)
+    ).all()
+    grouped: dict[str, list[dict]] = {}
+    for mid, period, value in rows:
+        grouped.setdefault(mid, []).append({"period": str(period), "value": float(value)})
+
+    series = []
+    for mid in metric_ids:  # 保持调用方给定的顺序
+        d = defs.get(mid)
+        if not d:
+            continue
+        series.append(
+            {
+                "metricId": mid,
+                "name": d.name,
+                "unit": d.unit,
+                "direction": d.direction,
+                "points": grouped.get(mid, []),
+            }
+        )
+    return {"series": series}

@@ -213,3 +213,15 @@
 | T22-4 | 后端分页与状态过滤下推 SQL + size 上限 | `api/v1/tasks.py` | ✅ |
 | T22-5 | 加载性能：gzip 压缩 + 静态资源强缓存 + index.html 不缓存 | `app/main.py` | ✅ |
 | T22-6 | 用例、验收脚本、文档与上线 | `tests/test_changes.py`、`tools/verify-round4.mjs`、`docs/` | ✅ |
+
+## T23 第五批变更（2026-10-12）
+
+对应 proposal §12.7 / design §13.8。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T23-1 | 权限目录支持子分组，指标维护按三块组织编辑权限 | `constants.py`、`types/index.ts`、`AccountsView.vue` | ✅ |
+| T23-2 | 去掉 metric.edit 的全局前置，三块权限独立（含写入接口按块校验） | `api/v1/metrics.py` | ✅ |
+| T23-3 | 批量趋势接口 + 前端不再阻塞渲染 | `api/v1/dashboard.py`、`api/index.ts`、`MetricsView.vue` | ✅ |
+| T23-4 | 用例（按块权限独立性、批量与单个一致性）与验收脚本 | `tests/test_changes.py`、`tools/verify-round5.mjs`、`tools/diag-metrics.mjs` | ✅ |
+| T23-5 | 文档与上线 | `docs/` | ✅ |
