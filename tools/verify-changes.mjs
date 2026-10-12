@@ -265,25 +265,17 @@ await page.click('button:has-text("取消")').catch(() => {})
 await page.waitForTimeout(900)
 
 await gotoMenu('指标维护', '公司整体目标')
-// 说明条仅在非「全公司」视角下展示，需先切到项目公司视角
-const orgSel = page.locator('header select').first()
-if (await orgSel.count()) {
-  const opt = await page.evaluate(
-    () => [...document.querySelectorAll('header select option')].map((o) => o.value).find((v) => v.startsWith('PC')) || '',
-  )
-  if (opt) {
-    await orgSel.selectOption(opt)
-    await page
-      .waitForFunction(() => /能否维护只看权限/.test(document.body.innerText.replace(/\s+/g, '')), null, {
-        timeout: 15000,
-      })
-      .catch(() => {})
+// 数据范围不再可切换：管理员固定为全公司范围，因此不会出现「部门数据范围」说明条
+// （该说明条只在部门范围的账号下显示）。这里验证：说明条按条件收敛、且文案不写死角色名。
+const scopeHint = await page.evaluate(() => {
+  const t = (document.querySelector('main')?.innerText || '').replace(/\s+/g, '')
+  return {
+    shown: /当前数据范围为你所属的部门/.test(t),
+    writesRole: /(系统管理员|部门负责人|普通成员)/.test(t),
   }
-}
-const gate = await page.evaluate(() =>
-  /能否维护只看权限/.test(document.body.innerText.replace(/\s+/g, '')),
-)
-ok('指标维护权限说明不再写死角色', gate, `组织视角=${await page.evaluate(() => document.querySelector('header select')?.value)}`)
+})
+ok('全公司数据范围下不显示部门范围说明条', !scopeHint.shown)
+ok('权限相关文案不写死角色名', !scopeHint.writesRole)
 
 // ---------------- 5. 本轮：模板一致性与入口调整 ----------------
 console.log('\n──── 5. 任务字段一致性 / 模板入口 ────')

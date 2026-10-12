@@ -454,3 +454,41 @@ cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q
 # 本轮专项（12 项；会改动组织数据，脚本内已还原）
 cd tools && BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node verify-round6.mjs
 ```
+
+---
+
+## 十四、第七轮变更测试（2026-10-12）
+
+### 14.1 前端构建与类型
+
+`vue-tsc --noEmit` 通过（确认 `orgOptions` 移除后无残留引用）；`vite build` 成功。
+
+### 14.2 浏览器验收
+
+| 脚本 | 覆盖 | 本地 | 线上 |
+|---|---|---|---|
+| `verify-changes.mjs` | 历史需求 + 新增「无组织视角下拉」等断言 | ✅ 26/26（3 跳过） | ✅ 31/31 |
+| `verify-round3.mjs` | 月份组件、项目公司入口 | ✅ 23/23 | ✅ 23/23 |
+| `verify-round4.mjs` | 分页、冻结列、分组标题 | ✅ 17/17（2 跳过） | ✅ 9/9（4 跳过） |
+| `verify-round6.mjs` | 组织结构保存体验 | — | ✅ 12/12 |
+
+全部零控制台错误。
+
+### 14.3 本轮断言调整
+
+| 脚本 | 原断言 | 调整后 |
+|---|---|---|
+| `verify-changes.mjs` | 切到项目公司视角 → 检查权限说明条 | 全公司范围下**不**显示部门范围说明条；文案不写死角色名 |
+| `verify-round3.mjs` | 切到项目公司视角后删除 / 编辑入口仍在 | 入口按权限显示、与视角无关；并断言**顶栏无视角下拉** |
+| `e2e-flow.mjs` | 「跳转不改变全局组织视角」 | 「顶栏不再提供组织视角切换」；统计周期改为读月份组件触发器 |
+
+> 这些断言原先都依赖"切换组织视角"这个操作。功能移除后，同一意图改用
+> 「不再存在该控件」+「入口与视角无关」来表达，避免断言随功能一起失效。
+
+### 14.4 复现命令
+
+```bash
+cd tools
+BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node verify-changes.mjs
+BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node verify-round3.mjs
+```

@@ -220,27 +220,13 @@ const rowButtons = () =>
     return row ? [...row.querySelectorAll('button')].map((b) => b.innerText.trim()) : []
   })
 
-const inCo = await rowButtons()
-ok('全公司视角：项目公司行含「删除」', inCo.includes('删除'), inCo.join('/'))
-ok('全公司视角：项目公司行含「编辑」', inCo.includes('编辑'))
+const rowBtns = await rowButtons()
+// 入口按权限显示，与「当前是什么视角」无关（原先切到项目公司视角后入口会消失，这是本轮回归点）
+ok('项目公司行含「删除」入口', rowBtns.includes('删除'), rowBtns.join('/') || '无')
+ok('项目公司行含「编辑」入口', rowBtns.includes('编辑'))
 ok('存在「新增项目公司」入口', (await page.locator('main button:has-text("新增项目公司")').count()) > 0)
-
-// 切到项目公司视角 —— 本轮核心回归点
-const orgSel = page.locator('header select').first()
-const pcOpt = await page.evaluate(
-  () => [...document.querySelectorAll('header select option')].map((o) => o.value).find((v) => v.startsWith('PC')) || '',
-)
-if (pcOpt) {
-  await orgSel.selectOption(pcOpt)
-  await page.waitForTimeout(2600)
-}
-const inPc = await rowButtons()
-ok(
-  '切到项目公司视角后「删除」入口仍在（本轮修复点）',
-  inPc.includes('删除'),
-  `视野=${pcOpt} 按钮=${inPc.join('/') || '无'}`,
-)
-ok('切到项目公司视角后「编辑」入口仍在', inPc.includes('编辑'), inPc.join('/') || '无')
+// 数据范围不再可切换：顶栏不应再有组织视角下拉
+ok('顶栏不再提供组织视角切换', (await page.locator('header select').count()) === 0)
 
 // 删除确认弹窗（只看不删）
 await page.locator('main button:has-text("删除")').first().click()
@@ -253,10 +239,6 @@ ok('删除前弹出确认对话框', dlg.opened)
 ok('确认框展示连带影响（目标 / 完成值 / 任务 / 账号）', dlg.impact)
 await page.locator('.fixed button:has-text("取消")').first().click().catch(() => {})
 await page.waitForTimeout(600)
-
-// 切回全公司
-await orgSel.selectOption('CO').catch(() => {})
-await page.waitForTimeout(1600)
 
 // ---------------- 汇总 ----------------
 const pass = R.filter((r) => r.pass).length

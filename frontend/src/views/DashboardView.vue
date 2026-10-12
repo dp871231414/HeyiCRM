@@ -67,8 +67,8 @@
         </div>
 
         <div v-if="deptView" class="card p-8 text-center text-xs text-slate-500 leading-relaxed">
-          指标目标只下达在<b class="text-slate-700">公司与项目公司</b>层级，{{ overview.orgName }} 视角暂无独立指标数据。<br />
-          本页可查看本部门的任务完成度与风险提示；公司整体经营指标请切换组织视角查看。
+          指标目标只下达在<b class="text-slate-700">公司与项目公司</b>层级，{{ overview.orgName }} 暂无独立指标数据。<br />
+          本页可查看本部门的任务完成度与风险提示；公司整体经营指标需要相应的数据权限。
         </div>
 
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

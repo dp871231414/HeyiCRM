@@ -236,3 +236,14 @@
 | T24-2 | 保存后就地更新列表，不整块进入加载态；新建 / 删除用静默重载 | `views/AccountsView.vue` | ✅ |
 | T24-3 | 「全公司」允许编辑名称与负责人（删除仍受限） | `api/v1/orgs.py`、`AccountsView.vue` | ✅ |
 | T24-4 | 用例与验收脚本 | `tests/test_changes.py`、`tools/verify-round6.mjs` | ✅ |
+
+## T25 第七批变更（2026-10-12）
+
+对应 proposal §12.11 / design §13.10。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T25-1 | 移除顶栏「组织视角」下拉 | `layouts/AppLayout.vue` | ✅ |
+| T25-2 | `orgId` 语义收敛为「当前数据范围」，按可见范围直接确定 | `stores/view.ts`、`AppLayout.vue` | ✅ |
+| T25-3 | 页面文案调整（不再出现"切换组织视角"的指引） | `MetricsView.vue`、`DashboardView.vue` | ✅ |
+| T25-4 | 验收脚本同步（去掉视角相关断言，补「无视角下拉」断言） | `tools/*.mjs` | ✅ |

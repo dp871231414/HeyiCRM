@@ -51,8 +51,8 @@ page.on('response', (r) => {
 
 const body = () => page.textContent('body')
 const modal = () => page.locator('div.fixed.inset-0')
-const periodSel = () => page.locator('header select').nth(0)
-const orgSel = () => page.locator('header select').nth(1)
+/** 统计周期已改为面板式月份选择器；这里只用它的触发器展示值，完整交互见 verify-round3.mjs */
+const periodTrigger = () => page.locator('main button[aria-haspopup="dialog"]').first()
 
 async function login(account, password = PWD) {
   await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' })
@@ -133,23 +133,11 @@ await page.screenshot({ path: `${OUT}/a2-drilldown.png` })
 await page.locator('div.fixed.inset-0 button:has-text("×")').click()
 await page.waitForTimeout(600)
 
-// 统计周期切换（记录初始值，测完恢复）
-const initialPeriod = await periodSel().inputValue()
-const periods = await periodSel().locator('option').allTextContents()
-const other = periods.find((p) => p.trim() !== initialPeriod.trim())
-if (other) {
-  await periodSel().selectOption(other)
-  await page.waitForTimeout(1700)
-  check(`切换统计周期 ${initialPeriod} → ${other}`, (await body()).includes('综合加权达成率'))
-  await periodSel().selectOption(initialPeriod)
-  await page.waitForTimeout(1700)
-  check('统计周期已恢复', (await periodSel().inputValue()) === initialPeriod, initialPeriod)
-} else {
-  check('统计周期可选', false, `仅 ${periods.length} 个`)
-}
+// 统计周期：确认组件展示当前月份（月份面板的完整交互由 verify-round3.mjs 覆盖）
+const periodText = (await periodTrigger().innerText()).trim()
+check('统计周期组件展示当前月份', /^\d{4}年\d{1,2}月$/.test(periodText), periodText)
 
 // 去维护跳转
-const orgBefore = await orgSel().inputValue()
 await page.locator('button:has-text("去维护")').first().click()
 const focusSeen = await page
   .waitForFunction(() => document.querySelectorAll('.row-focus').length > 0, null, { timeout: 12000 })
@@ -157,7 +145,7 @@ const focusSeen = await page
   .catch(() => false)
 await page.waitForTimeout(1200)
 check('「去维护」跳转指标维护', page.url().includes('/metrics'), page.url())
-check('跳转不改变全局组织视角', (await orgSel().inputValue()) === orgBefore, `${orgBefore}`)
+check('顶栏不再提供组织视角切换（全公司与项目公司非汇总关系）', (await page.locator('header select').count()) === 0)
 check('跳转后定位高亮目标行', focusSeen)
 const mBody = await body()
 check('指标维护-三模块齐全', mBody.includes('公司整体目标') && mBody.includes('指标监控') && mBody.includes('项目公司指标'))
@@ -186,7 +174,7 @@ check('指标修改已持久化', afterT === newT && afterA === newA, `目标 ${
 
 // 回驾驶舱核对联动
 await nav('经营驾驶舱')
-check('返回驾驶舱仍为原组织视角', (await orgSel().inputValue()) === orgBefore)
+check('已返回驾驶舱', page.url().includes('/dashboard'), page.url())
 const card = (await page.locator('button.card:has-text("销售收入")').first().textContent()) ?? ''
 check('驾驶舱联动-新完成值', card.includes(newA), `含 ${newA}`)
 check('驾驶舱联动-新目标', card.includes(newT), `含 ${newT}`)

@@ -3,16 +3,23 @@ import { ref } from 'vue'
 
 import { clampMonth } from '@/constants/period'
 
-/** 跨页面共享的视图上下文：周期、组织视角、指标定位 */
+/** 跨页面共享的视图上下文：周期、当前数据范围、指标定位 */
 export const useViewStore = defineStore('view', () => {
   const period = ref('')
   const currentPeriod = ref('')
   const dataAsOf = ref('')
+  /**
+   * 当前数据范围的组织 ID：由登录人的可见范围决定（全公司范围 → CO，部门范围 → 所属部门）。
+   *
+   * 这里**不提供「组织视角」切换**。本系统里全公司与项目公司并非递归汇总关系
+   * ——项目公司只承载运营收入，销售收入由系统中未体现的主体产生——
+   * 允许切到某个项目公司去看，容易让人误以为「全公司 = 各项目公司之和」。
+   * 项目公司的明细仍在指标维护页按行并列展示，那是维护入口，不是视角切换。
+   */
   const orgId = ref('CO')
-  const orgOptions = ref<{ id: string; name: string }[]>([{ id: 'CO', name: '全公司' }])
   /** 从驾驶舱「去维护」跳转时的定位目标 */
   const focusMetric = ref<{ metricId: string; orgId: string } | null>(null)
-  /** 组织视角是否已按当前登录人的可见范围解析完成（未完成前页面不发请求，避免首帧越权 403） */
+  /** 数据范围是否已按当前登录人的可见范围解析完成（未完成前页面不发请求，避免首帧越权 403） */
   const contextReady = ref(false)
 
   /**
@@ -46,7 +53,6 @@ export const useViewStore = defineStore('view', () => {
     currentPeriod,
     dataAsOf,
     orgId,
-    orgOptions,
     focusMetric,
     contextReady,
     setPeriods,

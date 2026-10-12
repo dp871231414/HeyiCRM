@@ -12,10 +12,10 @@
     </div>
 
     <div v-if="board && view.orgId !== 'CO'" class="card p-3.5 border-brand-100 bg-brand-50 text-xs text-brand-700">
-      当前组织视角为「{{ board.orgId }}」。能否维护只看权限：公司整体目标需「维护公司整体目标」权限，
+      当前数据范围为你所属的部门。能否维护只看权限：公司整体目标需「维护公司整体目标」权限，
       项目公司指标需「维护项目公司指标」权限，项目公司的新增 / 编辑 / 删除各有独立权限项；
       数据可见范围决定你能看到哪些组织。
-      指标目标只下达在公司与项目公司层级，部门视角无独立指标数据。
+      指标目标只下达在公司与项目公司层级，部门没有独立指标数据。
     </div>
 
     <div v-if="error" class="card p-4 border-bad-100 bg-bad-50 text-sm text-bad-600 flex items-center gap-3">

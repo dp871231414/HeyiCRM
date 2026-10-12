@@ -53,13 +53,6 @@
         <h1 class="text-[15px] font-bold text-slate-900">{{ title }}</h1>
 
         <div class="ml-auto flex items-center gap-2">
-          <label v-if="view.orgOptions.length > 1" class="hidden md:flex items-center gap-1.5 text-xs text-slate-500">
-            组织视角
-            <select v-model="view.orgId" class="input !py-1.5 !px-2 !w-auto text-xs font-semibold">
-              <option v-for="o in view.orgOptions" :key="o.id" :value="o.id">{{ o.name }}</option>
-            </select>
-          </label>
-
           <div class="relative">
             <button
               class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition"
@@ -112,7 +105,7 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { metricApi, projectApi } from '@/api'
+import { metricApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { useViewStore } from '@/stores/view'
@@ -156,32 +149,23 @@ const menus = computed(() => ALL_MENUS.filter((m) => auth.hasPerm(m.perm)))
 async function loadContext() {
   if (!auth.token) return
   view.contextReady = false
-  const canViewMetric = auth.hasPerm('metric.view')
-  const needProjects = canViewMetric && auth.scope === 'all'
 
-  // 周期与项目公司互不依赖，合并成一批并发请求。
-  // 原先串行等待，相当于白白多等一次网络往返（线上约 300-400ms）。
-  const [periodRes, projectsRes] = await Promise.all([
-    metricApi.periods().catch(() => null),
-    needProjects ? projectApi.list().catch(() => null) : Promise.resolve(null),
-  ])
-
+  const periodRes = await metricApi.periods().catch(() => null)
   if (periodRes) view.setPeriods(periodRes.current, periodRes.dataAsOf)
 
-  if (canViewMetric) {
+  // 数据范围由登录人的可见范围决定，**不提供组织视角切换**：
+  // 全公司与项目公司不是递归汇总关系（项目公司只承载运营收入），
+  // 允许切换会让人误读「全公司 = 各项目公司之和」。
+  // 原先为了构建视角下拉会额外拉一次项目公司列表，现在这一步也省掉了。
+  if (auth.hasPerm('metric.view')) {
     if (auth.scope === 'all') {
-      const projects = projectsRes ?? []
-      view.orgOptions = [{ id: 'CO', name: '全公司' }, ...projects.map((p) => ({ id: p.id, name: p.name }))]
-    } else if (auth.scope === 'dept_sub' || auth.scope === 'dept') {
-      view.orgOptions = [{ id: auth.user!.deptId, name: auth.user!.deptName }]
+      view.orgId = 'CO'
+    } else if (auth.scope === 'dept' || auth.scope === 'dept_sub') {
       view.orgId = auth.user!.deptId
     } else {
       // 本人范围：按设计不看组织维度（visibleOrgs 为空），
-      // 因此不提供任何组织视角，由页面给出「范围说明」而非报错。
-      view.orgOptions = []
-    }
-    if (view.orgOptions.length && !view.orgOptions.some((o) => o.id === view.orgId)) {
-      view.orgId = view.orgOptions[0].id
+      // 因此不给组织范围，由页面给出「范围说明」而非报错。
+      view.orgId = ''
     }
   }
   view.contextReady = true
