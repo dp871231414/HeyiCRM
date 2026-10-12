@@ -57,6 +57,24 @@
     background:#EEF2FF;color:var(--brand);border:1px solid #E0E7FF;margin-left:8px;vertical-align:2px;
   }
   .tag.on{background:var(--good-bg);color:#047857;border-color:#A7F3D0}
+  .tag.live{background:#ECFDF5;color:#047857;border-color:#A7F3D0}
+  .tag.live::before{
+    content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:#10B981;margin-right:5px;vertical-align:1px;
+  }
+
+  .copyline{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .copyline code{
+    flex:1;min-width:0;word-break:break-all;line-height:1.5;
+    background:#F8FAFC;border:1px solid var(--border);border-radius:6px;padding:6px 9px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#475569;
+  }
+  .btn-copy{
+    flex:none;font:inherit;font-size:12px;font-weight:600;color:var(--brand);cursor:pointer;
+    background:#EEF2FF;border:1px solid #E0E7FF;border-radius:6px;padding:6px 10px;transition:background .2s;
+  }
+  .btn-copy:hover{background:#E0E7FF}
+  .btn-copy.done{color:#047857;background:var(--good-bg);border-color:#A7F3D0}
 
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
@@ -75,6 +93,8 @@
     padding:1px 6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;
   }
   .foot{margin-top:24px;font-size:12px;color:var(--muted);text-align:center}
+  .foot a{color:var(--brand);text-decoration:none}
+  .foot a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -87,14 +107,31 @@
 
   <div class="grid">
     <div class="card">
-      <h2>生产形态<span class="tag on">推荐</span></h2>
+      <h2>线上环境<span class="tag live">在线</span></h2>
+      <p class="note">已发布的公网地址，手机、其他电脑都能直接打开</p>
+      <a class="entry" href="https://heyi-fleet-dashboard.app.workbuddy.host/" target="_blank" rel="noopener">
+        <span>打开线上看板</span><span class="url">公网可访问</span>
+      </a>
+      <div class="copyline">
+        <code>https://heyi-fleet-dashboard.app.workbuddy.host/</code>
+        <button
+          class="btn-copy"
+          type="button"
+          onclick="copyText('https://heyi-fleet-dashboard.app.workbuddy.host/', this)"
+        >
+          复制
+        </button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>本地 · 生产形态<span class="tag on">推荐</span></h2>
       <p class="note">后端同源托管前端构建产物，单端口访问</p>
       <a class="entry" href="http://127.0.0.1:8000" target="_blank" rel="noopener">
         <span>打开看板</span><span class="url">127.0.0.1:8000</span>
       </a>
     </div>
     <div class="card">
-      <h2>开发形态</h2>
+      <h2>本地 · 开发形态</h2>
       <p class="note">Vite 开发服务，改前端代码即时热更新</p>
       <a class="entry secondary" href="http://127.0.0.1:5173" target="_blank" rel="noopener">
         <span>打开开发服务</span><span class="url">127.0.0.1:5173</span>
@@ -138,14 +175,83 @@ cd frontend &amp;&amp; npm run build
 rm -rf ../backend/static/assets &amp;&amp; cp -R dist/assets ../backend/static/assets
 cp dist/index.html ../backend/static/index.html
 
-<span class="c"># 后端测试（应为 49 passed）</span>
+<span class="c"># 后端测试（应为 81 passed）</span>
 cd backend &amp;&amp; .venv/bin/python -m pytest -q
+
+<span class="c"># 发布到线上（也可在 WorkBuddy 的「设置—数据管理—应用」里管理）</span>
+<span class="c"># 部署目录：backend　启动命令：sh start.sh</span>
 
 <span class="c"># 停止全部服务</span>
 pkill -f "uvicorn app.main:app"; pkill -f "vite"</pre>
   </div>
 
-  <p class="foot">线上地址：https://heyi-fleet-dashboard.app.workbuddy.host/</p>
+  <p class="foot">
+    线上地址：<a href="https://heyi-fleet-dashboard.app.workbuddy.host/" target="_blank" rel="noopener">https://heyi-fleet-dashboard.app.workbuddy.host/</a>
+  </p>
 </div>
+
+<script>
+  /**
+   * 复制文本，三级兜底：
+   * 1) Clipboard API（需安全上下文与权限）
+   * 2) 临时输入框 + execCommand（用户手势内一般可用；file:// 打开时走这条）
+   * 3) 都失败则自动选中地址，提示手动复制 —— 保证不会卡住
+   */
+  async function copyText(text, btn) {
+    const flash = (label, ok) => {
+      const old = btn.textContent
+      btn.textContent = label
+      btn.classList.toggle('done', ok)
+      setTimeout(() => {
+        btn.textContent = old
+        btn.classList.remove('done')
+      }, 1800)
+    }
+
+    let copied = false
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text)
+        copied = true
+      } catch {
+        copied = false // 落到降级方案
+      }
+    }
+
+    if (!copied) {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.setAttribute('readonly', '')
+        ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0'
+        document.body.appendChild(ta)
+        ta.select()
+        ta.setSelectionRange(0, text.length)
+        copied = document.execCommand('copy')
+        ta.remove()
+      } catch {
+        copied = false
+      }
+    }
+
+    if (copied) {
+      flash('已复制', true)
+      return
+    }
+
+    // 兜底：选中地址文本，方便直接按快捷键复制
+    const code = btn.parentElement && btn.parentElement.querySelector('code')
+    if (code) {
+      const range = document.createRange()
+      range.selectNodeContents(code)
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+      flash('已选中，按 ⌘/Ctrl+C', false)
+    } else {
+      flash('请手动复制', false)
+    }
+  }
+</script>
 </body>
 </html>
