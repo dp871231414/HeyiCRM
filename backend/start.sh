@@ -26,5 +26,15 @@ else
   python -m app.seed || echo "[start] seed skipped or failed (non-fatal)"
 fi
 
+# 一次性数据清理（可选，默认不执行）。
+#   用法：PURGE_KEEP="chenzm,huguohai" sh start.sh
+#   执行一次后改回 `sh start.sh` 正常启动即可，不必每次带着它。
+# 注意：必须走本脚本，才能复用下面这份 DATABASE_URL；直接在外面跑
+#       `python -m app.maintenance` 会拿到代码里的默认值，连到的不是这里在用的库。
+if [ -n "${PURGE_KEEP}" ]; then
+  echo "[start] PURGE_KEEP=${PURGE_KEEP} → 执行数据清理（保留这些账号）"
+  python -m app.maintenance purge --keep "${PURGE_KEEP}" || echo "[start] purge failed (non-fatal)"
+fi
+
 # 用 python -m 调用，避免 uvicorn 可执行文件不在 PATH 上
 exec python -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT}" --log-level info
