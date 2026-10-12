@@ -15,16 +15,6 @@
     <!-- 加载中 -->
     <div v-if="loading" class="card p-10 text-center text-slate-400 text-sm">数据加载中…</div>
 
-    <!-- 本人范围：无组织维度数据 -->
-    <div v-else-if="noOrgDimension" class="card p-8 text-center space-y-2">
-      <div class="text-sm font-bold text-slate-700">当前账号的数据可见范围为「本人」</div>
-      <p class="text-xs text-slate-500 leading-relaxed">
-        按权限设计，「本人」范围不含组织维度的经营指标数据，驾驶舱无内容可展示。<br />
-        你仍可在「任务管理」中查看与维护本人负责的任务；如需查看经营指标，
-        请联系管理员将数据可见范围调整为「本部门」或更高。
-      </p>
-    </div>
-
     <template v-else-if="summary && overview">
       <!-- 分析总结 -->
       <section class="card p-5" :class="toneBorder">
@@ -68,7 +58,7 @@
 
         <div v-if="deptView" class="card p-8 text-center text-xs text-slate-500 leading-relaxed">
           指标目标只下达在<b class="text-slate-700">公司与项目公司</b>层级，{{ overview.orgName }} 暂无独立指标数据。<br />
-          本页可查看本部门的任务完成度与风险提示；公司整体经营指标需要相应的数据权限。
+          本页可查看该部门的任务完成度与风险提示。
         </div>
 
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -266,13 +256,11 @@ import ModalDialog from '@/components/ModalDialog.vue'
 import MonthPicker from '@/components/MonthPicker.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
-import { useAuthStore } from '@/stores/auth'
 import { useViewStore } from '@/stores/view'
 import type { MetricRow, OverviewResult, ProjectCompanyBlock, SummaryResult, TrendResult } from '@/types'
 import { fmt, fmtDelta, fmtPct } from '@/utils/format'
 
 const view = useViewStore()
-const auth = useAuthStore()
 const router = useRouter()
 
 const loading = ref(false)
@@ -366,8 +354,6 @@ async function openDrilldown(row: MetricRow) {
   }
 }
 
-/** 本人范围：无组织维度数据（与后端 visibleOrgs 口径一致） */
-const noOrgDimension = computed(() => auth.scope === 'self')
 /** 部门/班组视角：指标目标只下达在公司与项目公司层级，故无核心指标卡 */
 const deptView = computed(() => ['dept', 'team'].includes(overview.value?.orgType ?? ''))
 
@@ -375,13 +361,6 @@ let loadSeq = 0
 async function load() {
   if (!view.period || !view.contextReady) return
   const seq = ++loadSeq
-  if (noOrgDimension.value) {
-    loading.value = false
-    error.value = ''
-    summary.value = null
-    overview.value = null
-    return
-  }
   loading.value = true
   error.value = ''
   try {

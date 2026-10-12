@@ -153,21 +153,11 @@ async function loadContext() {
   const periodRes = await metricApi.periods().catch(() => null)
   if (periodRes) view.setPeriods(periodRes.current, periodRes.dataAsOf)
 
-  // 数据范围由登录人的可见范围决定，**不提供组织视角切换**：
-  // 全公司与项目公司不是递归汇总关系（项目公司只承载运营收入），
-  // 允许切换会让人误读「全公司 = 各项目公司之和」。
-  // 原先为了构建视角下拉会额外拉一次项目公司列表，现在这一步也省掉了。
-  if (auth.hasPerm('metric.view')) {
-    if (auth.scope === 'all') {
-      view.orgId = 'CO'
-    } else if (auth.scope === 'dept' || auth.scope === 'dept_sub') {
-      view.orgId = auth.user!.deptId
-    } else {
-      // 本人范围：按设计不看组织维度（visibleOrgs 为空），
-      // 因此不给组织范围，由页面给出「范围说明」而非报错。
-      view.orgId = ''
-    }
-  }
+  // 数据口径：驾驶舱与指标维护**只按角色权限**判断能否查看，一律按全公司口径取数。
+  //   · 全公司与项目公司不是递归汇总关系（项目公司只承载运营收入），
+  //     按部门可见范围裁剪经营数据反而会让人误读口径；
+  //   · 数据可见范围（scope）**只作用于任务模块**，不参与此处的取数。
+  view.orgId = 'CO'
   view.contextReady = true
 }
 

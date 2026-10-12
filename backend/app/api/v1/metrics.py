@@ -14,7 +14,6 @@ from app.db.session import get_db
 from app.models import MetricActual, MetricDef, MetricTarget, Organization, User
 from app.schemas.common import ImportResult
 from app.schemas.metric import MetricValueIn
-from app.services import scope as scope_svc
 from app.services.achievement import (
     _f,
     all_defs,
@@ -96,12 +95,14 @@ def build_row(def_: MetricDef, target, actual, idx, period: str, org_id: str, co
     return row
 
 
-def build_board(db: Session, period: str, org_id: str, visible_orgs: list[str] | None = None) -> dict:
+def build_board(db: Session, period: str, org_id: str) -> dict:
     """组织看板数据 · 全部按视角组织取数。
 
     指标目标只下达在公司与项目公司层级（见原型 `primaryMetricGroup`），
-    因此部门/班组视角的指标数据为空，由前端给出说明性空态；
-    写入授权另见 board 接口（仅全公司数据可见范围可在全公司视角维护）。
+    因此部门/班组视角的指标数据为空，由前端给出说明性空态。
+
+    **不做数据范围过滤**：本模块（指标维护）与经营驾驶舱一样，只按角色权限开放，
+    项目公司模块始终列出全部项目公司。数据范围（scope）仅用于任务模块。
     """
     company_org = org_id
     idx = load_index(db)
@@ -127,12 +128,10 @@ def build_board(db: Session, period: str, org_id: str, visible_orgs: list[str] |
         row["ownerOrgName"] = _owner(db, d.owner_org_id)
         monitor.append(row)
 
-    # 项目公司模块 · 仅列出调用方可见范围内的项目公司（数据隔离）
+    # 项目公司模块 · 列出全部项目公司（按权限开放，不按数据范围裁剪）
     projects = db.scalars(
         select(Organization).where(Organization.type == ORG_TYPE_PROJECT).order_by(Organization.id)
     ).all()
-    if visible_orgs is not None:
-        projects = [o for o in projects if o.id in visible_orgs]
     proj_defs = [d for d in defs_by_group(db, "project") if d.family != "collection"]
     companies = []
     for org in projects:
@@ -221,15 +220,12 @@ def board(period: str = "", org_id: str = "CO", db: Session = Depends(get_db), u
     org = db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="组织不存在")
-    if not scope_svc.org_in_scope(db, user, org_id):
-        raise HTTPException(status_code=403, detail="无权查看该组织的数据")
-    visible = scope_svc.visible_org_ids(db, user)
-    data = build_board(db, period, org_id, visible)
+    data = build_board(db, period, org_id)
     # 编辑权限与角色配置界面的三块一一对应，各自独立（没有隐含的全局前置权限）：
     #   公司整体目标   → metric.edit_company
     #   指标监控       → metric.edit
     #   项目公司指标   → metric.edit_project
-    # 权限决定「能否改」，可见范围决定「改哪些」——后者属数据隔离，不是操作门槛。
+    # 能否查看与维护**只看权限点**，不受数据可见范围影响（数据范围仅用于任务模块）。
     perms = get_user_perms(db, user)
     can_company = "metric.edit_company" in perms
     can_monitor = "metric.edit" in perms
@@ -237,7 +233,7 @@ def board(period: str = "", org_id: str = "CO", db: Session = Depends(get_db), u
     data["canEditAll"] = can_company and org.type == ORG_TYPE_COMPANY
     data["canEditMonitor"] = can_monitor
     all_projects = [o.id for o in db.scalars(select(Organization).where(Organization.type == ORG_TYPE_PROJECT)).all()]
-    data["editableProjects"] = [pid for pid in all_projects if pid in visible] if can_project else []
+    data["editableProjects"] = all_projects if can_project else []
     data["perms"] = {
         "edit": can_monitor,
         "editCompany": can_company,
@@ -291,8 +287,7 @@ def _validate_write(db: Session, payload: MetricValueIn, user: User, perm: str |
     org = db.get(Organization, payload.org_id)
     if not org:
         raise HTTPException(status_code=404, detail="组织不存在")
-    if not scope_svc.org_in_scope(db, user, payload.org_id):
-        raise HTTPException(status_code=403, detail="无权修改该组织的数据")
+    # 不再校验数据可见范围：能否维护只看权限点（数据范围仅用于任务模块）
     return d
 
 

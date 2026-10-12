@@ -1,4 +1,9 @@
-"""任务路由：增删改查、部门完成度聚合、导入导出。"""
+"""任务路由：增删改查、部门完成度聚合、导入导出。
+
+**权限口径**：任务模块是本系统**唯一**按数据可见范围（scope）隔离数据的模块 ——
+列表、详情、统计均只返回登录人可见范围（全公司 / 本部门及下属 / 本部门 / 本人）内的数据。
+经营驾驶舱与指标维护只按角色权限判断能否查看，见各自的模块说明。
+"""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -6,7 +11,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -114,9 +119,13 @@ def _enrich(db: Session, items: list[dict]) -> list[dict]:
     return items
 
 
-@router.get("/dept-stats", response_model=list[DeptTaskStat])
-def dept_stats(db: Session = Depends(get_db), user: User = Depends(require_perm("task.view"))):
-    """部门任务完成度 · 在 SQL 层聚合（GROUP BY），班组归集到其上级部门。"""
+def dept_stats_all(db: Session, cond: ColumnElement[bool] | None = None) -> list[dict]:
+    """部门任务完成度 · 在 SQL 层聚合（GROUP BY），班组归集到其上级部门。
+
+    `cond` 为可见性条件：
+    - 任务模块传入 `visible_task_filter(...)` —— 按数据范围隔离；
+    - 经营驾驶舱不传 —— 该模块只按角色权限开放，任务统计同样按全量口径参与经营分析。
+    """
     today: date = reference_date()
     not_done = Task.done < Task.target
     q = select(
@@ -128,7 +137,6 @@ def dept_stats(db: Session = Depends(get_db), user: User = Depends(require_perm(
         func.sum(case((and_(Task.abnormal.is_(True), not_done), 1), else_=0)).label("risk"),
         func.avg(case((Task.target > 0, Task.done * 100.0 / Task.target), else_=0)).label("completion"),
     ).group_by(Task.dept_id)
-    cond = scope_svc.visible_task_filter(db, user)
     if cond is not None:
         q = q.where(cond)
 
@@ -169,6 +177,12 @@ def dept_stats(db: Session = Depends(get_db), user: User = Depends(require_perm(
     # 有风险的部门优先
     out.sort(key=lambda x: (-(x["overdue"] + x["risk"] + x["dueSoon"]), -x["total"], x["deptId"]))
     return out
+
+
+@router.get("/dept-stats", response_model=list[DeptTaskStat])
+def dept_stats(db: Session = Depends(get_db), user: User = Depends(require_perm("task.view"))):
+    """任务模块的部门完成度 · 按数据可见范围隔离。"""
+    return dept_stats_all(db, scope_svc.visible_task_filter(db, user))
 
 
 @router.get("/import/template")

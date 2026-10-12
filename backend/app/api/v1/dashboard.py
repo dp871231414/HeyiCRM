@@ -1,4 +1,12 @@
-"""经营驾驶舱路由：分析总结、总览、指标趋势。"""
+"""经营驾驶舱路由：分析总结、总览、指标趋势。
+
+**权限口径（重要）**：本模块只按**角色权限**判断能否使用，不做数据范围（可见范围）校验 ——
+有 `dashboard.view` 即视为可查看经营分析数据。「全公司与项目公司不是递归汇总关系」
+（项目公司只承载运营收入，销售收入来自系统中的其他主体），若按可见范围裁剪，
+部门范围账号反而看不到完整的经营口径，容易被误读。
+
+数据范围（scope）**仅用于任务模块**，见 `api/v1/tasks.py`。
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,7 +16,6 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_perm
 from app.db.session import get_db
 from app.models import MetricActual, MetricDef, Organization, Task, User
-from app.services import scope as scope_svc
 from app.services.achievement import current_period, group_metric_stats, load_index
 from app.services.summary import build_summary
 
@@ -20,9 +27,7 @@ def summary(period: str = "", org_id: str = "CO", db: Session = Depends(get_db),
     period = period or current_period()
     if not db.get(Organization, org_id):
         raise HTTPException(status_code=404, detail="组织不存在")
-    if not scope_svc.org_in_scope(db, user, org_id):
-        raise HTTPException(status_code=403, detail="无权查看该组织的数据")
-    return build_summary(db, period, org_id, user)
+    return build_summary(db, period, org_id)
 
 
 @router.get("/overview")
@@ -31,14 +36,13 @@ def overview(period: str = "", org_id: str = "CO", db: Session = Depends(get_db)
     org = db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="组织不存在")
-    if not scope_svc.org_in_scope(db, user, org_id):
-        raise HTTPException(status_code=403, detail="无权查看该组织的数据")
 
     from app.api.v1.metrics import build_board
-    from app.api.v1.tasks import dept_stats
+    from app.api.v1.tasks import dept_stats_all
 
-    board = build_board(db, period, org_id, scope_svc.visible_org_ids(db, user))
-    stats = dept_stats(db=db, user=user)
+    # 不传可见组织：驾驶舱按全公司口径取数（数据范围不影响本模块）
+    board = build_board(db, period, org_id)
+    stats = dept_stats_all(db)
 
     return {
         "period": period,
@@ -60,8 +64,6 @@ def trend(metric_id: str, org_id: str = "CO", db: Session = Depends(get_db), use
     d = db.get(MetricDef, metric_id)
     if not d:
         raise HTTPException(status_code=404, detail="指标不存在")
-    if not scope_svc.org_in_scope(db, user, org_id):
-        raise HTTPException(status_code=403, detail="无权查看该组织的数据")
     rows = db.execute(
         select(MetricActual.period, MetricActual.value)
         .where(MetricActual.metric_id == metric_id, MetricActual.org_id == org_id)
@@ -92,8 +94,6 @@ def trends(
     metric_ids = [i.strip() for i in ids.split(",") if i.strip()]
     if not metric_ids:
         return {"series": []}
-    if not scope_svc.org_in_scope(db, user, org_id):
-        raise HTTPException(status_code=403, detail="无权查看该组织的数据")
 
     defs = {d.id: d for d in db.scalars(select(MetricDef).where(MetricDef.id.in_(metric_ids))).all()}
     rows = db.execute(

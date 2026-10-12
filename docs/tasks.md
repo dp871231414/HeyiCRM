@@ -247,3 +247,15 @@
 | T25-2 | `orgId` 语义收敛为「当前数据范围」，按可见范围直接确定 | `stores/view.ts`、`AppLayout.vue` | ✅ |
 | T25-3 | 页面文案调整（不再出现"切换组织视角"的指引） | `MetricsView.vue`、`DashboardView.vue` | ✅ |
 | T25-4 | 验收脚本同步（去掉视角相关断言，补「无视角下拉」断言） | `tools/*.mjs` | ✅ |
+
+## T26 第八批变更（2026-10-12）
+
+对应 proposal §12.13 / design §13.11。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T26-1 | 驾驶舱去掉数据范围校验与项目公司裁剪（含任务统计改全量口径） | `api/v1/dashboard.py`、`services/summary.py`、`api/v1/tasks.py` | ✅ |
+| T26-2 | 指标维护去掉范围校验；项目公司可维护范围改为「按权限」 | `api/v1/metrics.py`、`api/v1/projects.py` | ✅ |
+| T26-3 | 前端取数口径统一为全公司，移除「本人范围」空态 | `layouts/AppLayout.vue`、`stores/view.ts`、`views/DashboardView.vue`、`views/MetricsView.vue` | ✅ |
+| T26-4 | `services/scope.py` 收敛语义（仅任务模块）并清理死代码 | `services/scope.py`、`core/deps.py` 注释 | ✅ |
+| T26-5 | 用例调整与新增、验收脚本、文档同步 | `tests/`、`tools/verify-round7.mjs`、`docs/` | ✅ |

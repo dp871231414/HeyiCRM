@@ -925,3 +925,37 @@ if (auth.scope === 'all') {
 
 > 附带修好：`e2e-flow.mjs` 里还有更早遗留的失效断言（统计周期改为面板式组件后，
 > 它仍在读 `header select`）。已一并改为读取月份组件的触发器文本。
+
+### 13.11 2026-10-12 · 数据权限边界：仅任务模块按可见范围隔离
+
+#### 结论（口径）
+
+| 模块 | 判断依据 | 取数口径 |
+|---|---|---|
+| **任务管理** | 角色权限（`task.*`）+ **数据可见范围** | 按可见范围收窄（列表 / 详情 / 部门统计） |
+| 经营驾驶舱 | 只按角色权限（`dashboard.view`） | 全公司口径（含其中的任务统计） |
+| 指标维护 | 只按角色权限（`metric.view` / `metric.edit_*` / `project.*`） | 全公司口径（项目公司列出全部） |
+
+依据：全公司与项目公司不是递归汇总关系（项目公司只承载运营收入，销售收入来自系统中的其他主体）。
+按部门可见范围裁剪经营数据，会让部门账号看不到完整口径，反而造成误读。
+
+#### 改动清单
+
+| 文件 | 改动 |
+|---|---|
+| `api/v1/dashboard.py` | 4 个接口去掉 `org_in_scope` 校验；`build_board` 不再传可见组织；改用 `dept_stats_all(db)`（不传可见性条件） |
+| `api/v1/metrics.py` | `board` 去掉范围校验；`editableProjects` 改为「有 `metric.edit_project` 即全部项目公司」；`_validate_write` 去掉 `org_in_scope`；`build_board` 移除 `visible_orgs` 参数 |
+| `api/v1/projects.py` | 列表不再按可见范围裁剪；编辑 / 删除去掉范围兜底 |
+| `api/v1/tasks.py` | 抽出 `dept_stats_all(db, cond=None)`：任务模块传 `visible_task_filter`，驾驶舱不传；**其余逻辑不变（仍按范围隔离）** |
+| `services/summary.py` | 任务侧去掉 `visible_task_filter`；`build_summary` 去掉 `user` 参数 |
+| `services/scope.py` | 模块文档改写为「只作用于任务模块」；删除已无使用者的 `org_in_scope` |
+| 前端 | `AppLayout.loadContext` 中 `view.orgId` 固定 `'CO'`；移除「本人范围」空态与部门范围提示条；清理 `DashboardView` 多余的 `auth` 依赖 |
+
+#### 影响的既有行为（有意为之）
+
+- 部门范围账号现在能看全公司经营数据（原先 403 或按部门裁剪）；
+- 项目公司负责人可维护**全部**项目公司（原先仅自家）；
+- 驾驶舱里的「部门任务完成度」对所有人一致（全量口径）。
+
+> **注意**：任务模块的隔离没有被削弱 —— 验收脚本会用同一账号对比两个模块：
+> 管理员 3 条任务 → 部门负责人 1 条（任务侧仍收窄），而驾驶舱与指标维护的数据完全一致。

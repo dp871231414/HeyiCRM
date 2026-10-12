@@ -793,3 +793,56 @@ def test_create_org_returns_real_depth(client, admin_headers):
         assert body["childCount"] == 0 and body["userCount"] == 0
     finally:
         client.delete(f"/api/v1/orgs/{body['id']}", headers=admin_headers)
+
+
+# ------------------------------ 数据权限边界：仅任务模块按范围隔离（本轮口径）
+
+
+def test_dashboard_open_by_perm_not_scope(client, head_headers):
+    """经营驾驶舱只按角色权限开放：跨组织不拦截，也不按可见范围裁剪。
+
+    回归点：原先部门负责人访问全公司口径的总结 / 总览 / 趋势会被拦成 403。
+    现按既定口径放开 —— 数据范围（scope）仅作用于任务模块。
+    """
+    for path in ("/api/v1/dashboard/summary", "/api/v1/dashboard/overview"):
+        r = client.get(path, params={"org_id": "CO"}, headers=head_headers)
+        assert r.status_code == 200, f"{path} 不应按数据范围拦截"
+
+    assert (
+        client.get("/api/v1/dashboard/metrics/INC_TOT/trend", params={"org_id": "CO"}, headers=head_headers).status_code
+        == 200
+    )
+    assert (
+        client.get(
+            "/api/v1/dashboard/metrics/trends", params={"ids": "INC_TOT", "org_id": "CO"}, headers=head_headers
+        ).status_code
+        == 200
+    )
+
+
+def test_dashboard_task_stats_are_global(client, admin_headers, head_headers):
+    """驾驶舱里的任务统计按全量口径（与管理员一致），不随可见范围收窄。"""
+    admin = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=admin_headers).json()
+    head = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=head_headers).json()
+    assert head["deptTaskStats"] == admin["deptTaskStats"], "驾驶舱任务统计应为全量口径"
+    assert head["counts"] == admin["counts"]
+
+
+def test_task_module_still_isolates_by_scope(client, admin_headers, head_headers):
+    """任务模块是本系统唯一按数据可见范围隔离的模块（本轮口径的边界）。"""
+    admin_items = client.get("/api/v1/tasks", params={"size": 2000}, headers=admin_headers).json()["items"]
+    head_items = client.get("/api/v1/tasks", params={"size": 2000}, headers=head_headers).json()["items"]
+    admin_ids = {t["id"] for t in admin_items}
+    head_ids = {t["id"] for t in head_items}
+
+    assert head_ids < admin_ids, "任务列表仍应按可见范围收窄"
+    hidden = sorted(admin_ids - head_ids)
+    assert hidden, "应存在范围外不可见的任务"
+    # 详情同样受范围约束
+    assert client.get(f"/api/v1/tasks/{hidden[0]}", headers=head_headers).status_code == 403
+
+
+def test_projects_list_not_scope_filtered(client, head_headers):
+    """项目公司列表按全公司口径返回，不按可见范围裁剪。"""
+    ids = {p["id"] for p in client.get("/api/v1/projects", headers=head_headers).json()}
+    assert {"PC1", "PC2", "PC3"} <= ids

@@ -68,15 +68,19 @@ def test_admin_sees_more_tasks(client, admin_headers, member_headers):
     assert admin_total >= member_total
 
 
-def test_head_scope_dept_sub(client, head_headers):
-    # 王建国属财务部（D06），部门负责人可见本部门及下属
+def test_metric_board_open_by_perm_not_scope(client, head_headers):
+    """指标维护只按角色权限开放，不再按数据可见范围隔离（口径变更）。
+
+    回归点：原先部门负责人访问项目公司 / 其他部门的看板会被拦成 403，
+    并按可见范围裁剪项目公司列表。现按既定口径放开 —— 数据范围仅作用于任务模块。
+    """
     resp = client.get("/api/v1/metrics/board", params={"org_id": "D06"}, headers=head_headers)
     assert resp.status_code == 200
-    # 本部门不可见其他部门 / 项目公司（数据隔离）
-    assert client.get("/api/v1/metrics/board", params={"org_id": "PC1"}, headers=head_headers).status_code == 403
-    assert client.get("/api/v1/metrics/board", params={"org_id": "D01"}, headers=head_headers).status_code == 403
-    # 部门视角下项目公司模块为空（不泄露全公司项目公司数据）
-    assert resp.json()["project"]["companies"] == []
+    # 跨组织不再拦截：有 metric.view 即可查看任意组织
+    assert client.get("/api/v1/metrics/board", params={"org_id": "PC1"}, headers=head_headers).status_code == 200
+    assert client.get("/api/v1/metrics/board", params={"org_id": "D01"}, headers=head_headers).status_code == 200
+    # 项目公司按全公司口径列出，不按可见范围裁剪
+    assert len(resp.json()["project"]["companies"]) == 3
 
 
 # ---------------------------------------------------------------- 组织
@@ -243,8 +247,8 @@ def test_metric_target_annual_period_rollup(client, admin_headers):
     )
 
 
-def test_metric_write_requires_perm_and_scope(client, member_headers, admin_headers):
-    # 普通成员对全公司指标无写权限
+def test_metric_write_requires_perm_only(client, member_headers, admin_headers):
+    # 普通成员无「维护公司整体目标」权限，写全公司指标被拒（只看权限，不看可见范围）
     resp = client.put(
         "/api/v1/metrics/actuals",
         json={"metric_id": "REV_SALE", "org_id": "CO", "period": current_period(), "value": 100},
@@ -448,16 +452,27 @@ def test_board_edit_scope_admin_at_project(client, admin_headers):
     assert set(d["editableProjects"]) == {"PC1", "PC2", "PC3"}
 
 
-def test_board_edit_scope_dept_head_readonly(client, head_headers):
-    d = client.get("/api/v1/metrics/board", params={"org_id": "D06"}, headers=head_headers).json()
-    assert d["canEditAll"] is False
-    assert d["editableProjects"] == []
+def test_board_project_edit_is_perm_based(client, head_headers, member_headers):
+    """项目公司能否维护只看权限点，与数据可见范围无关。
+
+    部门负责人（scope=dept_sub）持有 metric.edit_project，可维护全部项目公司；
+    普通成员（scope=self）无该权限，仍为空。
+    """
+    head = client.get("/api/v1/metrics/board", params={"org_id": "D06"}, headers=head_headers).json()
+    # D06 不是公司层级，不开放公司整体目标编辑
+    assert head["canEditAll"] is False
+    # 有 metric.edit_project 即可维护全部项目公司（不再受可见范围限制）
+    assert set(head["editableProjects"]) == {"PC1", "PC2", "PC3"}
+
+    member = client.get("/api/v1/metrics/board", params={"org_id": "CO"}, headers=member_headers).json()
+    assert member["editableProjects"] == [], "无 project 权限时不应可维护"
 
 
-def test_board_project_head_only_own(client, project_headers):
+def test_board_project_head_edit_covers_all_projects(client, project_headers):
+    """项目公司负责人持 metric.edit_project，可维护全部项目公司（不再限定自家）。"""
     d = client.get("/api/v1/metrics/board", params={"org_id": "PC1"}, headers=project_headers).json()
     assert d["canEditAll"] is False
-    assert d["editableProjects"] == ["PC1"]
+    assert set(d["editableProjects"]) == {"PC1", "PC2", "PC3"}
 
 
 def test_board_org_type_exposed(client, admin_headers):

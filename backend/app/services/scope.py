@@ -1,14 +1,20 @@
 """可见范围服务 · 数据隔离的核心。
 
+**适用范围（重要）**：数据可见范围**只作用于任务模块**（任务列表 / 详情 / 统计）。
+
+    可见任务 = 任务所属组织 ∈ 可见组织  OR  责任人 = 本人姓名
+用于解决「任务挂上级部门、责任人属下级」的归属问题。
+
+经营驾驶舱与指标维护**不使用**本服务的过滤能力 —— 它们只按角色权限（菜单 / 操作权限）
+判断能否查看与操作，数据一律按全公司口径返回。原因：全公司与项目公司不是递归汇总关系
+（项目公司只承载运营收入，销售收入来自系统中的其他主体），按可见范围裁剪经营数据
+会让人误读口径。相关说明见 `api/v1/dashboard.py`、`api/v1/metrics.py`。
+
 规则：
 - all       → 全部组织
 - dept_sub  → 本部门及其所有子孙部门（递归）
 - dept      → 仅本部门
 - self      → 不按组织维度，只看指派给本人的数据（组织集合为空）
-
-任务可见性额外有一条兜底规则：
-    可见任务 = 任务所属组织 ∈ 可见组织  OR  责任人 = 本人姓名
-用于解决「任务挂上级部门、责任人属下级」的归属问题。
 """
 from __future__ import annotations
 
@@ -28,6 +34,11 @@ def _children_map(db: Session) -> dict[str | None, list[str]]:
 
 
 def visible_org_ids(db: Session, user: User) -> list[str]:
+    """登录人的可见组织集合。
+
+    当前供登录接口回传 `visibleOrgs` 使用（前端展示与任务模块的边界判断）。
+    驾驶舱与指标维护不再用它过滤数据。
+    """
     scope = effective_scope(db, user)
     if scope == "all":
         return list(db.scalars(select(Organization.id)).all())
@@ -45,10 +56,6 @@ def visible_org_ids(db: Session, user: User) -> list[str]:
                     stack.append(child)
         return out
     return [user.dept_id]
-
-
-def org_in_scope(db: Session, user: User, org_id: str) -> bool:
-    return org_id in visible_org_ids(db, user)
 
 
 def visible_task_filter(db: Session, user: User) -> ColumnElement[bool] | None:

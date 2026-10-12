@@ -1,6 +1,9 @@
 """规则生成分析总结 · 确定性模板拼装，不引入 AI。
 
 结构：整体结论 → 亮点 → 风险（指标 / 监控 / 任务）→ 建议。
+
+**权限口径**：本模块服务于经营驾驶舱，只按角色权限开放，不做数据范围（可见范围）过滤
+—— 其中的任务统计同样按全量口径参与经营分析。数据范围仅用于任务模块本身。
 """
 from __future__ import annotations
 
@@ -9,8 +12,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import MetricDef, Organization, Task, User
-from app.services import scope as scope_svc
+from app.models import MetricDef, Organization, Task
 from app.services.achievement import (
     _f,
     calc_achievement,
@@ -106,7 +108,7 @@ def _trend_for(db: Session, def_: MetricDef, period: str, org_id: str, idx) -> d
     return {"delta": delta, "prev": old, "cur": cur, "prevLabel": label, "isGood": is_good}
 
 
-def build_summary(db: Session, period: str, org_id: str, user: User) -> dict:
+def build_summary(db: Session, period: str, org_id: str) -> dict:
     idx = load_index(db)
     group = "project" if _is_project(db, org_id) else "annual"
     defs_all = all_defs(db)
@@ -208,12 +210,9 @@ def build_summary(db: Session, period: str, org_id: str, user: User) -> dict:
         if fau_doing is not None and fau_doing > 0:
             risks.append({"type": "monitor", "org": org_id, "text": f"本期共 {_fmt(fau_tot) if fau_tot is not None else '—'} 起车辆故障，其中 {_fmt(fau_doing)} 起未修复完成，需关注车辆可用率。"})
 
-    # 任务侧
+    # 任务侧：按全量口径统计（驾驶舱不做数据范围过滤，与页面口径一致）
     year = str(period)[:4]
     tq = select(Task).where(Task.end_date >= date(int(year), 1, 1), Task.end_date <= date(int(year), 12, 31))
-    cond = scope_svc.visible_task_filter(db, user)
-    if cond is not None:
-        tq = tq.where(cond)
     tasks = list(db.scalars(tq).all())
     health = [{"t": t, "h": task_health(_f(t.target) or 0.0, _f(t.done) or 0.0, t.end_date, bool(t.abnormal))} for t in tasks]
     overdue = [x for x in health if x["h"]["level"] == "overdue"]

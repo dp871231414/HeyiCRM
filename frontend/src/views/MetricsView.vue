@@ -11,27 +11,10 @@
       </div>
     </div>
 
-    <div v-if="board && view.orgId !== 'CO'" class="card p-3.5 border-brand-100 bg-brand-50 text-xs text-brand-700">
-      当前数据范围为你所属的部门。能否维护只看权限：公司整体目标需「维护公司整体目标」权限，
-      项目公司指标需「维护项目公司指标」权限，项目公司的新增 / 编辑 / 删除各有独立权限项；
-      数据可见范围决定你能看到哪些组织。
-      指标目标只下达在公司与项目公司层级，部门没有独立指标数据。
-    </div>
-
     <div v-if="error" class="card p-4 border-bad-100 bg-bad-50 text-sm text-bad-600 flex items-center gap-3">
       加载失败：{{ error }} <button class="btn-ghost btn-sm" @click="load">重试</button>
     </div>
     <div v-if="loading" class="card p-10 text-center text-slate-400 text-sm">加载中…</div>
-
-    <!-- 本人范围：无组织维度数据 -->
-    <div v-else-if="noOrgDimension" class="card p-8 text-center space-y-2">
-      <div class="text-sm font-bold text-slate-700">当前账号的数据可见范围为「本人」</div>
-      <p class="text-xs text-slate-500 leading-relaxed">
-        指标按组织维度归集，「本人」范围不含任何组织的指标数据，因此本页无内容可维护。<br />
-        你仍可在「任务管理」中查看与维护本人负责的任务；如需录入指标，
-        请联系管理员将数据可见范围调整为「本部门」或更高。
-      </p>
-    </div>
 
     <template v-else-if="board">
       <!-- 模块一 · 公司整体目标 -->
@@ -169,7 +152,7 @@
         </div>
 
         <div v-if="!board.project.companies.length" class="card p-8 text-center text-sm text-slate-400">
-          可见范围内暂无项目公司
+          暂无项目公司
         </div>
 
         <div v-else class="card overflow-x-auto">
@@ -363,7 +346,7 @@ function canEditAnnual() {
 function canEditMonitor() {
   return !!board.value?.canEditMonitor
 }
-/** 模块三 · 项目公司指标：需「维护项目公司指标」，且该组织在可见范围内 */
+/** 模块三 · 项目公司指标：需「维护项目公司指标」权限（不按数据可见范围限制） */
 function canEdit(orgId: string) {
   return !!board.value?.editableProjects?.includes(orgId)
 }
@@ -392,19 +375,10 @@ function seedDraft(rows: MetricRow[], orgId: string) {
   })
 }
 
-/** 本人范围：无组织维度数据（与后端 visibleOrgs 口径一致） */
-const noOrgDimension = computed(() => auth.scope === 'self')
-
 let loadSeq = 0
 async function load() {
   if (!view.period || !view.contextReady) return
   const seq = ++loadSeq
-  if (noOrgDimension.value) {
-    loading.value = false
-    error.value = ''
-    board.value = null
-    return
-  }
   loading.value = true
   error.value = ''
   try {

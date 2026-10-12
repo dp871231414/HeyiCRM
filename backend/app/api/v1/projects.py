@@ -1,4 +1,9 @@
-"""项目公司路由：独立核算单元的增删改查。"""
+"""项目公司路由：独立核算单元的增删改查。
+
+**权限口径**：本模块属于指标维护，只按**角色权限**（`metric.view` / `project.create`
+/ `project.edit` / `project.delete`）判断能否查看与操作，不做数据可见范围校验
+—— 数据范围（scope）仅用于任务模块。
+"""
 from __future__ import annotations
 
 import re
@@ -13,7 +18,6 @@ from app.core.deps import require_perm
 from app.db.session import get_db
 from app.models import MetricActual, MetricTarget, Organization, Task, User
 from app.schemas.org import ImpactOut, ProjectCreate, ProjectUpdate
-from app.services import scope as scope_svc
 from app.services.audit import write_log
 from app.services.serializers import project_impact
 
@@ -42,14 +46,12 @@ def _project_out(db: Session, org: Organization) -> dict:
 
 @router.get("")
 def list_projects(db: Session = Depends(get_db), user: User = Depends(require_perm("metric.view"))):
-    visible = scope_svc.visible_org_ids(db, user)
     orgs = db.scalars(
         select(Organization).where(Organization.type == ORG_TYPE_PROJECT).order_by(Organization.id)
     ).all()
     return [
         {"id": o.id, "name": o.name, "head": o.head, "parentId": o.parent_id, "impact": project_impact(db, o.id)}
         for o in orgs
-        if o.id in visible
     ]
 
 
@@ -92,9 +94,6 @@ def update_project(
     org = db.get(Organization, project_id)
     if not org or org.type != ORG_TYPE_PROJECT:
         raise HTTPException(status_code=404, detail="仅可编辑项目公司")
-    # 可见范围兜底：不可见的组织不可操作（权限点决定「能不能做」，可见范围决定「能作用于哪些对象」）
-    if not scope_svc.org_in_scope(db, user, project_id):
-        raise HTTPException(status_code=403, detail="无权操作该组织")
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="公司名称不能为空")
@@ -126,8 +125,6 @@ def delete_project(
     org = db.get(Organization, project_id)
     if not org or org.type != ORG_TYPE_PROJECT:
         raise HTTPException(status_code=404, detail="仅可删除项目公司")
-    if not scope_svc.org_in_scope(db, user, project_id):
-        raise HTTPException(status_code=403, detail="无权操作该组织")
     imp = project_impact(db, project_id)
     # 被删节点的上级（项目公司固定挂在 CO 下），用于承接子组织与人员
     parent = org.parent_id or "CO"

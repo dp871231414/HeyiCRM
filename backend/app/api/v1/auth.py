@@ -63,5 +63,6 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return {
         "user": user_brief(db, user),
         "perms": get_user_perms(db, user),
+        # 可见组织集合 · 供任务模块的边界判断使用；驾驶舱与指标维护不按数据范围过滤
         "visibleOrgs": scope_svc.visible_org_ids(db, user),
     }

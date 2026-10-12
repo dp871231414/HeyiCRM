@@ -492,3 +492,61 @@ cd tools
 BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node verify-changes.mjs
 BASE_URL=https://heyi-fleet-dashboard.app.workbuddy.host node verify-round3.mjs
 ```
+
+---
+
+## 十五、第八轮变更测试（2026-10-12）
+
+### 15.1 后端用例（92 项，含本轮新增 4 项 / 改写 3 项）
+
+| 用例 | 断言要点 | 结果 |
+|---|---|---|
+| `test_dashboard_open_by_perm_not_scope` | 部门负责人在**全公司口径**下访问 summary / overview / trend / trends 均 200（不再按范围 403） | ✅ |
+| `test_dashboard_task_stats_are_global` | 驾驶舱里的任务统计与管理员完全一致（全量口径） | ✅ |
+| `test_task_module_still_isolates_by_scope` | 任务列表仍收窄（严格子集），范围外任务详情 403 —— 守住「唯一保留数据权限的模块」 | ✅ |
+| `test_projects_list_not_scope_filtered` | 项目公司列表按全公司口径返回 | ✅ |
+| `test_metric_board_open_by_perm_not_scope`（改写自 `test_head_scope_dept_sub`） | 跨组织不再 403；项目公司列全量 | ✅ |
+| `test_board_project_edit_is_perm_based`（改写自 `test_board_edit_scope_dept_head_readonly`） | 有 `metric.edit_project` 即可维护全部项目公司；无权限则为空 | ✅ |
+| `test_board_project_head_edit_covers_all_projects`（改写自 `test_board_project_head_only_own`） | 项目公司负责人可维护全部项目公司 | ✅ |
+
+### 15.2 浏览器验收
+
+| 脚本 | 覆盖 | 本地 | 线上 |
+|---|---|---|---|
+| `tools/verify-round7.mjs`（**本轮新增**） | 数据权限边界（驾驶舱与指标维护按权限开放、任务模块仍收窄） | ✅ 16/16 | 见下 |
+| `tools/verify-changes.mjs` | 历史需求 | ✅ 26/26（3 跳过） | — |
+| `tools/verify-round3.mjs` | 月份组件、项目公司入口 | ✅ 23/23 | — |
+| `tools/verify-round4.mjs` | 分页、冻结列、分组标题 | ✅ 17/17（2 跳过） | — |
+| `tools/verify-round5.mjs` | 权限三块分组、指标维护页性能 | ✅ 8/8 | — |
+| `tools/verify-round6.mjs` | 组织结构保存体验 | ✅ 12/12 | — |
+
+本轮专项要点：
+
+| 分组 | 覆盖点 | 结果 |
+|---|---|---|
+| 驾驶舱 | 部门范围账号可见完整经营数据；无「加载失败」；「本人范围」空态已消失 | ✅ |
+| 指标维护 | 三块齐全；项目公司出现 3 个（全公司口径） | ✅ |
+| 任务模块 | 管理员 3 条 → 部门负责人 1 条（范围仍生效） | ✅ |
+| 组织视角 | 顶栏无 `select` | ✅ |
+| 数据还原 | 临时切换的可见范围已还原、造的 3 条任务已删除 | ✅ |
+
+> `verify-round7.mjs` 需要先运行验证。脚本本身不新增账号（后端没有删除账号的 HTTP 接口），
+> 而是**可逆地**临时把 `huguohai` 的可见范围切到 `dept_sub`，结束时还原并删除造的数据。
+
+### 15.3 本轮修复的缺陷
+
+| 编号 | 缺陷 | 影响 | 处理 |
+|---|---|---|---|
+| D-15 | 驾驶舱与指标维护按数据可见范围拦截与裁剪 | 部门范围账号看不到完整经营口径（403 或按部门裁剪），与「全公司与项目公司非递归汇总」的业务前提冲突 | 两模块改为只按角色权限；数据范围收敛到任务模块 |
+| D-16 | 驾驶舱的任务统计沿用任务侧范围过滤 | 同一页面里指标口径为全量、任务口径为部门，结论自相矛盾 | 抽出 `dept_stats_all(db, cond=None)`，驾驶舱取全量 |
+| D-17 | `build_summary` 依赖 `user` 仅为套用范围过滤 | 参数语义与模块定位不符 | 去掉该参数 |
+
+### 15.4 复现命令
+
+```bash
+# 后端（92 项）
+cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q
+
+# 本轮专项（16 项；会临时改可见范围与造数，脚本内已还原）
+cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round7.mjs
+```

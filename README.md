@@ -2,19 +2,27 @@
 
 前后端分离的集团级经营看板系统，将原单文件 HTML 原型演进为可正式部署的生产级应用。
 
+> **接手开发请看 [`交接说明.md`](./交接说明.md)** —— 一份文档覆盖：跑起来、目录地图、权限模型（最容易改错的部分）、
+> 测试与验收脚本、部署方式、关键决策、已知的坑与待办。
+
 - **后端**：Python 3.13 + FastAPI + SQLAlchemy 2.0 + Pydantic v2 + Alembic + PostgreSQL 15
 - **前端**：Vue 3 + TypeScript + Vite 6 + Tailwind CSS + Pinia + Vue Router
-- **部署**：Docker Compose（PostgreSQL + API + Nginx Web）
+- **部署**：Docker Compose（PostgreSQL + API + Nginx Web），或后端同源托管前端产物（单端口）
 
 ## 目录结构
 
 ```
 .
-├── docs/               # SDD 规范文档（需求/设计/页面布局/任务清单/开发规则）
+├── 交接说明.md          # ★ 接手开发先读这一份
+├── README.md           # 本文件：概览与快速开始
+├── 项目入口.html        # 本地启动台（各入口地址一览）
+├── 启动看板.command/.sh  # 本地一键启动（.command 为双击入口，逻辑在 .sh）
+├── docs/               # SDD 规范文档（需求/设计/页面布局/任务清单/测试报告/开发规则）
 │   ├── proposal.md     # 产品需求文档（PRD）
 │   ├── design.md       # 技术设计文档（前后端分离可部署方案）
 │   ├── layouts/        # 逐页布局示意
 │   ├── tasks.md        # 任务拆解清单
+│   ├── test-report.md  # 测试报告（按轮次记录）
 │   └── project_rules.md# AI 开发规则与编码规范
 ├── backend/            # FastAPI 后端服务
 │   ├── app/            # 应用源码（models/schemas/services/api/core/db）
@@ -27,6 +35,7 @@
 │   ├── src/            # 页面/组件/状态/API 层
 │   ├── nginx.conf      # 生产 Nginx（静态资源 + API 反代）
 │   └── Dockerfile
+├── tools/              # 浏览器验收与诊断脚本（Playwright）
 └── deploy/             # 一键部署编排
     ├── docker-compose.yml
     └── .env.example
@@ -104,22 +113,29 @@ uvicorn app.main:app --port 8000
 cd ../frontend && npm install && npm run dev
 ```
 
-4. 自检：`cd backend && pytest -q`（应为 49 passed）。
+4. 自检：`cd backend && pytest -q`（应为 92 passed）。
 
 > WorkBuddy 的「发布的应用」卡片记录的是「哪个本地目录发布了该应用」。换设备后本机没有那个目录，会提示「找不到本地工程目录」——
 > 这只影响本地预览与重新发布，**不影响已上线的分享链接**。
 
 ## 演示账号
 
-种子数据内置 14 个账号，初始密码由 `SEED_PASSWORD` 控制（默认 `Demo#2026`）：
+演示库按业务方要求清理过，当前**只有两个账号、没有任务数据**：
 
-| 账号 | 姓名 | 角色 | 部门 |
-|------|------|------|------|
-| `chenzm` | 陈志明 | 系统管理员 | 全公司 |
-| `linxue` | 林雪 | 部门负责人 | 市场部 |
-| `wangjg` | 王建国 | 部门负责人 | 财务部 |
-| `zhengkai` | 郑凯 | 成员 | 市场部 |
-| `liqiang` | 李强 | 部门负责人 | 合一重卡运营公司(PC1) |
+| 账号 | 姓名 | 角色 | 部门 | 密码 |
+|------|------|------|------|------|
+| `chenzm` | 陈志明 | 系统管理员 | 全公司 | `Demo#2026` |
+| `huguohai` | 胡国海 | 部门负责人 | 运营部（D03） | 本地为 `Demo#2026` |
+
+需要完整的 14 账号 / 14 任务演示数据时，重置一次种子：
+
+```bash
+cd backend && SEED_RESET=1 sh start.sh
+# 或：DATABASE_URL="sqlite:///./dev.db" .venv/bin/python -m app.seed   （仅全新库会灌数据）
+```
+
+> 种子数据只在**首次初始化**（库里连一个账号都没有）时灌入，否则清空数据后重启会「复活」——
+> 这是有意设计，避免管理员清理无效。
 
 ## 核心指标口径
 
@@ -135,11 +151,24 @@ cd ../frontend && npm install && npm run dev
 3. **指标维护** — 公司整体目标 / 指标监控 / 项目公司指标（列表化增删）
 4. **账号管理** — 组织结构（全公司 + 11 部门）、账号、角色权限（菜单+按钮级 RBAC）
 
+## 权限口径（改权限相关代码前先看）
+
+| 模块 | 判断依据 | 数据口径 |
+|---|---|---|
+| 任务管理 | 角色权限 + **数据可见范围** | 按可见范围收窄 |
+| 经营驾驶舱 | 只按角色权限 | 全公司口径 |
+| 指标维护 | 只按角色权限 | 全公司口径 |
+
+**数据可见范围（scope）只作用于任务模块。** 依据：全公司与项目公司不是递归汇总关系
+（项目公司只承载运营收入，销售收入来自系统中未体现的主体），按部门范围裁剪经营数据会让人误读口径。
+详见 [`交接说明.md` §7](./交接说明.md)。
+
 ## 测试与文档
 
-- 后端测试：`cd backend && pytest -q`（42 项通过）
+- 后端测试：`cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q`（92 项通过）
+- 浏览器验收：`cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round7.mjs`（另有 6 套历史脚本，见交接说明 §10）
 - 接口文档：启动后访问 `http://localhost:8000/api/docs`
-- 完整规范见 `docs/` 目录，部署细节见 `docs/design.md` §12
+- 完整规范见 `docs/` 目录，部署细节见 `docs/design.md`
 
 ## 本机运行状态（迁移后）
 
