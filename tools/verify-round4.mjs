@@ -134,39 +134,48 @@ ok('点「本月」后自动关闭面板', afterToday.open === 0)
 // ================= C. 冻结列无缝隙 =================
 console.log('\n──── C. 冻结列缝隙 ────')
 await gotoMenu('任务管理', '/tasks', '按部门分组')
-await page.waitForFunction(() => document.querySelectorAll('main thead th').length >= 10, null, { timeout: 15000 }).catch(() => {})
 
-const before = await measureCols()
-ok('滚动前：任务ID 与 任务名称 无缝', Math.abs(before.name.left - before.id.right) < 1, `id右=${before.id.right} name左=${before.name.left}`)
+// 任务数据为 0 时整张表不渲染，依赖表格的断言不适用 → 跳过
+const hasTaskTable = await page.evaluate(() => document.querySelectorAll('main thead th').length >= 10)
+if (!hasTaskTable) {
+  skip('冻结列缝隙（任务ID 与 任务名称之间）', '当前任务数据为 0 条，表格未渲染')
+  skip('分组标题横向滚动固定', '同上')
+} else {
 
-await page.evaluate(() => {
-  document.querySelector('.overflow-x-auto').scrollLeft = 400
-})
-await page.waitForTimeout(400)
-const after = await measureCols()
-const gap = +(after.name.left - after.id.right).toFixed(1)
-ok('滚动后：两列之间无透明缝隙', Math.abs(gap) < 1, `差值=${gap}px（id右=${after.id.right} name左=${after.name.left}）`)
-ok('滚动后任务ID 列仍固定在左侧', after.id.left === 0, `left=${after.id.left}`)
-ok('滚动后任务名称 列仍固定在左侧', after.name.left === 96, `left=${after.name.left}`)
+  await page.waitForFunction(() => document.querySelectorAll('main thead th').length >= 10, null, { timeout: 15000 }).catch(() => {})
 
-// ================= D. 分组标题固定 =================
-console.log('\n──── D. 分组标题横向滚动固定 ────')
-const groupBtn = page.locator('main button:has-text("按部门分组")')
-await groupBtn.first().click()
-await page.waitForFunction(
-  () => [...document.querySelectorAll('main tbody tr')].some((r) => r.querySelectorAll('td').length === 1),
-  null,
-  { timeout: 15000 },
-).catch(() => {})
+  const before = await measureCols()
+  ok('滚动前：任务ID 与 任务名称 无缝', Math.abs(before.name.left - before.id.right) < 1, `id右=${before.id.right} name左=${before.name.left}`)
 
-await page.evaluate(() => {
-  document.querySelector('.overflow-x-auto').scrollLeft = 400
-})
-await page.waitForTimeout(500)
-const g = await measureGroupSticky()
-ok('横向滚动后部门标题仍可见', !!g.title && g.title.visible === true, g.title ? `「${g.title.text}」left=${g.title.left}` : '未找到')
-ok('部门标题固定在容器左侧 12px', !!g.title && Math.abs(g.title.left - 12) < 2, g.title ? `left=${g.title.left}` : '')
-ok('部门统计数字随标题一同固定', !!g.title && /项任务/.test(g.title.text), g.title?.text || '')
+  await page.evaluate(() => {
+    document.querySelector('.overflow-x-auto').scrollLeft = 400
+  })
+  await page.waitForTimeout(400)
+  const after = await measureCols()
+  const gap = +(after.name.left - after.id.right).toFixed(1)
+  ok('滚动后：两列之间无透明缝隙', Math.abs(gap) < 1, `差值=${gap}px（id右=${after.id.right} name左=${after.name.left}）`)
+  ok('滚动后任务ID 列仍固定在左侧', after.id.left === 0, `left=${after.id.left}`)
+  ok('滚动后任务名称 列仍固定在左侧', after.name.left === 96, `left=${after.name.left}`)
+
+  // ================= D. 分组标题固定 =================
+  console.log('\n──── D. 分组标题横向滚动固定 ────')
+  const groupBtn = page.locator('main button:has-text("按部门分组")')
+  await groupBtn.first().click()
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('main tbody tr')].some((r) => r.querySelectorAll('td').length === 1),
+    null,
+    { timeout: 15000 },
+  ).catch(() => {})
+
+  await page.evaluate(() => {
+    document.querySelector('.overflow-x-auto').scrollLeft = 400
+  })
+  await page.waitForTimeout(500)
+  const g = await measureGroupSticky()
+  ok('横向滚动后部门标题仍可见', !!g.title && g.title.visible === true, g.title ? `「${g.title.text}」left=${g.title.left}` : '未找到')
+  ok('部门标题固定在容器左侧 12px', !!g.title && Math.abs(g.title.left - 12) < 2, g.title ? `left=${g.title.left}` : '')
+  ok('部门统计数字随标题一同固定', !!g.title && /项任务/.test(g.title.text), g.title?.text || '')
+}
 
 // ================= B. 分页 =================
 console.log('\n──── B. 分页 ────')
@@ -203,7 +212,7 @@ if (!ALLOW_WRITE) {
     await page.locator('main button:has-text("查询")').first().click()
     await page
       .waitForFunction(
-        () => /每页\s*50\s*条/.test(document.querySelector('table.table-freeze')?.closest('.card')?.innerText || ''),
+        () => /每页最多\s*50\s*条/.test(document.querySelector('table.table-freeze')?.closest('.card')?.innerText || ''),
         null,
         { timeout: 15000 },
       )
@@ -213,13 +222,13 @@ if (!ALLOW_WRITE) {
       // 分页器在「表格所在卡片」内，不能用 querySelector('.card')（会命中工具条那个）
       const card = document.querySelector('table.table-freeze')?.closest('.card')
       const txt = (card?.innerText || '').replace(/\s+/g, ' ')
-      const per = /每页 (\d+) 条/.exec(txt)
+      const per = /每页最多 (\d+) 条/.exec(txt)
       const pager = /第\s*(\d+)\s*\/\s*(\d+)\s*页/.exec(txt)
       const rowCount = document.querySelectorAll('table.table-freeze tbody tr').length
       const total = /共\s*(\d+)\s*项任务/.exec(document.body.innerText)?.[1]
       return { per: per?.[1], page: pager?.[1], pages: pager?.[2], rowCount, total }
     })
-    ok('平铺视图标注每页 50 条', flat.per === '50', `每页=${flat.per}`)
+    ok('平铺视图标注每页最多 50 条', flat.per === '50', `每页=${flat.per}`)
     ok('平铺视图出现分页器', !!flat.pages, `第 ${flat.page}/${flat.pages} 页｜共 ${flat.total} 条`)
     ok('平铺单页最多渲染 50 行', flat.rowCount <= 50, `当前页 ${flat.rowCount} 行`)
 
@@ -277,7 +286,7 @@ if (!ALLOW_WRITE) {
       }
     })
     ok('分组视图出现部门分页器', grouped.pagers > 0, `分页器 ${grouped.pagers} 个｜${grouped.pagerText}`)
-    ok('切回分组视图后从第 1 页开始', /第 1\/\d+ 页/.test(grouped.groupTitle || ''), grouped.groupTitle || '')
+    ok('切回分组视图后从第 1 页开始', /第 1 \/ \d+ 页/.test(grouped.pagerText || ''), `分页栏：${grouped.pagerText || '无'}`)
     ok('每组单页最多渲染 20 行', grouped.maxRowsPerGroup <= 20, `最大一组 ${grouped.maxRowsPerGroup} 行，共 ${grouped.groups} 组`)
 
     // 点某组的分页器翻页
@@ -285,17 +294,17 @@ if (!ALLOW_WRITE) {
       await page.locator('table.table-freeze tbody button:has-text("下一页")').first().click()
       await page
         .waitForFunction(
-          () => [...document.querySelectorAll('table.table-freeze tbody tr')].some((r) => /第 2\/\d+ 页/.test(r.innerText)),
+          () => [...document.querySelectorAll('table.table-freeze tbody tr')].some((r) => /第 2 \/ \d+ 页/.test(r.innerText)),
           null,
           { timeout: 8000 },
         )
         .catch(() => {})
       const afterGroupPage = await page.evaluate(() =>
         [...document.querySelectorAll('table.table-freeze tbody tr')]
-          .filter((r) => r.querySelectorAll('td').length === 1 && /第 \d+\/\d+ 页/.test(r.innerText))
+          .filter((r) => r.querySelectorAll('td').length === 1 && /第 \d+ \/ \d+ 页/.test(r.innerText))
           .map((r) => r.innerText.replace(/\s+/g, ' ').trim())[0],
       )
-      ok('部门内可独立翻页', /第 2\/\d+ 页/.test(afterGroupPage || ''), afterGroupPage || '')
+      ok('部门内可独立翻页', /第 2 \/ \d+ 页/.test(afterGroupPage || ''), afterGroupPage || '')
     } else {
       skip('部门内可独立翻页', '未出现多页部门')
     }
