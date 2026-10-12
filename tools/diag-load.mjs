@@ -13,6 +13,10 @@
 import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
+// 凭据用脚本专用变量：不要拿 shell 内置的 USER / PWD 兜底，
+// 它们分别已是「当前用户名」与「当前工作目录」，`||` 默认值永远不会生效。
+const LOGIN_USER = process.env.DIAG_USER || 'chenzm'
+const LOGIN_PWD = process.env.DIAG_PWD || 'Demo#2026'
 const browser = await chromium.launch()
 // 全新 context = 无缓存，等价于首次访问
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -34,16 +38,28 @@ page.on('requestfinished', async (r) => {
     /* 忽略无法取到 timing 的请求 */
   }
 })
+const failedApi = []
+page.on('response', (r) => {
+  if (r.url().includes('/api/') && r.status() >= 400) failedApi.push(`${r.status()} ${r.url().replace(BASE, '')}`)
+})
 
 await page.goto(BASE, { waitUntil: 'domcontentloaded' })
 const tDomReady = Date.now() - t0
 
-await page.fill('input[type="text"], input:not([type])', process.env.USER || 'chenzm')
-const pw = page.locator('input[type="password"]')
-if (await pw.count()) {
-  await pw.fill(process.env.PWD || 'Demo#2026')
-  await page.click('button[type="submit"], button:has-text("登录")')
+// 必须等登录页真正就绪再操作：SPA 的输入框由 JS 渲染，
+// 在 DOMContentLoaded 后立刻填写会因 v-model 尚未绑定而提交空值（脚本自身曾踩过这个坑）。
+await page.waitForSelector('input[type="password"]', { state: 'visible', timeout: 20000 }).catch(() => {})
+const accountInput = page.locator('input[type="text"], input:not([type])').first()
+const passwordInput = page.locator('input[type="password"]').first()
+await accountInput.fill(LOGIN_USER)
+await passwordInput.fill(LOGIN_PWD)
+// 回读确认值真的进了输入框（不打印明文，只看长度）
+const filled = {
+  account: await accountInput.inputValue().catch(() => ''),
+  pwdLen: (await passwordInput.inputValue().catch(() => '')).length,
 }
+console.log(`[脚本] 填入校验：账号="${filled.account}" 密码长度=${filled.pwdLen}`)
+await page.locator('button[type="submit"], button:has-text("登录")').first().click()
 await page.waitForFunction(() => !!document.querySelector('aside nav'), null, { timeout: 30000 }).catch(() => {})
 const tLoggedIn = Date.now() - t0
 await page
@@ -83,6 +99,7 @@ const avg = (list) => (list.length ? Math.round(list.reduce((a, r) => a + r.ttfb
 console.log('\n═══ 汇总 ═══')
 console.log(`  请求总数 ${sorted.length}（API ${api.length} / 静态资源 ${assets.length}）`)
 console.log(`  平均 TTFB：API ${avg(api)}ms，静态资源 ${avg(assets)}ms`)
+if (failedApi.length) console.log(`  失败的接口：${failedApi.join(' | ')}`)
 console.log(`  最慢的 3 个请求：`)
 ;[...sorted]
   .sort((a, b) => b.ttfb - a.ttfb)
