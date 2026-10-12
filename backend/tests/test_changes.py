@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import io
+
 from tests.conftest import login
 
 
@@ -179,3 +181,204 @@ def test_board_accepts_month_without_data(client, admin_headers):
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["period"] == period
+
+
+# ---------------------------------------------------------------- 模板与导出（本轮新增）
+
+_MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _load_xlsx(content: bytes):
+    from openpyxl import load_workbook
+
+    return load_workbook(io.BytesIO(content))
+
+
+def _header_of(ws, n: int, row: int) -> list:
+    return [ws.cell(row=row, column=i).value for i in range(1, n + 1)]
+
+
+def test_task_template_columns_match_list_and_form(client, admin_headers):
+    """模板列名与「任务管理」列表/表单同一套叫法，且补齐了「数量单位」。"""
+    from app.services.importer import HEADER_ROW, TASK_COLUMNS
+
+    resp = client.get("/api/v1/tasks/import/template", headers=admin_headers)
+    assert resp.status_code == 200
+    ws = _load_xlsx(resp.content).worksheets[0]
+    assert _header_of(ws, len(TASK_COLUMNS), HEADER_ROW) == TASK_COLUMNS
+    # 不再使用「一级任务 / 二级任务」这类仅模板可见的旧叫法
+    assert "一级任务" not in TASK_COLUMNS and "二级任务" not in TASK_COLUMNS
+    # 表单里有、原来模板缺失的字段
+    for name in ("任务名称", "任务分类", "任务描述", "数量单位"):
+        assert name in TASK_COLUMNS
+
+
+def test_task_template_styling(client, admin_headers):
+    """说明栏 + 表头背景色 + 冻结表头。"""
+    from app.services.importer import _BLUE_MAIN, HEADER_ROW, TASK_COLUMNS
+
+    ws = _load_xlsx(client.get("/api/v1/tasks/import/template", headers=admin_headers).content).worksheets[0]
+    banner = ws.cell(row=1, column=1).value
+    assert banner and "模板" in str(banner), "顶部应有说明栏标题"
+    head = ws.cell(row=HEADER_ROW, column=1)
+    assert str(head.fill.fgColor.rgb).endswith(_BLUE_MAIN), "字段名称栏应有背景色"
+    assert head.font.bold and ws.freeze_panes == f"A{HEADER_ROW + 1}"
+
+
+def test_task_template_notes_mention_unit_and_system_columns(client, admin_headers):
+    wb = _load_xlsx(client.get("/api/v1/tasks/import/template", headers=admin_headers).content)
+    notes = wb["填写说明"]
+    txt = " ".join(str(notes.cell(row=r, column=1).value or "") for r in range(1, notes.max_row + 1))
+    assert "数量单位" in txt
+    assert "创建人" in txt and "创建时间" in txt
+
+
+def test_task_export_columns_align_with_list(client, admin_headers):
+    """导出列 = 任务ID + 全部可填写列 + 系统列；业务列与导入模板同名。"""
+    from app.services.importer import HEADER_ROW, TASK_COLUMNS, TASK_EXPORT_COLUMNS
+
+    resp = client.get("/api/v1/tasks/export", headers=admin_headers)
+    assert resp.status_code == 200
+    ws = _load_xlsx(resp.content).worksheets[0]
+    header = _header_of(ws, len(TASK_EXPORT_COLUMNS), HEADER_ROW)
+    assert header == TASK_EXPORT_COLUMNS
+    for name in TASK_COLUMNS:
+        assert name in header
+    for name in ("任务ID", "完成进度", "状态", "创建人", "创建时间", "更新时间"):
+        assert name in header
+
+
+def test_task_export_uses_dept_name_and_creator_name(client, admin_headers):
+    """责任部门输出组织名称（不再是编码），创建人输出姓名。"""
+    from app.services.importer import HEADER_ROW, TASK_EXPORT_COLUMNS
+
+    ws = _load_xlsx(client.get("/api/v1/tasks/export", headers=admin_headers).content).worksheets[0]
+    idx = {name: i + 1 for i, name in enumerate(TASK_EXPORT_COLUMNS)}
+    depts, creators = set(), set()
+    for r in range(HEADER_ROW + 1, ws.max_row + 1):
+        depts.add(ws.cell(row=r, column=idx["责任部门"]).value)
+        creators.add(ws.cell(row=r, column=idx["创建人"]).value)
+    assert "市场部" in depts, f"应为组织名称，实际：{depts}"
+    assert not any(str(d).startswith("D0") for d in depts), "不应输出组织编码"
+    assert any(c for c in creators), "创建人应有姓名"
+
+
+def test_task_export_is_reimportable(client, admin_headers):
+    """导出文件可直接当导入模板回灌（列齐全，能通过解析）。"""
+    from app.services.importer import TASK_COLUMNS, TASK_OPTIONAL_COLUMNS, parse_rows
+
+    content = client.get("/api/v1/tasks/export", headers=admin_headers).content
+    rows = parse_rows(content, TASK_COLUMNS, 2000, optional=TASK_OPTIONAL_COLUMNS)
+    assert rows, "导出内容应能被解析出数据行"
+    assert all(r["任务名称"] for r in rows)
+
+
+def test_parse_rows_skips_banner_row():
+    """模板顶部有说明栏时，表头行应被自动定位。"""
+    from openpyxl import Workbook
+
+    from app.services.importer import TASK_COLUMNS, TASK_OPTIONAL_COLUMNS, parse_rows
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["重点任务导入标准模板"])
+    ws.append(["请勿修改第 4 行字段名称"])
+    ws.append([])
+    ws.append(TASK_COLUMNS)
+    vals = {
+        "任务名称": "带说明栏的任务",
+        "目标": 1,
+        "已完成": 0,
+        "计划开始日期": "2026-01-01",
+        "计划结束日期": "2026-12-31",
+        "责任部门": "市场部",
+        "责任人": "郑凯",
+    }
+    ws.append([vals.get(c, "") for c in TASK_COLUMNS])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    rows = parse_rows(buf.getvalue(), TASK_COLUMNS, 100, optional=TASK_OPTIONAL_COLUMNS)
+    assert len(rows) == 1
+    assert rows[0]["任务名称"] == "带说明栏的任务"
+
+
+def test_parse_rows_tolerates_legacy_template_missing_optional_column():
+    """老模板缺少「数量单位」等可选列时仍可导入，按空值处理。"""
+    from openpyxl import Workbook
+
+    from app.services.importer import TASK_COLUMNS, TASK_OPTIONAL_COLUMNS, parse_rows
+
+    legacy = [c for c in TASK_COLUMNS if c != "数量单位"]
+    wb = Workbook()
+    ws = wb.active
+    ws.append(legacy)
+    vals = {
+        "任务名称": "老模板任务",
+        "目标": 1,
+        "已完成": 0,
+        "计划开始日期": "2026-01-01",
+        "计划结束日期": "2026-12-31",
+        "责任部门": "市场部",
+        "责任人": "郑凯",
+    }
+    ws.append([vals.get(c, "") for c in legacy])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    rows = parse_rows(buf.getvalue(), TASK_COLUMNS, 100, optional=TASK_OPTIONAL_COLUMNS)
+    assert rows[0]["任务名称"] == "老模板任务"
+    assert rows[0].get("数量单位", "") == ""
+
+
+def test_parse_rows_still_rejects_missing_required_column():
+    """必填列缺失仍需报错。"""
+    from openpyxl import Workbook
+
+    from app.services.importer import TASK_COLUMNS, TASK_OPTIONAL_COLUMNS, parse_rows
+
+    cols = ["任务名称", "目标"]  # 缺少日期、部门、责任人等必填列
+    wb = Workbook()
+    ws = wb.active
+    ws.append(cols)
+    ws.append(["x", 1])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    try:
+        parse_rows(buf.getvalue(), TASK_COLUMNS, 100, optional=TASK_OPTIONAL_COLUMNS)
+    except ValueError as exc:
+        assert "模板缺少列" in str(exc)
+    else:
+        raise AssertionError("应抛出缺少列的 ValueError")
+
+
+def test_task_list_exposes_creator_name(client, admin_headers):
+    """列表返回创建人姓名，供新增的「创建人」列展示。"""
+    items = client.get("/api/v1/tasks", headers=admin_headers).json()["items"]
+    assert items
+    for t in items:
+        assert "createdById" in t and "createdByName" in t
+    assert any(t["createdByName"] for t in items)
+
+
+def test_template_has_no_blank_row_after_header(client, admin_headers):
+    """表头下一行必须直接是示例行。
+
+    回归：freeze_panes 若用 ws.cell(...) 会创建空单元格，导致数据整体下移一行、
+    模板里多出一行空白（解析时虽能跳过，但肉眼可见地不整洁）。
+    """
+    from app.services.importer import HEADER_ROW, TASK_COLUMNS
+
+    ws = _load_xlsx(client.get("/api/v1/tasks/import/template", headers=admin_headers).content).worksheets[0]
+    assert ws.cell(row=HEADER_ROW, column=1).value == TASK_COLUMNS[0]
+    assert ws.cell(row=HEADER_ROW + 1, column=1).value, "表头下一行应直接是示例行"
+    assert ws.freeze_panes == f"A{HEADER_ROW + 1}"
+
+
+def test_export_has_no_blank_row_after_header(client, admin_headers):
+    from app.services.importer import HEADER_ROW
+
+    ws = _load_xlsx(client.get("/api/v1/tasks/export", headers=admin_headers).content).worksheets[0]
+    assert ws.cell(row=HEADER_ROW, column=1).value == "任务ID"
+    assert ws.cell(row=HEADER_ROW + 1, column=1).value, "表头下一行应直接是数据"

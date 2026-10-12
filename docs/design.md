@@ -419,3 +419,67 @@
 | I-1 ~ I-4 数据导入 | `services/importer` | §4, §6.4–6.5, §8 |
 
 **MVP 与后续预留边界**：本期实现 proposal §5 全部功能；预留但不在本期实现的是——云对象存储切换（`storage` 抽象）、多实例水平扩容（鉴权已无状态）、指标版本回滚（数据结构已支持按周期留痕）。
+
+---
+
+## 13. 变更记录
+
+### 13.1 2026-10-12 · 第二批变更
+
+#### 统计周期（M-13）
+
+| 文件 | 变更 |
+|---|---|
+| `frontend/src/constants/period.ts` | **新增**。`MONTH_MIN='2026-09'`、`MONTH_MAX='2099-12'`、`clampMonth()`、`listMonths()` —— 可选范围口径的唯一来源 |
+| `frontend/src/components/MonthPicker.vue` | **新增**。原生 `<input type="month">` + `min`/`max` 约束 + 越界收敛 |
+| `frontend/src/stores/view.ts` | `setPeriods(list, current, asOf)` → `setPeriods(current, asOf)`：不再用「有数据的月份」生成下拉；新增 `setPeriod(value)` 做范围收敛 |
+| `frontend/src/layouts/AppLayout.vue` | 移除顶栏选择器与已无用的 `periods` 状态 |
+| `views/DashboardView.vue`、`views/MetricsView.vue` | 页内引入 MonthPicker；任务管理页不引入 |
+
+#### 指标口径（M-14）
+
+语义未变（实际值本就按月存储"截止当月累计"），本轮为**命名与说明对齐**：
+
+- 口径注释：`services/achievement.py`、`api/v1/metrics.py` 模块注释
+- 元数据：`constants.METRIC_GROUP_META` 的 `annual` / `project` 描述
+- 种子描述：`seed.py` 中回款类指标的 `description`
+- 前端文案：表头「完成值」→「累计完成值」、项目公司列「完成」→「累计完成」、说明条改为"累计完成值为「截止当月」的累计值"；驾驶舱同步
+
+#### 任务字段与模板（T-9 / I-5 / I-6）
+
+| 文件 | 变更 |
+|---|---|
+| `services/achievement.py` | `task_to_dict` 新增 `createdById`（模型本已有 `created_at`/`updated_at`，本轮一并暴露） |
+| `schemas/task.py` | `TaskOut` 新增 `createdById`/`createdByName`/`createdAt`/`updatedAt`；`TaskCreate`/`TaskUpdate` **不含**这些字段，前端传入会被忽略 |
+| `api/v1/tasks.py` | 新增 `_enrich(db, items)` 批量补齐 `deptName` 与 `createdByName`（去重缓存，避免 N+1），替换原先 4 处逐条赋值；导入列名改为复用 `TASK_COLUMNS`；导出改为 `export_tasks(db, rows)` |
+| `services/importer.py` | 列定义重命名并补 `数量单位`；新增 `TASK_OPTIONAL_COLUMNS`、`TASK_EXPORT_COLUMNS`；`parse_rows(..., optional=)` + `_locate_header_row()` 表头自动定位；新增样式层 `_write_banner`/`_style_header`/`_style_data_rows`/`_notes_sheet` |
+| `views/TasksView.vue` | 新增「创建人」列（`COL_COUNT` 13 → 14，表宽同步） |
+
+**模板列对照**
+
+| 位置 | 列 |
+|---|---|
+| 导入模板（12 业务列） | 任务名称、任务分类、任务描述、是否异常、目标、已完成、数量单位、进展描述、计划开始日期、计划结束日期、责任部门、责任人 |
+| 导出文件（18 列） | 任务ID + 上述 12 列 + 完成进度、状态、创建人、创建时间、更新时间 |
+| 列表展示（14 列） | 任务ID、任务名称、任务分类、责任人、责任部门、创建人、目标、已完成、完成进度、计划起止、创建时间、更新时间、状态、操作 |
+
+**模板样式规范**
+
+| 位置 | 样式 |
+|---|---|
+| 第 1 行（说明栏标题） | 整行合并，浅蓝底 `DEEBF7`，深蓝 `1F4E79` 13号加粗，行高 28 |
+| 第 2 行（操作提示） | 整行合并，浅蓝底，灰蓝 `5B6B7C` 9号 |
+| 第 3 行 | 留白，行高 6 |
+| 第 4 行（字段名称栏） | 主蓝底 `2E75B6`，白字加粗，居中换行，深蓝细边框，行高 24；**冻结窗格 `A5`** |
+| 第 5 行起 | 数据区，淡蓝细边框 `BDD7EE`；示例行（仅模板）用极浅蓝 `F7FBFF` 弱化 |
+| 其他工作表 | 「填写说明」「组织清单」「账号清单」「指标清单」共用同一套蓝色表头样式 |
+
+**两处实现要点（易踩坑）**
+
+1. **表头不固定在第 1 行**：模板顶部有说明栏，因此 `parse_rows` 改为在首 8 行内扫描「命中列名最多」的一行作为表头，同时兼容无说明栏的老模板。
+2. **`freeze_panes` 不能用 `ws.cell()` 定位**：`ws.cell(row=5, column=1)` 会**创建**一个空单元格，使 `ws.append` 从第 6 行开始，模板里平白多出一行空白。必须用字符串 `ws.freeze_panes = "A5"`。
+
+#### 指标维护入口下线（M-15）
+
+- `views/MetricsView.vue`：移除「下载模板」「批量导入」按钮、导入结果弹窗、`onImport()`、`importOpen`/`importResult` 状态，以及 `downloadFile`/`ImportResult` 引用。
+- 后端 `/metrics/import/template`、`/metrics/import` **保留**，仍受 `metric.import` 权限保护，供 API 直接调用。

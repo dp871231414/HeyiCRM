@@ -58,7 +58,7 @@
       <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
       <div v-else-if="!tasks.length" class="p-10 text-center text-slate-400 text-sm">暂无任务</div>
       <div v-else class="overflow-x-auto">
-        <table class="table-freeze w-full min-w-[1640px]">
+        <table class="table-freeze w-full min-w-[1740px]">
           <thead>
             <tr class="border-b border-slate-200">
               <th class="th col-id w-[96px]">任务ID</th>
@@ -66,6 +66,7 @@
               <th class="th w-[140px]">任务分类</th>
               <th class="th w-[100px]">责任人</th>
               <th class="th w-[120px]">责任部门</th>
+              <th class="th w-[100px]">创建人</th>
               <th class="th w-[100px] text-right">目标</th>
               <th class="th w-[110px] text-right">已完成</th>
               <th class="th w-[130px]">完成进度</th>
@@ -94,6 +95,7 @@
                 <td class="td text-slate-500">{{ row.task.title || '—' }}</td>
                 <td class="td">{{ row.task.owner }}</td>
                 <td class="td">{{ row.task.deptName }}</td>
+                <td class="td text-slate-500">{{ row.task.createdByName || '—' }}</td>
                 <td class="td text-right font-mono">{{ fmt(row.task.target) }}<span class="text-[11px] text-slate-400 ml-0.5">{{ row.task.unit }}</span></td>
                 <td class="td text-right font-mono">{{ fmt(row.task.done) }}</td>
                 <td class="td">
@@ -296,7 +298,7 @@ const rows = computed<TaskRow[]>(() => {
 })
 
 /** 表格列数（分组标题行需整行跨列） */
-const COL_COUNT = 13
+const COL_COUNT = 14
 
 /** ISO 时间 → 本地可读格式。后端返回带时区，须转本地时区展示 */
 function fmtTime(iso: string): string {

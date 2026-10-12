@@ -344,7 +344,8 @@ def task_to_dict(task) -> dict:
         "daysLeft": health["days"],
         "statusLevel": health["level"],
         "statusLabel": health["label"],
-        # 系统自动记录，只读：创建时间 / 更新时间
+        # 系统自动记录，只读：创建人 / 创建时间 / 更新时间
+        "createdById": task.created_by or "",
         "createdAt": task.created_at.isoformat() if task.created_at else "",
         "updatedAt": task.updated_at.isoformat() if task.updated_at else "",
     }

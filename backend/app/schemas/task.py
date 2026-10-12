@@ -24,6 +24,8 @@ class TaskOut(BaseModel):
     statusLevel: str = "normal"
     statusLabel: str = "正常"
     # 系统自动记录，只读（不接受前端写入）
+    createdById: str = ""
+    createdByName: str = ""
     createdAt: str = ""
     updatedAt: str = ""
 

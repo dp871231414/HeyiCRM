@@ -173,3 +173,18 @@
 - 完成标准：AC-01 ~ AC-39 全部通过
 - 验证方式：pytest + 浏览器手工逐条核对
 - 是否可并行：否
+
+## T20 第二批变更（2026-10-12）
+
+对应 proposal §12 / design §13。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T20-1 | 统计周期移到驾驶舱/指标维护页内，月份组件（2026-09 ~ 2099-12） | `constants/period.ts`、`MonthPicker.vue`、`stores/view.ts`、`AppLayout.vue`、两个页面 | ✅ |
+| T20-2 | 完成值口径明确为「累计完成值」 | `MetricsView.vue`、`DashboardView.vue`、`achievement.py`、`constants.py`、`seed.py` | ✅ |
+| T20-3 | 任务列表增加创建人（+ 创建/更新时间已有，本轮暴露） | `achievement.task_to_dict`、`schemas/task.py`、`tasks.py._enrich`、`TasksView.vue` | ✅ |
+| T20-4 | 任务分组视图（按部门，带小标题） | `TasksView.vue`（`rows` computed 复用同一张表） | ✅ |
+| T20-5 | 导入模板字段与列表一致（命名统一 + 补「数量单位」） | `importer.TASK_COLUMNS`、`tasks.py` 导入列、`validate_task_rows`、`import_tasks` | ✅ |
+| T20-6 | 导入/导出模板美化（说明栏 + 表头背景 + 蓝色清新） | `importer` 样式层、`export_tasks` | ✅ |
+| T20-7 | 指标维护下线模板下载与批量导入入口 | `MetricsView.vue` | ✅ |
+| T20-8 | 文档与用例同步、输出测试报告 | `proposal.md`、`design.md`、`test-report.md`、`tests/test_changes.py`、`tests/test_api.py` | ✅ |

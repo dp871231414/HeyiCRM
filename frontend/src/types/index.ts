@@ -173,6 +173,8 @@ export interface TaskItem {
   statusLevel: 'done' | 'overdue' | 'due_soon' | 'normal' | 'risk'
   statusLabel: string
   /** 系统自动记录，只读 */
+  createdById: string
+  createdByName: string
   createdAt: string
   updatedAt: string
 }

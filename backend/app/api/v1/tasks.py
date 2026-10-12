@@ -20,6 +20,8 @@ from app.services import scope as scope_svc
 from app.services.achievement import reference_date, task_to_dict
 from app.services.audit import write_log
 from app.services.importer import (
+    TASK_COLUMNS,
+    TASK_OPTIONAL_COLUMNS,
     build_task_template,
     export_tasks,
     import_tasks,
@@ -61,6 +63,29 @@ def _task_or_404(db: Session, user: User, task_id: str) -> Task:
         if not visible:
             raise HTTPException(status_code=403, detail="无权访问该任务")
     return task
+
+
+def _enrich(db: Session, items: list[dict]) -> list[dict]:
+    """批量补齐展示用名称：责任部门名 + 创建人名。
+
+    创建人由 created_by（用户 ID）解析为姓名，供列表与导出直接展示；
+    组织名与用户名都做去重缓存，避免逐条查询造成 N+1。
+    """
+    dept_names: dict[str, str] = {}
+    creator_ids = {str(it.get("createdById") or "") for it in items} - {""}
+    creators: dict[str, str] = {}
+    if creator_ids:
+        creators = {
+            uid: name
+            for uid, name in db.execute(select(User.id, User.name).where(User.id.in_(creator_ids))).all()
+        }
+    for it in items:
+        did = str(it.get("deptId") or "")
+        if did and did not in dept_names:
+            dept_names[did] = org_name(db, did)
+        it["deptName"] = dept_names.get(did, "")
+        it["createdByName"] = creators.get(str(it.get("createdById") or ""), "")
+    return items
 
 
 @router.get("/dept-stats", response_model=list[DeptTaskStat])
@@ -135,9 +160,9 @@ async def task_import(
     raw = await file.read()
     if len(raw) > settings.import_max_mb * 1024 * 1024:
         raise HTTPException(status_code=422, detail=f"文件不能超过 {settings.import_max_mb}MB")
-    columns = ["一级任务", "二级任务", "描述", "是否异常", "目标", "已完成", "进展描述", "计划开始日期", "计划结束日期", "责任部门", "责任人"]
     try:
-        rows = parse_rows(raw, columns, settings.import_max_rows)
+        # 列名与模板共用同一常量，避免两处硬编码漂移
+        rows = parse_rows(raw, TASK_COLUMNS, settings.import_max_rows, optional=TASK_OPTIONAL_COLUMNS)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     valid, errors = validate_task_rows(db, rows)
@@ -152,7 +177,7 @@ async def task_import(
 @router.get("/export")
 def task_export(db: Session = Depends(get_db), user: User = Depends(require_perm("task.view"))):
     rows = list(db.scalars(_visible_query(db, user).order_by(Task.id)).all())
-    return _xlsx(export_tasks(rows), "重点任务清单.xlsx")
+    return _xlsx(export_tasks(db, rows), "重点任务清单.xlsx")
 
 
 @router.get("", response_model=TaskListOut)
@@ -173,9 +198,7 @@ def list_tasks(
         q = q.where(or_(Task.parent.like(like), Task.title.like(like), Task.owner.like(like), Task.id.like(like)))
 
     tasks = list(db.scalars(q.order_by(Task.id)).all())
-    items = [task_to_dict(t) for t in tasks]
-    for it in items:
-        it["deptName"] = org_name(db, it["deptId"])
+    items = _enrich(db, [task_to_dict(t) for t in tasks])
     if status:
         items = [it for it in items if it["statusLevel"] == status]
 
@@ -187,9 +210,7 @@ def list_tasks(
 @router.get("/{task_id}", response_model=TaskOut)
 def get_task(task_id: str, db: Session = Depends(get_db), user: User = Depends(require_perm("task.view"))):
     task = _task_or_404(db, user, task_id)
-    d = task_to_dict(task)
-    d["deptName"] = org_name(db, d["deptId"])
-    return d
+    return _enrich(db, [task_to_dict(task)])[0]
 
 
 def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
@@ -231,9 +252,7 @@ def create_task(
     write_log(db, user, "create", "task", tid, {"parent": task.parent}, request)
     db.commit()
     db.refresh(task)
-    d = task_to_dict(task)
-    d["deptName"] = org_name(db, d["deptId"])
-    return d
+    return _enrich(db, [task_to_dict(task)])[0]
 
 
 @router.patch("/{task_id}", response_model=TaskOut)
@@ -251,9 +270,7 @@ def update_task(
     write_log(db, user, "update", "task", task_id, {"parent": task.parent}, request)
     db.commit()
     db.refresh(task)
-    d = task_to_dict(task)
-    d["deptName"] = org_name(db, d["deptId"])
-    return d
+    return _enrich(db, [task_to_dict(task)])[0]
 
 
 @router.delete("/{task_id}")

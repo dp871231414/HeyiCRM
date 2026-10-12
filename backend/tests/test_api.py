@@ -330,41 +330,58 @@ def _xlsx(rows, columns):
     return buf.getvalue()
 
 
-def test_task_import_with_errors(client, admin_headers):
-    columns = ["一级任务", "二级任务", "描述", "是否异常", "目标", "已完成", "进展描述", "计划开始日期", "计划结束日期", "责任部门", "责任人"]
-    rows = [
-        ["任务A", "子A", "", "否", 100, 50, "", "2026-01-01", "2026-12-31", "市场部", "郑凯"],
-        ["", "子B", "", "否", 100, 50, "", "2026/01/01", "2026-12-31", "不存在部门", "不存在的人"],
-    ]
-    resp = client.post(
-        "/api/v1/tasks/import",
-        files={"file": ("t.xlsx", _xlsx(rows, columns), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        headers=admin_headers,
+def _task_row(**kw) -> list:
+    """按 TASK_COLUMNS 顺序构造一行，列名改动时用例自动跟随，不会因列序漂移而失效。"""
+    from app.services.importer import TASK_COLUMNS
+
+    return [kw.get(c, "") for c in TASK_COLUMNS]
+
+
+def _task_sheet(rows: list[list]) -> tuple:
+    from app.services.importer import TASK_COLUMNS
+
+    return (
+        "t.xlsx",
+        _xlsx(rows, TASK_COLUMNS),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+def test_task_import_with_errors(client, admin_headers):
+    rows = [
+        _task_row(任务名称="任务A", 任务分类="子A", 是否异常="否", 目标=100, 已完成=50,
+                  计划开始日期="2026-01-01", 计划结束日期="2026-12-31", 责任部门="市场部", 责任人="郑凯"),
+        # 任务名称为空 + 日期格式错 + 部门与人均不存在
+        _task_row(任务分类="子B", 是否异常="否", 目标=100, 已完成=50,
+                  计划开始日期="2026/01/01", 计划结束日期="2026-12-31", 责任部门="不存在部门", 责任人="不存在的人"),
+    ]
+    resp = client.post("/api/v1/tasks/import", files={"file": _task_sheet(rows)}, headers=admin_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["imported"] == 0
     fields = {e["field"] for e in body["errors"]}
-    assert {"一级任务", "计划开始日期", "责任部门", "责任人"} <= fields
+    assert {"任务名称", "计划开始日期", "责任部门", "责任人"} <= fields
 
 
 def test_task_import_success(client, admin_headers):
-    columns = ["一级任务", "二级任务", "描述", "是否异常", "目标", "已完成", "进展描述", "计划开始日期", "计划结束日期", "责任部门", "责任人"]
     rows = [
-        ["导入任务一", "子任务一", "", "否", 100, 50, "", "2026-01-01", "2026-12-31", "市场部", "郑凯"],
-        ["导入任务一", "子任务二", "", "是", 1, 0, "", "2026-02-01", "2026-12-31", "市场部", "郑凯"],
+        _task_row(任务名称="导入任务一", 任务分类="子任务一", 是否异常="否", 目标=100, 已完成=50,
+                  数量单位="万元", 计划开始日期="2026-01-01", 计划结束日期="2026-12-31",
+                  责任部门="市场部", 责任人="郑凯"),
+        _task_row(任务名称="导入任务一", 任务分类="子任务二", 是否异常="是", 目标=1, 已完成=0,
+                  计划开始日期="2026-02-01", 计划结束日期="2026-12-31", 责任部门="市场部", 责任人="郑凯"),
     ]
     before = client.get("/api/v1/tasks", headers=admin_headers).json()["total"]
-    resp = client.post(
-        "/api/v1/tasks/import",
-        files={"file": ("t.xlsx", _xlsx(rows, columns), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        headers=admin_headers,
-    )
+    resp = client.post("/api/v1/tasks/import", files={"file": _task_sheet(rows)}, headers=admin_headers)
     assert resp.status_code == 200 and resp.json()["imported"] == 2
     after = client.get("/api/v1/tasks", headers=admin_headers).json()["total"]
     assert after == before + 2
-    # 清理
+    # 「数量单位」必须真正写入（此前模板缺该列、导入代码又读错键名，单位一直为空）
     items = client.get("/api/v1/tasks", params={"keyword": "导入任务一"}, headers=admin_headers).json()["items"]
+    assert {it["unit"] for it in items} == {"万元", ""}
+    # 创建人由系统记录，等于导入操作者
+    assert all(it["createdByName"] == "陈志明" for it in items)
+    # 清理
     for it in items:
         client.delete(f"/api/v1/tasks/{it['id']}", headers=admin_headers)
 

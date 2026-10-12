@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy import select
@@ -24,14 +24,18 @@ from app.constants import TASK_ID_PREFIX
 from app.models import MetricActual, MetricDef, Organization, Task, User
 
 # ------------------------------------------------------------------ 模板列定义
+#
+# 列名与「任务管理」列表、编辑表单保持同一套叫法，避免同一字段多处异名：
+#   列表/表单一律称「任务名称 / 任务分类 / 任务描述」，模板不再用「一级任务 / 二级任务」。
 
 TASK_COLUMNS = [
-    "一级任务",
-    "二级任务",
-    "描述",
+    "任务名称",
+    "任务分类",
+    "任务描述",
     "是否异常",
     "目标",
     "已完成",
+    "数量单位",
     "进展描述",
     "计划开始日期",
     "计划结束日期",
@@ -39,26 +43,117 @@ TASK_COLUMNS = [
     "责任人",
 ]
 
+# 可选列：老版本模板（无「数量单位」等）仍可导入，缺失时按空值处理
+TASK_OPTIONAL_COLUMNS = {"任务分类", "任务描述", "数量单位", "进展描述", "是否异常"}
+
+# 导出列 = 任务ID + 全部可填写列 + 系统列 —— 导出文件可直接当导入模板回灌
+TASK_SYSTEM_EXPORT_COLUMNS = ["完成进度", "状态", "创建人", "创建时间", "更新时间"]
+TASK_EXPORT_COLUMNS = ["任务ID"] + TASK_COLUMNS + TASK_SYSTEM_EXPORT_COLUMNS
+
 METRIC_COLUMNS = ["指标编码", "指标名称", "统计周期", "统计组织", "实际值"]
 
-_HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
-_HEADER_FONT = Font(color="FFFFFF", bold=True)
-_NOTE_FILL = PatternFill("solid", fgColor="FFF2CC")
-_BORDER_ALIGN = Alignment(horizontal="center", vertical="center", wrap_text=True)
+# ---------------------------------------------------------------- 蓝色清新配色
+_BLUE_DARK = "1F4E79"    # 深蓝：标题文字
+_BLUE_MAIN = "2E75B6"    # 主蓝：表头背景
+_BLUE_LIGHT = "DEEBF7"   # 浅蓝：说明栏背景
+_BLUE_SOFT = "F7FBFF"    # 极浅蓝：示例行背景
+_BLUE_BORDER = "BDD7EE"  # 淡蓝：边框 / 斑马纹
+_GRAY_NOTE = "5B6B7C"    # 说明文字
+
+_HEADER_FILL = PatternFill("solid", fgColor=_BLUE_MAIN)
+_HEADER_FONT = Font(color="FFFFFF", bold=True, size=11)
+_BANNER_FILL = PatternFill("solid", fgColor=_BLUE_LIGHT)
+_SAMPLE_FILL = PatternFill("solid", fgColor=_BLUE_SOFT)
+_THIN = Side(style="thin", color=_BLUE_BORDER)
+_BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
+_HEADER_ALIGN = Alignment(horizontal="center", vertical="center", wrap_text=True)
+_BODY_ALIGN = Alignment(horizontal="left", vertical="center", wrap_text=False)
+
+# 说明栏占 3 行：标题 / 操作提示 / 留白；表头固定在第 4 行
+BANNER_ROWS = 3
+HEADER_ROW = BANNER_ROWS + 1
 
 
 class RowError(dict):
     pass
 
 
-def _style_header(ws, columns: list[str]) -> None:
-    ws.append(columns)
-    for idx in range(1, len(columns) + 1):
-        cell = ws.cell(row=1, column=idx)
+def _write_banner(ws, n_cols: int, title: str, lines: list[str]) -> None:
+    """写顶部说明栏：整行合并，浅蓝底 + 深蓝标题，下面跟操作提示。"""
+    last = get_column_letter(n_cols)
+
+    ws.merge_cells(f"A1:{last}1")
+    c = ws["A1"]
+    c.value = title
+    c.font = Font(bold=True, size=13, color=_BLUE_DARK)
+    c.alignment = Alignment(horizontal="left", vertical="center")
+    c.fill = _BANNER_FILL
+    ws.row_dimensions[1].height = 28
+
+    ws.merge_cells(f"A2:{last}2")
+    c2 = ws["A2"]
+    c2.value = "　".join(lines)
+    c2.font = Font(size=9, color=_GRAY_NOTE)
+    c2.alignment = Alignment(horizontal="left", vertical="center")
+    c2.fill = _BANNER_FILL
+    ws.row_dimensions[2].height = 20
+
+    ws.row_dimensions[3].height = 6
+    for col in range(1, n_cols + 1):
+        for row in (1, 2, 3):
+            ws.cell(row=row, column=col).fill = _BANNER_FILL
+
+
+def _style_header(ws, row_idx: int, columns: list[str]) -> None:
+    """表头：主蓝底白字、居中、冻结、列宽自适应（中文字符按 2 倍宽估算）。"""
+    for idx, name in enumerate(columns, start=1):
+        cell = ws.cell(row=row_idx, column=idx, value=name)
         cell.fill = _HEADER_FILL
         cell.font = _HEADER_FONT
-        cell.alignment = _BORDER_ALIGN
-        ws.column_dimensions[get_column_letter(idx)].width = max(14, len(columns[idx - 1]) * 2 + 6)
+        cell.alignment = _HEADER_ALIGN
+        cell.border = _BORDER
+        width = sum(2 if ord(ch) > 127 else 1 for ch in name) + 6
+        ws.column_dimensions[get_column_letter(idx)].width = max(12, min(30, width))
+    ws.row_dimensions[row_idx].height = 24
+    # 用字符串定位冻结窗格：若用 ws.cell(...) 会创建一个空单元格，
+    # 使后续 ws.append 从下一行开始，模板里就会多出一行空白。
+    ws.freeze_panes = f"A{row_idx + 1}"
+
+
+def _style_data_rows(ws, first_row: int, last_row: int, n_cols: int, sample_rows: int = 1) -> None:
+    """数据区加淡蓝细边框；示例行用极浅蓝弱化。"""
+    for row in range(first_row, last_row + 1):
+        for col in range(1, n_cols + 1):
+            cell = ws.cell(row=row, column=col)
+            cell.border = _BORDER
+            cell.alignment = _BODY_ALIGN
+            if row - first_row < sample_rows:
+                cell.fill = _SAMPLE_FILL
+
+
+def _notes_sheet(wb: Workbook, title: str, rows: list[list[str]], widths=(22, 74)):
+    """「填写说明」页：统一的蓝色表头 + 细边框。"""
+    ws = wb.create_sheet(title)
+    for i, row in enumerate(rows):
+        ws.append(row)
+        r = ws.max_row
+        for col in range(1, len(row) + 1):
+            cell = ws.cell(row=r, column=col)
+            cell.border = _BORDER
+            if i == 0:
+                cell.fill = _HEADER_FILL
+                cell.font = _HEADER_FONT
+                cell.alignment = _HEADER_ALIGN
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                cell.font = Font(size=10)
+                if col == 1:
+                    cell.font = Font(size=10, bold=True, color=_BLUE_DARK)
+    ws.row_dimensions[1].height = 22
+    ws.column_dimensions["A"].width = widths[0]
+    ws.column_dimensions["B"].width = widths[1]
+    ws.freeze_panes = "A2"
+    return ws
 
 
 def _safe_sheet_name(wb: Workbook, name: str) -> str:
@@ -74,11 +169,36 @@ def _safe_sheet_name(wb: Workbook, name: str) -> str:
 # ------------------------------------------------------------------ 模板生成
 
 
+TASK_TEMPLATE_NOTES = [
+    ["填写项", "说明"],
+    ["任务名称", "必填。公司级重点任务标题；同名多行会自动归组为同一任务"],
+    ["任务分类", "选填。部门/班组级承接任务，可为空"],
+    ["任务描述", "选填。任务的背景与交付要求"],
+    ["是否异常", "选填，只能填「是」或「否」，默认否"],
+    ["目标", "必填。数字，非量化任务填 1"],
+    ["已完成", "必填。数字，非量化任务未完成填 0、完成填 1"],
+    ["数量单位", "选填。如 万元 / 台 / 项，留空则不显示单位"],
+    ["进展描述", "选填。当前进展的补充说明"],
+    ["计划开始日期", "必填，格式 2026-10-01"],
+    ["计划结束日期", "必填，格式 2026-12-31，不能早于开始日期"],
+    ["责任部门", "必填。组织名称或编码（见「组织清单」页）"],
+    ["责任人", "必填。必须是系统内已有账号姓名"],
+    ["任务ID / 完成进度 / 状态 / 创建人 / 创建时间 / 更新时间", "由系统自动生成，不在模板中填写"],
+]
+
+
 def build_task_template(db: Session) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "任务数据"
-    _style_header(ws, TASK_COLUMNS)
+
+    _write_banner(
+        ws,
+        len(TASK_COLUMNS),
+        "重点任务导入标准模板",
+        ["请勿修改第 4 行字段名称", "从第 5 行开始逐行填写", "灰色示例行可直接覆盖或删除"],
+    )
+    _style_header(ws, HEADER_ROW, TASK_COLUMNS)
     ws.append(
         [
             "完成全年营收目标 10.2 亿",
@@ -87,6 +207,7 @@ def build_task_template(db: Session) -> bytes:
             "否",
             46000,
             31800,
+            "万元",
             "Q3 累计 3.18 亿",
             "2026-01-01",
             "2026-12-31",
@@ -94,83 +215,101 @@ def build_task_template(db: Session) -> bytes:
             "郑凯",
         ]
     )
+    _style_data_rows(ws, HEADER_ROW + 1, ws.max_row, len(TASK_COLUMNS), sample_rows=1)
 
     # 说明
-    notes = wb.create_sheet("填写说明")
-    for row in [
-        ["填写项", "说明"],
-        ["一级任务", "必填。公司级重点任务标题；一级任务相同的多行自动归组为同一任务"],
-        ["二级任务", "选填。部门/班组级承接任务，可为空"],
-        ["是否异常", "选填，只能填「是」或「否」，默认否"],
-        ["目标", "必填。数字，非量化任务填 1"],
-        ["已完成", "必填。数字，非量化任务未完成填 0、完成填 1"],
-        ["计划开始日期", "必填，格式 2026-10-01"],
-        ["计划结束日期", "必填，格式 2026-12-31，不能早于开始日期"],
-        ["责任部门", "必填。组织名称或编码（见「组织清单」页）"],
-        ["责任人", "必填。必须是系统内已有账号姓名"],
-        ["完成进度 / 临期逾期", "由系统自动计算，不在模板中填写"],
-    ]:
-        notes.append(row)
-        if len(row) == 2 and row[0] in ("填写项",):
-            notes.cell(row=notes.max_row, column=1).font = Font(bold=True)
-    notes.column_dimensions["A"].width = 20
-    notes.column_dimensions["B"].width = 70
+    _notes_sheet(wb, "填写说明", TASK_TEMPLATE_NOTES)
 
     # 组织清单
-    orgs = wb.create_sheet("组织清单")
-    orgs.append(["编码", "名称"])
+    orgs = _notes_sheet(wb, "组织清单", [["编码", "名称"]])
     for o in db.scalars(select(Organization).order_by(Organization.sort_order, Organization.id)).all():
         orgs.append([o.id, o.name])
+    for r in range(2, orgs.max_row + 1):
+        for c in range(1, 3):
+            orgs.cell(row=r, column=c).border = _BORDER
 
     # 数据验证：是否异常
     dv_abn = DataValidation(type="list", formula1='"是,否"', allow_blank=True)
     dv_abn.error = "只能填「是」或「否」"
     ws.add_data_validation(dv_abn)
-    dv_abn.add(f"D2:D{max(2, 2000)}")
+    col_abn = get_column_letter(TASK_COLUMNS.index("是否异常") + 1)
+    dv_abn.add(f"{col_abn}{HEADER_ROW + 1}:{col_abn}{HEADER_ROW + 2000}")
 
     # 数据验证：责任部门（引用组织清单）
     dv_dept = DataValidation(type="list", formula1="=组织清单!$B$2:$B$200", allow_blank=True)
     dv_dept.error = "责任部门需存在于组织清单"
     ws.add_data_validation(dv_dept)
-    dv_dept.add(f"J2:J{max(2, 2000)}")
+    col_dept = get_column_letter(TASK_COLUMNS.index("责任部门") + 1)
+    dv_dept.add(f"{col_dept}{HEADER_ROW + 1}:{col_dept}{HEADER_ROW + 2000}")
+
+    # 数据验证：责任人（引用账号清单）
+    dv_owner = DataValidation(type="list", formula1="=账号清单!$A$2:$A$300", allow_blank=True)
+    dv_owner.error = "责任人需是系统内已有账号姓名"
+    ws.add_data_validation(dv_owner)
+    col_owner = get_column_letter(TASK_COLUMNS.index("责任人") + 1)
+    dv_owner.add(f"{col_owner}{HEADER_ROW + 1}:{col_owner}{HEADER_ROW + 2000}")
+
+    # 账号清单（供责任人下拉）
+    users = _notes_sheet(wb, "账号清单", [["姓名", "部门"]])
+    for u in db.scalars(select(User).order_by(User.id)).all():
+        users.append([u.name, org_name_of(db, u.dept_id)])
+    for r in range(2, users.max_row + 1):
+        for c in range(1, 3):
+            users.cell(row=r, column=c).border = _BORDER
 
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
 
 
+def org_name_of(db: Session, org_id: str | None) -> str:
+    if not org_id:
+        return ""
+    o = db.get(Organization, org_id)
+    return o.name if o else org_id
+
+
+METRIC_TEMPLATE_NOTES = [
+    ["填写项", "说明"],
+    ["指标编码", "必填。见「指标清单」页"],
+    ["指标名称", "选填，仅供人工核对，导入以编码为准"],
+    ["统计周期", "必填。格式 2026-10，可选范围 2026-09 ~ 2099-12"],
+    ["统计组织", "必填。组织编码，如 CO / PC1"],
+    ["实际值", "必填。录入的是「截止当月」的累计值，纯数字、不带单位"],
+]
+
+
 def build_metric_template(db: Session) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "指标数据"
-    _style_header(ws, METRIC_COLUMNS)
+
+    _write_banner(
+        ws,
+        len(METRIC_COLUMNS),
+        "指标数据导入标准模板",
+        ["请勿修改第 4 行字段名称", "从第 5 行开始逐行填写", "灰色示例行可直接覆盖或删除"],
+    )
+    _style_header(ws, HEADER_ROW, METRIC_COLUMNS)
     ws.append(["REV_SALE", "销售收入", "2026-10", "CO", 9860])
+    _style_data_rows(ws, HEADER_ROW + 1, ws.max_row, len(METRIC_COLUMNS), sample_rows=1)
 
-    notes = wb.create_sheet("填写说明")
-    for row in [
-        ["填写项", "说明"],
-        ["指标编码", "必填。见「指标清单」页"],
-        ["指标名称", "选填，仅供人工核对，导入以编码为准"],
-        ["统计周期", "必填。格式 2026-10，须与看板当前周期一致"],
-        ["统计组织", "必填。组织编码，如 CO / PC1"],
-        ["实际值", "必填。纯数字，不带单位"],
-    ]:
-        notes.append(row)
-        if row[0] == "填写项":
-            notes.cell(row=notes.max_row, column=1).font = Font(bold=True)
-    notes.column_dimensions["A"].width = 20
-    notes.column_dimensions["B"].width = 70
+    _notes_sheet(wb, "填写说明", METRIC_TEMPLATE_NOTES)
 
-    metrics = wb.create_sheet("指标清单")
-    metrics.append(["指标编码", "指标名称", "单位", "所属组", "统计组织"])
+    metrics = _notes_sheet(
+        wb, "指标清单", [["指标编码", "指标名称", "单位", "所属组", "统计组织"]], widths=(18, 24)
+    )
     for m in db.scalars(select(MetricDef).order_by(MetricDef.sort_order, MetricDef.id)).all():
         scope_hint = "CO / PC1-PCn" if m.group in ("annual", "project") else "CO"
         metrics.append([m.id, m.name, m.unit, m.group, scope_hint])
+    for r in range(2, metrics.max_row + 1):
+        for c in range(1, 6):
+            metrics.cell(row=r, column=c).border = _BORDER
 
     dv_metric = DataValidation(type="list", formula1="=指标清单!$A$2:$A$200", allow_blank=True)
     dv_metric.error = "指标编码需存在于指标清单"
     ws.add_data_validation(dv_metric)
-    dv_metric.add(f"A2:A{max(2, 2000)}")
+    dv_metric.add(f"A{HEADER_ROW + 1}:A{HEADER_ROW + 2000}")
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -192,18 +331,44 @@ def _cell_str(v: Any) -> str:
     return str(v).strip()
 
 
-def parse_rows(file_bytes: bytes, columns: list[str], max_rows: int) -> list[dict]:
+def _locate_header_row(ws, columns: list[str], scan: int = 8) -> int:
+    """找出表头所在行：取「命中列名最多」的那一行。
+
+    模板顶部有说明栏，表头因此不固定在第 1 行；该策略同时兼容无说明栏的老模板。
+    """
+    best_row, best_hits = 1, -1
+    limit = max(1, min(scan, ws.max_row or 1))
+    for i, row in enumerate(ws.iter_rows(min_row=1, max_row=limit, values_only=True), start=1):
+        vals = {_cell_str(v) for v in row}
+        hits = sum(1 for c in columns if c in vals)
+        if hits > best_hits:
+            best_row, best_hits = i, hits
+    return best_row
+
+
+def parse_rows(
+    file_bytes: bytes,
+    columns: list[str],
+    max_rows: int,
+    optional: set[str] | None = None,
+) -> list[dict]:
+    """按列名定位取数（顺序无关）。
+
+    - 表头行自动定位，允许模板顶部带说明栏；
+    - `optional` 中的列缺失时不报错，按空值处理，便于老模板继续可用。
+    """
+    optional = optional or set()
     wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
     ws = wb.worksheets[0]
-    header = [_cell_str(c.value) for c in ws[1]]
-    # 按列名定位（顺序无关），缺失列报错
+    header_row = _locate_header_row(ws, columns)
+    header = [_cell_str(c.value) for c in ws[header_row]]
     index = {name: header.index(name) for name in columns if name in header}
-    missing = [c for c in columns if c not in index]
+    missing = [c for c in columns if c not in index and c not in optional]
     if missing:
         raise ValueError(f"模板缺少列：{'、'.join(missing)}")
 
     rows: list[dict] = []
-    for r in ws.iter_rows(min_row=2, values_only=True):
+    for r in ws.iter_rows(min_row=header_row + 1, values_only=True):
         if all(_cell_str(v) == "" for v in r):
             continue
         rows.append({name: _cell_str(r[i]) if i < len(r) else "" for name, i in index.items()})
@@ -236,8 +401,8 @@ def validate_task_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[
         row_no = i + 2
         row_errors: list[dict] = []
 
-        if not r.get("一级任务"):
-            row_errors.append({"field": "一级任务", "msg": "不能为空"})
+        if not r.get("任务名称"):
+            row_errors.append({"field": "任务名称", "msg": "不能为空"})
 
         abn = r.get("是否异常", "")
         if abn and abn not in ("是", "否"):
@@ -363,13 +528,13 @@ def import_tasks(db: Session, rows: list[dict], user: User) -> int:
             org = db.scalar(select(Organization).where(Organization.name == dept_raw))
         task = Task(
             id=next_task_id(db),
-            parent=r["一级任务"],
-            title=r.get("二级任务") or None,
-            description=r.get("描述", ""),
+            parent=r["任务名称"],
+            title=r.get("任务分类") or None,
+            description=r.get("任务描述", ""),
             abnormal=r.get("是否异常") == "是",
             target=Decimal(str(r["目标"])),
             done=Decimal(str(r["已完成"])),
-            unit=r.get("单位", ""),
+            unit=r.get("数量单位", ""),
             note=r.get("进展描述", ""),
             start_date=datetime.strptime(r["计划开始日期"], "%Y-%m-%d").date(),
             end_date=datetime.strptime(r["计划结束日期"], "%Y-%m-%d").date(),
@@ -403,33 +568,63 @@ def import_metrics(db: Session, rows: list[dict], user: User) -> int:
     return len(rows)
 
 
-def export_tasks(rows: list[Task]) -> bytes:
+def _fmt_dt(iso: str) -> str:
+    """ISO 时间 → 「YYYY-MM-DD HH:MM」（按本地时区渲染）。"""
+    if not iso:
+        return ""
+    try:
+        return datetime.fromisoformat(iso).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return iso
+
+
+def export_tasks(db: Session, rows: list[Task]) -> bytes:
+    """导出任务清单。
+
+    列与「任务管理」列表保持一致（业务列同名，另加任务ID与系统列），
+    因此导出文件本身即可作为导入模板回灌。
+    """
+    from app.services.achievement import task_to_dict
+
     wb = Workbook()
     ws = wb.active
     ws.title = "任务列表"
-    columns = TASK_COLUMNS + ["完成进度", "状态"]
-    _style_header(ws, columns)
-    from app.services.achievement import _f, task_to_dict
+    _write_banner(
+        ws,
+        len(TASK_EXPORT_COLUMNS),
+        "重点任务清单",
+        [f"共 {len(rows)} 项任务", "带「系统」字样的列由系统生成，回灌导入时会被忽略"],
+    )
+    _style_header(ws, HEADER_ROW, TASK_EXPORT_COLUMNS)
 
+    user_names = {u.id: u.name for u in db.scalars(select(User)).all()}
     for t in rows:
         d = task_to_dict(t)
         ws.append(
             [
+                d["id"],
                 d["parent"],
                 d["title"] or "",
                 d["description"],
                 "是" if d["abnormal"] else "否",
                 d["target"],
                 d["done"],
+                d["unit"],
                 d["note"],
                 d["startDate"],
                 d["endDate"],
-                d["deptId"],
+                org_name_of(db, d["deptId"]),
                 d["owner"],
                 f"{d['progress']}%",
                 d["statusLabel"],
+                user_names.get(d.get("createdById", ""), ""),
+                _fmt_dt(d.get("createdAt", "")),
+                _fmt_dt(d.get("updatedAt", "")),
             ]
         )
+    if ws.max_row >= HEADER_ROW + 1:
+        _style_data_rows(ws, HEADER_ROW + 1, ws.max_row, len(TASK_EXPORT_COLUMNS), sample_rows=0)
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

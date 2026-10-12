@@ -7,11 +7,6 @@
       </p>
       <MonthPicker v-model="view.period" />
       <div class="ml-auto flex items-center gap-2">
-        <button class="btn-ghost" @click="download(metricApi.templateUrl(), '指标数据导入标准模板.xlsx')">下载模板</button>
-        <label v-if="auth.hasPerm('metric.import')" class="btn-ghost cursor-pointer">
-          批量导入
-          <input type="file" accept=".xlsx" class="hidden" @change="onImport" />
-        </label>
         <button class="btn-primary" @click="router.push({ name: 'dashboard' })">查看驾驶舱</button>
       </div>
     </div>
@@ -312,36 +307,6 @@
         <button class="btn-danger" @click="doDeleteProject">确认删除</button>
       </template>
     </ModalDialog>
-
-    <!-- 导入结果 -->
-    <ModalDialog :open="importOpen" title="批量导入结果" width="lg" @close="importOpen = false">
-      <div v-if="importResult">
-        <p class="text-sm" :class="importResult.imported ? 'text-good-700' : 'text-bad-700'">
-          {{ importResult.imported ? `成功导入 ${importResult.imported} 行。` : '存在错误行，本次未写入任何数据。' }}
-        </p>
-        <div v-if="importResult.errors.length" class="mt-3 max-h-72 overflow-y-auto border border-slate-200 rounded-lg">
-          <table class="w-full">
-            <thead>
-              <tr>
-                <th class="th w-20">行号</th>
-                <th class="th w-40">字段</th>
-                <th class="th">错误说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(e, i) in importResult.errors" :key="i" class="border-b border-slate-100 bg-bad-50/40">
-                <td class="td">{{ e.row }}</td>
-                <td class="td text-bad-700 font-semibold">{{ e.field }}</td>
-                <td class="td whitespace-normal">{{ e.msg }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <template #footer>
-        <button class="btn-primary" @click="importOpen = false">知道了</button>
-      </template>
-    </ModalDialog>
   </div>
 </template>
 
@@ -349,14 +314,14 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { dashboardApi, downloadFile, metricApi, projectApi } from '@/api'
+import { dashboardApi, metricApi, projectApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import MonthPicker from '@/components/MonthPicker.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { useViewStore } from '@/stores/view'
-import type { ImportResult, MetricBoard, MetricRow, ProjectCompanyBlock, ProjectItem } from '@/types'
+import type { MetricBoard, MetricRow, ProjectCompanyBlock, ProjectItem } from '@/types'
 import { fmt, fmtDelta, fmtPct } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -381,10 +346,6 @@ const projectForm = reactive<{ id: string; name: string; head: string; targets: 
 })
 const projectError = ref('')
 const projectDelete = ref<ProjectItem | null>(null)
-const importOpen = ref(false)
-const importResult = ref<ImportResult | null>(null)
-
-const download = downloadFile
 const canAddProject = computed(() => !!board.value?.canEditAll)
 /** 部门/班组视角：指标目标只下达在公司与项目公司层级，故无独立指标数据 */
 const deptView = computed(() => ['dept', 'team'].includes(board.value?.orgType ?? ''))
@@ -607,24 +568,6 @@ async function doDeleteProject() {
     await load()
   } catch (e) {
     app.toast((e as Error).message, 'error')
-  }
-}
-
-async function onImport(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  try {
-    importResult.value = await metricApi.importFile(file, view.period)
-    importOpen.value = true
-    if (importResult.value.imported) {
-      app.toast(`成功导入 ${importResult.value.imported} 行`)
-      await load()
-    }
-  } catch (e) {
-    app.toast((e as Error).message, 'error')
-  } finally {
-    input.value = ''
   }
 }
 

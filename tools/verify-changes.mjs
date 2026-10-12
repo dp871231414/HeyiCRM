@@ -126,10 +126,11 @@ if (await groupBtn.count()) {
       headerCount: headers.length,
       samples: headers.slice(0, 4).map((r) => r.innerText.replace(/\s+/g, ' ').trim()),
       colspan: headers[0]?.querySelector('td')?.getAttribute('colspan'),
+      colCount: document.querySelectorAll('main thead th').length,
     }
   })
   ok('分组视图出现部门小标题', g.headerCount > 0, `${g.headerCount} 组，示例：${g.samples.join(' | ')}`)
-  ok('小标题整行跨列', g.colspan === '13', `colspan=${g.colspan}`)
+  ok('小标题整行跨列', String(g.colspan) === String(g.colCount), `colspan=${g.colspan} 列数=${g.colCount}`)
   await page.screenshot({ path: '/tmp/verify-grouped.png', fullPage: true })
 }
 
@@ -174,6 +175,44 @@ const gate = await page.evaluate(() =>
   /能否维护只看权限/.test(document.body.innerText.replace(/\s+/g, '')),
 )
 ok('指标维护权限说明不再写死角色', gate, `组织视角=${await page.evaluate(() => document.querySelector('header select')?.value)}`)
+
+// ---------------- 5. 本轮：模板一致性与入口调整 ----------------
+console.log('\n──── 5. 任务字段一致性 / 模板入口 ────')
+await gotoMenu('任务管理')
+const t2 = await page.evaluate(() => {
+  const head = [...document.querySelectorAll('main thead th')].map((e) => e.innerText.trim())
+  const creatorIdx = head.indexOf('创建人')
+  const rows = [...document.querySelectorAll('main tbody tr')].filter((r) => r.querySelectorAll('td').length > 3)
+  const vals = rows.slice(0, 5).map((r) => [...r.querySelectorAll('td')][creatorIdx]?.innerText.trim())
+  const btnTexts = [...document.querySelectorAll('main button, main label')].map((b) => b.innerText.trim())
+  return { head, creatorIdx, vals, btnTexts }
+})
+ok('列表含「创建人」列', t2.creatorIdx >= 0, t2.head.join('/'))
+ok('创建人列有值', t2.vals.some((v) => v && v !== '—'), JSON.stringify(t2.vals))
+ok('任务管理保留「下载模板」', t2.btnTexts.some((b) => b.includes('下载模板')))
+ok('任务管理保留「导出」', t2.btnTexts.some((b) => b.includes('导出')))
+
+const tpl = await page.evaluate(async () => {
+  const r = await fetch('/api/v1/tasks/import/template', { credentials: 'include' })
+  const b = await r.blob()
+  return { status: r.status, size: b.size }
+})
+ok('任务导入模板可下载', tpl.status === 200 && tpl.size > 0, `status=${tpl.status} size=${tpl.size}`)
+
+const exp = await page.evaluate(async () => {
+  const r = await fetch('/api/v1/tasks/export', { credentials: 'include' })
+  const b = await r.blob()
+  return { status: r.status, size: b.size }
+})
+ok('任务导出文件可下载', exp.status === 200 && exp.size > 0, `status=${exp.status} size=${exp.size}`)
+
+await gotoMenu('指标维护')
+const mBtns = await page.evaluate(() =>
+  [...document.querySelectorAll('main button, main label')].map((b) => b.innerText.trim()),
+)
+ok('指标维护已移除「下载模板」', !mBtns.some((b) => b.includes('下载模板')), mBtns.join(' | '))
+ok('指标维护已移除「批量导入」', !mBtns.some((b) => b.includes('批量导入')))
+ok('指标维护保留「查看驾驶舱」', mBtns.some((b) => b.includes('查看驾驶舱')))
 
 console.log('\n控制台错误：', errs.length ? errs.join(' / ') : '0 个 ✅')
 const pass = R.filter((r) => r.pass).length
