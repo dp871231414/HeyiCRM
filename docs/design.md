@@ -607,3 +607,60 @@
 
 回归用例 `test_project_delete_reassigns_dangling_refs` 会校验删除后全库不存在
 指向已删除组织的 `dept_id` / `parent_id`。
+
+### 13.5 2026-10-12 · 分页、滚动表现与加载性能
+
+#### 统计周期「本月」（M-18）
+
+`components/MonthPicker.vue` 面板页脚改为一行：左侧「本月」快捷项，右侧可选范围提示。
+点击后直接选中本机当前月并关闭面板；当前月不在 `[MONTH_MIN, MONTH_MAX]` 内时该项为禁用态。
+
+#### 任务列表分页（T-11）
+
+| 视图 | 取数方式 | 每页条数 | 分页位置 |
+|---|---|---|---|
+| 平铺列表 | 后端分页（`page` / `size`） | 50 | 表格下方，仅当超过一页时显示 |
+| 按部门分组 | 一次取全量（`size=2000` 上限）后前端按部门切片 | 每组 20 | 每个部门末尾各带一个分页器 |
+
+- 新增 `components/PaginationBar.vue`：上一页 / 第 x / y 页 / 下一页（含总数），平铺与分组共用。
+- 分组视图用 `groupPages`（`Record<deptId, page>`）保存各组当前页；切换视图或改动查询条件时重置。
+- 分组视图最多加载 2000 条，超出时页面给出提示，避免"看起来少了数据"的困惑。
+- **注意**：同一路由下再次点击侧边栏不会重新挂载组件，因此视图模式会被保留 —— 切换视图必须走
+  `switchView()` 显式重载（两种模式的取数方式不同）。
+
+#### 冻结列与分组标题的滚动表现（T-12）
+
+**根因**：`.col-id` 的 `w-[96px]` 只是建议值，表格自动布局把它压到实际 **87.6px**，
+而 `.col-name` 的 sticky 偏移量固定按 `96px` 计算 —— 中间 8.4px 没有背景，滚动时透出下层内容。
+
+```css
+.col-id { left: 0; min-width: 96px; }   /* 锁定最小宽度，与实际偏移量对齐 */
+.col-name { left: 96px; }
+```
+
+同时收窄了背景设置的范围：原先 `.table-freeze th, td { background: #fff }` 优先级过高，
+把**所有行级底色都压掉了**（分组标题的 `bg-slate-100/70` 实际渲染为纯白）。
+现改为只给冻结列设不透明背景，并让 hover / 分组底色在 `tr` 上生效、冻结列随之同步。
+
+分组标题的固定：标题单元格内包一层 `.group-title`（`position: sticky; left: 12px`），
+横向滚动时文字与统计数字停在容器左侧，行背景仍铺满整行。
+
+#### 加载性能（P-1）
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 主包 JS | 169.73 KB 原样传输 | gzip **65.20 KB**（−61.6%） |
+| CSS | 32.4 KB | gzip **6.5 KB** |
+| 指标看板 JSON | 13.6 KB | gzip **2.2 KB**（−83.5%） |
+| 构建产物缓存 | 无 `Cache-Control` | `public, max-age=31536000, immutable` |
+| index.html | 无 | `no-cache`（及时拿到新版本） |
+| 任务列表查询 | 全量查出后在内存切片 | SQL `LIMIT/OFFSET`，只读当前页 |
+
+实现要点：
+
+- `main.py` 增加 `GZipMiddleware(minimum_size=1024)`；注意中间件顺序（后添加的在更外层）。
+- 静态资源用 `StaticFiles` 子类统一补 `Cache-Control`；产物名含内容哈希，可安全长期缓存。
+- 任务列表的 **状态过滤下推 SQL**（`_status_condition`），与 `services.achievement.task_health`
+  保持同一套语义；否则会出现「分页在 SQL 层、过滤在 Python 层」，页数与总数对不上。
+  回归用例 `test_task_status_filter_matches_computed_status` 会逐个状态比对两侧结果。
+- `size` 设上限 2000（`Query(ge=1, le=2000)`），避免一次拉取过多数据。

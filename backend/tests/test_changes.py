@@ -517,3 +517,64 @@ def test_project_delete_reassigns_dangling_refs(client, admin_headers):
         if moved is not None:
             db.delete(moved)
         db.commit()
+
+
+# ---------------------------------------------------------------- 任务分页与状态过滤（本轮新增）
+
+
+def test_task_status_filter_matches_computed_status(client, admin_headers):
+    """status 过滤下推到 SQL 后，结果必须与 Python 侧判定的 statusLevel 完全一致。
+
+    回归点：分页在数据库层、过滤在 Python 层时，页数与总数会对不上；
+    下推后两者必须仍语义一致。
+    """
+    all_items = client.get("/api/v1/tasks", params={"size": 2000}, headers=admin_headers).json()
+    by_level: dict[str, set[str]] = {}
+    for it in all_items["items"]:
+        by_level.setdefault(it["statusLevel"], set()).add(it["id"])
+
+    for level in ("done", "normal", "due_soon", "overdue", "risk"):
+        got = client.get("/api/v1/tasks", params={"status": level, "size": 2000}, headers=admin_headers).json()
+        got_ids = {it["id"] for it in got["items"]}
+        assert got_ids == by_level.get(level, set()), f"{level} 的 SQL 过滤结果与计算状态不一致"
+        assert got["total"] == len(got_ids), f"{level} 的 total 应为过滤后的总数"
+        assert all(it["statusLevel"] == level for it in got["items"])
+
+
+def test_task_list_pagination_is_at_sql_level(client, admin_headers):
+    """分页在 SQL 层生效：单页条数受限、翻页不重不漏、越界页为空。"""
+    total = client.get("/api/v1/tasks", params={"size": 1}, headers=admin_headers).json()["total"]
+    assert total >= 3, "演示数据任务数不足，无法验证翻页"
+
+    p1 = client.get("/api/v1/tasks", params={"page": 1, "size": 2}, headers=admin_headers).json()
+    p2 = client.get("/api/v1/tasks", params={"page": 2, "size": 2}, headers=admin_headers).json()
+    assert len(p1["items"]) == 2
+    assert p1["total"] == total and p2["total"] == total
+    assert p1["page"] == 1 and p2["page"] == 2
+    assert not ({i["id"] for i in p1["items"]} & {i["id"] for i in p2["items"]}), "不同页不应出现重复项"
+
+    # 页序稳定：逐页取回拼起来应与一次性取回的顺序一致
+    all_ids = [i["id"] for i in client.get("/api/v1/tasks", params={"size": 2000}, headers=admin_headers).json()["items"]]
+    paged_ids = [i["id"] for i in p1["items"]] + [i["id"] for i in p2["items"]]
+    assert paged_ids == all_ids[: len(paged_ids)], "分页顺序应与整体顺序一致"
+
+    empty = client.get("/api/v1/tasks", params={"page": 999, "size": 2}, headers=admin_headers).json()
+    assert empty["items"] == [] and empty["total"] == total, "越界页应返回空列表但总数不变"
+
+
+def test_task_list_page_size_has_upper_bound(client, admin_headers):
+    """size 有上限护栏，避免一次拉取过多数据。"""
+    assert client.get("/api/v1/tasks", params={"size": 2000}, headers=admin_headers).status_code == 200
+    assert client.get("/api/v1/tasks", params={"size": 99999}, headers=admin_headers).status_code == 422
+    assert client.get("/api/v1/tasks", params={"size": 0}, headers=admin_headers).status_code == 422
+
+
+def test_task_list_filters_can_combine_with_pagination(client, admin_headers):
+    """状态过滤 + 分页组合时，total 是过滤后的总数（而不是全表总数）。"""
+    all_items = client.get("/api/v1/tasks", params={"size": 2000}, headers=admin_headers).json()["items"]
+    dept_id = all_items[0]["deptId"]
+    in_dept = [i for i in all_items if i["deptId"] == dept_id]
+
+    got = client.get("/api/v1/tasks", params={"dept_id": dept_id, "size": 1}, headers=admin_headers).json()
+    assert got["total"] == len(in_dept), "total 应为该部门的任务数"
+    assert len(got["items"]) == 1, "单页条数应受 size 限制"

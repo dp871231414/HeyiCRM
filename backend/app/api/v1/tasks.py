@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
@@ -43,6 +43,32 @@ def _xlsx(content: bytes, filename: str) -> Response:
         media_type=_SHEET_MIME,
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+# 分页上限：分组视图需一次取全量以做「每组独立分页」，故上限放宽但仍设护栏
+DEFAULT_PAGE_SIZE = 200
+MAX_PAGE_SIZE = 2000
+
+
+def _status_condition(status: str, today: date):
+    """把任务状态判定下推到 SQL —— 与 services.achievement.task_health 保持同一套语义。
+
+    否则会出现「分页在数据库层、过滤在 Python 层」，页数与总数对不上。
+    """
+    done = and_(Task.target > 0, Task.done >= Task.target)
+    not_done = ~done
+    if status == "done":
+        return done
+    if status == "overdue":
+        return and_(not_done, Task.end_date < today)
+    if status == "due_soon":
+        # 异常任务在未逾期时被归为「异常」，故这里要排除异常
+        return and_(not_done, Task.end_date == today, Task.abnormal.is_(False))
+    if status == "normal":
+        return and_(not_done, Task.end_date > today, Task.abnormal.is_(False))
+    if status == "risk":
+        return and_(Task.abnormal.is_(True), not_done, Task.end_date >= today)
+    return None
 
 
 def _visible_query(db: Session, user: User):
@@ -186,25 +212,25 @@ def list_tasks(
     dept_id: str = "",
     status: str = "",
     page: int = 1,
-    size: int = 200,
+    size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     user: User = Depends(require_perm("task.view")),
 ):
+    page = max(1, page)
     q = _visible_query(db, user)
     if dept_id:
         q = q.where(Task.dept_id == dept_id)
     if keyword:
         like = f"%{keyword}%"
         q = q.where(or_(Task.parent.like(like), Task.title.like(like), Task.owner.like(like), Task.id.like(like)))
+    cond = _status_condition(status, reference_date())
+    if cond is not None:
+        q = q.where(cond)
 
-    tasks = list(db.scalars(q.order_by(Task.id)).all())
-    items = _enrich(db, [task_to_dict(t) for t in tasks])
-    if status:
-        items = [it for it in items if it["statusLevel"] == status]
-
-    total = len(items)
-    start = max(0, (page - 1) * size)
-    return {"items": items[start : start + size], "total": total, "page": page, "size": size}
+    # 分页与状态过滤都下推到 SQL：只读当前页，不再把全表读进内存后再切
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    rows = list(db.scalars(q.order_by(Task.id).limit(size).offset((page - 1) * size)).all())
+    return {"items": _enrich(db, [task_to_dict(t) for t in rows]), "total": total, "page": page, "size": size}
 
 
 @router.get("/{task_id}", response_model=TaskOut)

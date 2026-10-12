@@ -2,12 +2,12 @@
   <div class="space-y-4">
     <!-- 工具条 -->
     <div class="card p-3.5 flex flex-wrap items-center gap-2.5">
-      <input v-model.trim="keyword" class="input !w-56" placeholder="搜索任务ID / 名称 / 责任人" @keyup.enter="load" />
-      <select v-model="deptFilter" class="input !w-44">
+      <input v-model.trim="keyword" class="input !w-56" placeholder="搜索任务ID / 名称 / 责任人" @keyup.enter="applyFilters" />
+      <select v-model="deptFilter" class="input !w-44" @change="applyFilters">
         <option value="">全部责任部门</option>
         <option v-for="o in orgs" :key="o.id" :value="o.id">{{ '　'.repeat(o.depth) }}{{ o.name }}</option>
       </select>
-      <select v-model="statusFilter" class="input !w-36">
+      <select v-model="statusFilter" class="input !w-36" @change="applyFilters">
         <option value="">全部状态</option>
         <option value="done">已完成</option>
         <option value="normal">正常</option>
@@ -15,21 +15,21 @@
         <option value="overdue">逾期</option>
         <option value="risk">异常</option>
       </select>
-      <button class="btn-ghost" @click="load">查询</button>
+      <button class="btn-ghost" @click="applyFilters">查询</button>
 
       <div class="ml-auto flex items-center gap-2">
         <div class="flex items-center rounded-lg border border-slate-200 p-0.5 bg-slate-50">
           <button
             class="px-2.5 py-1 rounded-md text-xs font-semibold transition"
             :class="!groupByDept ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
-            @click="groupByDept = false"
+            @click="switchView(false)"
           >
             列表
           </button>
           <button
             class="px-2.5 py-1 rounded-md text-xs font-semibold transition"
             :class="groupByDept ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
-            @click="groupByDept = true"
+            @click="switchView(true)"
           >
             按部门分组
           </button>
@@ -52,6 +52,9 @@
       <span>逾期 <b class="text-bad-600">{{ countBy('overdue') }}</b></span>
       <span>异常 <b class="text-bad-600">{{ countBy('risk') }}</b></span>
     </div>
+    <p v-if="groupByDept && total > tasks.length" class="px-1 text-xs text-warn-600">
+      分组视图最多加载 {{ GROUP_FETCH_SIZE }} 条，当前共 {{ total }} 条；请用上方条件缩小范围后再查看。
+    </p>
 
     <!-- 表格 -->
     <div class="card overflow-hidden">
@@ -80,10 +83,27 @@
           <tbody>
             <template v-for="row in rows" :key="row.key">
               <!-- 分组小标题（按部门分组视图） -->
-              <tr v-if="row.kind === 'group'" class="bg-slate-100/70 border-b border-slate-200">
+              <tr v-if="row.kind === 'group'" class="bg-slate-100">
                 <td :colspan="COL_COUNT" class="td font-bold text-slate-700">
-                  {{ row.deptName }}
-                  <span class="ml-1.5 text-[11px] font-normal text-slate-400">{{ row.count }} 项任务</span>
+                  <span class="group-title">
+                    {{ row.deptName }}
+                    <span class="ml-1.5 text-[11px] font-normal text-slate-400">
+                      {{ row.count }} 项任务<span v-if="row.pageCount > 1"> · 第 {{ row.page }}/{{ row.pageCount }} 页</span>
+                    </span>
+                  </span>
+                </td>
+              </tr>
+              <!-- 该部门的分页器（仅当该组超过一页时出现） -->
+              <tr v-else-if="row.kind === 'pager'" class="border-b border-slate-100 bg-white">
+                <td :colspan="COL_COUNT" class="td !py-2">
+                  <div class="group-title">
+                    <PaginationBar
+                      :page="row.page"
+                      :page-count="row.pageCount"
+                      :total="row.total"
+                      @update:page="(n) => setGroupPage(row.deptId, n)"
+                    />
+                  </div>
                 </td>
               </tr>
               <!-- 任务行 -->
@@ -125,6 +145,14 @@
             </template>
           </tbody>
         </table>
+      </div>
+      <!-- 平铺视图分页器 -->
+      <div
+        v-if="!groupByDept && pageCount > 1"
+        class="flex items-center justify-between border-t border-slate-100 px-3.5 py-2.5"
+      >
+        <span class="text-xs text-slate-400">每页 {{ PAGE_SIZE }} 条</span>
+        <PaginationBar :page="page" :page-count="pageCount" :total="total" @update:page="goPage" />
       </div>
     </div>
 
@@ -246,6 +274,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 
 import { downloadFile, metaApi, taskApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -267,12 +296,33 @@ const owners = ref<{ id: string; name: string }[]>([])
 /** 视图模式：false=平铺列表，true=按部门分组（每组带小标题） */
 const groupByDept = ref(false)
 
+/** 平铺视图每页条数（后端分页） */
+const PAGE_SIZE = 50
+/** 分组视图下每个部门每页条数（各组独立分页） */
+const GROUP_PAGE_SIZE = 20
+/** 分组视图一次拉取的条数上限（需全量才能按部门分组） */
+const GROUP_FETCH_SIZE = 2000
+
+const page = ref(1)
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
+/** 分组视图下每个部门的当前页（key=部门 ID） */
+const groupPages = reactive<Record<string, number>>({})
+
 type TaskRow =
-  | { kind: 'group'; key: string; deptName: string; count: number }
+  | {
+      kind: 'group'
+      key: string
+      deptId: string
+      deptName: string
+      count: number
+      page: number
+      pageCount: number
+    }
   | { kind: 'task'; key: string; task: TaskItem }
+  | { kind: 'pager'; key: string; deptId: string; page: number; pageCount: number; total: number }
 
 /**
- * 表格渲染行。分组模式下在每个部门前插入一行小标题，
+ * 表格渲染行。分组模式下在每个部门前插入一行小标题、末尾插入该组的分页器，
  * 与任务行共用同一张表 —— 既不必为分组复制一遍行模板，列宽也保持一致。
  */
 const rows = computed<TaskRow[]>(() => {
@@ -286,13 +336,24 @@ const rows = computed<TaskRow[]>(() => {
   }
   const out: TaskRow[] = []
   for (const [k, items] of buckets) {
+    const pc = Math.max(1, Math.ceil(items.length / GROUP_PAGE_SIZE))
+    const cur = Math.min(Math.max(1, groupPages[k] ?? 1), pc)
     out.push({
       kind: 'group',
       key: `g:${k}`,
+      deptId: k,
       deptName: items[0]?.deptName || '未指定部门',
       count: items.length,
+      page: cur,
+      pageCount: pc,
     })
-    for (const t of items) out.push({ kind: 'task', key: t.id, task: t })
+    const start = (cur - 1) * GROUP_PAGE_SIZE
+    for (const t of items.slice(start, start + GROUP_PAGE_SIZE)) {
+      out.push({ kind: 'task', key: t.id, task: t })
+    }
+    if (pc > 1) {
+      out.push({ kind: 'pager', key: `p:${k}`, deptId: k, page: cur, pageCount: pc, total: items.length })
+    }
   }
   return out
 })
@@ -350,11 +411,13 @@ const download = downloadFile
 async function load() {
   loading.value = true
   try {
+    // 平铺视图走后端分页（只取当前页）；分组视图需要全量才能做「每组独立分页」
     const res = await taskApi.list({
       keyword: keyword.value,
       dept_id: deptFilter.value,
       status: statusFilter.value,
-      size: 500,
+      page: groupByDept.value ? 1 : page.value,
+      size: groupByDept.value ? GROUP_FETCH_SIZE : PAGE_SIZE,
     })
     tasks.value = res.items
     total.value = res.total
@@ -363,6 +426,31 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+/** 条件变更（查询 / 回车 / 切换视图）：回到第一页再查 */
+function applyFilters() {
+  page.value = 1
+  for (const k of Object.keys(groupPages)) delete groupPages[k]
+  load()
+}
+
+function goPage(n: number) {
+  const next = Math.min(Math.max(1, n), pageCount.value)
+  if (next === page.value) return
+  page.value = next
+  load()
+}
+
+function setGroupPage(deptId: string, n: number) {
+  groupPages[deptId] = Math.max(1, n)
+}
+
+/** 切换视图：两种模式的取数方式不同（平铺按页取 / 分组取全量），需重新加载 */
+function switchView(grouped: boolean) {
+  if (groupByDept.value === grouped) return
+  groupByDept.value = grouped
+  applyFilters()
 }
 
 function openForm(t?: TaskItem) {

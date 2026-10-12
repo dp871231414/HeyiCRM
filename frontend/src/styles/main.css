@@ -110,13 +110,33 @@ body {
   border-collapse: separate;
   border-spacing: 0;
 }
-.table-freeze th,
-.table-freeze td {
+
+/* 冻结列必须是「不透明 + 覆盖住自身列宽」的纯色块：横向滚动时它们浮在其他列之上，
+   背景透明或列宽不足都会透出正在滚动的内容。
+   注意不要给所有 th/td 设背景 —— 那会压掉行级的 hover 与分组底色。 */
+.table-freeze .col-id,
+.table-freeze .col-name,
+.table-freeze .col-ops {
   background: #fff;
 }
-.table-freeze thead th {
+.table-freeze thead .col-id,
+.table-freeze thead .col-name,
+.table-freeze thead .col-ops {
+  z-index: 3;
   background: #f8fafc;
 }
+
+/* 行底色画在 tr 上；冻结列需同步跟随，否则会出现「只有冻结列不变色」的割裂感 */
+.table-freeze tbody tr {
+  background: #fff;
+}
+.table-freeze tbody tr:hover,
+.table-freeze tbody tr:hover .col-id,
+.table-freeze tbody tr:hover .col-name,
+.table-freeze tbody tr:hover .col-ops {
+  background: #f8fafc;
+}
+
 .col-id,
 .col-name {
   position: sticky;
@@ -124,6 +144,9 @@ body {
 }
 .col-id {
   left: 0;
+  /* 表格自动布局会把 w-[96px] 压到实际约 87px，与 col-name 的 left 偏移之间
+     露出约 8px 空隙（实测确认，会透视到滚动内容）。锁住最小宽度即与偏移量对齐。 */
+  min-width: 96px;
 }
 .col-name {
   left: 96px;
@@ -134,11 +157,13 @@ body {
   z-index: 2;
   box-shadow: -6px 0 12px -8px rgba(15, 23, 42, 0.18);
 }
-.table-freeze thead .col-id,
-.table-freeze thead .col-name,
-.table-freeze thead .col-ops {
-  z-index: 3;
-  background: #f8fafc;
+
+/* 分组视图的小标题：横向滚动时部门名与统计数字保持可见（行背景仍铺满整行） */
+.group-title {
+  position: sticky;
+  /* 与 .td 的左内边距一致，避免滚动时文字贴边 */
+  left: 12px;
+  display: inline-block;
 }
 
 /* 行高亮 */

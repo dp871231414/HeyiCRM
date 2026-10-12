@@ -200,3 +200,16 @@
 | T21-3 | 删除项目公司时清理悬空引用（子组织上移、账号迁移并停用） | `api/v1/projects.py` | ✅ |
 | T21-4 | 回归用例与验收脚本（新增 5 条后端用例 + `tools/verify-round3.mjs`） | `tests/test_changes.py`、`tools/` | ✅ |
 | T21-5 | 文档同步与测试报告 | `proposal.md`、`design.md`、`tasks.md`、`test-report.md` | ✅ |
+
+## T22 第四批变更（2026-10-12）
+
+对应 proposal §12.5 / design §13.5。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T22-1 | 统计周期面板增加「本月」快捷项 | `components/MonthPicker.vue` | ✅ |
+| T22-2 | 任务列表分页（平铺 50 / 分组每组 20）+ 分页器组件 | `components/PaginationBar.vue`、`views/TasksView.vue` | ✅ |
+| T22-3 | 冻结列缝隙改纯色；分组标题横向滚动时固定 | `styles/main.css`、`views/TasksView.vue` | ✅ |
+| T22-4 | 后端分页与状态过滤下推 SQL + size 上限 | `api/v1/tasks.py` | ✅ |
+| T22-5 | 加载性能：gzip 压缩 + 静态资源强缓存 + index.html 不缓存 | `app/main.py` | ✅ |
+| T22-6 | 用例、验收脚本、文档与上线 | `tests/test_changes.py`、`tools/verify-round4.mjs`、`docs/` | ✅ |

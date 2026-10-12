@@ -98,11 +98,26 @@
         </button>
       </div>
 
-      <p class="mt-2.5 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
-        可选范围 <span class="tabular-nums">{{ MONTH_MIN }}</span> ~
-        <span class="tabular-nums">{{ MONTH_MAX }}</span>
-        <span v-if="mode === 'month'" class="text-slate-300"> · 点年份可快速跳转</span>
-      </p>
+      <div class="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+        <button
+          type="button"
+          class="rounded-md px-2 py-1 text-[11px] font-semibold transition"
+          :class="
+            todayInRange
+              ? 'text-brand-600 hover:bg-brand-50'
+              : 'cursor-not-allowed text-slate-300'
+          "
+          :disabled="!todayInRange"
+          :title="todayInRange ? `选择本月（${todayPeriod}）` : `本月（${todayPeriod}）不在可选范围内`"
+          @click="pickToday"
+        >
+          本月
+        </button>
+        <span class="text-[11px] text-slate-400">
+          可选 <span class="tabular-nums">{{ MONTH_MIN }}</span> ~
+          <span class="tabular-nums">{{ MONTH_MAX }}</span>
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -160,11 +175,19 @@ const canNext = computed(() =>
   mode.value === 'month' ? viewYear.value < MAX_Y : pageStart.value + YEARS_PER_PAGE <= MAX_Y,
 )
 
-/** 本机当前月，用于「本月」标记；不在可选范围内则不标记 */
+/** 本机当前月，用于「本月」标记与快捷选择；不在可选范围内则不标记 / 不可点 */
 const todayPeriod = (() => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 })()
+const todayInRange = todayPeriod >= MONTH_MIN && todayPeriod <= MONTH_MAX
+
+/** 一键回到本月（超出可选范围时按钮为禁用态） */
+function pickToday() {
+  if (!todayInRange) return
+  if (todayPeriod !== props.modelValue) emit('update:modelValue', todayPeriod)
+  close(true)
+}
 
 function monthClass(y: number, m: number) {
   const v = monthValue(y, m)

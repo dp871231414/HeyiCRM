@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -48,6 +49,9 @@ if settings.cors_origin_list:
         allow_headers=["*"],
     )
 
+# 传输压缩：JS / CSS / JSON 的体积可减少约 60%（原先 169KB 的主包原样传输）
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 app.include_router(api_router, prefix="/api/v1")
 
 
@@ -68,9 +72,19 @@ def health():
 # ---------------------------------------------------------------------------
 _static_dir = Path(settings.static_dir).resolve() if settings.static_dir else None
 if _static_dir and _static_dir.is_dir():
+
+    class _HashedAssetFiles(StaticFiles):
+        """构建产物按内容哈希命名（如 index--tnUtUiB.js），内容变则文件名变，可长期强缓存。"""
+
+        async def get_response(self, path: str, scope):
+            response = await super().get_response(path, scope)
+            if response.status_code == 200:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return response
+
     _assets = _static_dir / "assets"
     if _assets.is_dir():
-        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+        app.mount("/assets", _HashedAssetFiles(directory=str(_assets)), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):
@@ -79,7 +93,8 @@ if _static_dir and _static_dir.is_dir():
             return JSONResponse(status_code=404, content={"detail": "Not Found"})
         candidate = (_static_dir / full_path).resolve()
         if full_path and candidate.is_file() and _static_dir in candidate.parents:
-            return FileResponse(str(candidate))
-        return FileResponse(str(_static_dir / "index.html"))
+            return FileResponse(str(candidate), headers={"Cache-Control": "public, max-age=3600"})
+        # index.html 不做缓存：它内部引用带哈希的资源名，必须随发布及时更新
+        return FileResponse(str(_static_dir / "index.html"), headers={"Cache-Control": "no-cache"})
 
     logger.info("已启用单容器托管，静态目录：%s", _static_dir)
