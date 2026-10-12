@@ -21,9 +21,62 @@ const ok = (name, pass, detail = '') => {
   console.log(`${pass ? 'PASS' : 'FAIL'} | ${name}${detail ? ' — ' + detail : ''}`)
 }
 
-async function gotoMenu(label) {
+/**
+ * 切换侧边栏菜单，并等待目标页面「真的渲染出来」。
+ * 原先用固定 waitForTimeout，在线上（跨网络）偶尔不够，会把上一页的内容
+ * 当成结果读走，造成假失败。这里改为等页面特征文案出现。
+ */
+const MENU_PATH = {
+  经营驾驶舱: '/dashboard',
+  任务管理: '/tasks',
+  指标维护: '/metrics',
+  账号管理: '/accounts',
+}
+
+/**
+ * 切换侧边栏菜单。
+ *
+ * 教训：不能只等「页面里出现某个元素」——驾驶舱与任务页都有 <table>，
+ * 路由还没切完时 main thead th 会先匹配到上一页的表格，于是读到错的数据。
+ * 因此第一步先等 URL 真正切到目标路由，再等页面元素。
+ */
+async function gotoMenu(label, marker = '', selector = '') {
+  const expect = MENU_PATH[label]
   await page.click(`aside nav a:has-text("${label}")`)
-  await page.waitForTimeout(2200)
+  if (expect) {
+    const routed = await page
+      .waitForFunction((p) => location.pathname.startsWith(p), expect, { timeout: 15000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!routed) console.log(`  [导航] 未切到 ${expect}，当前 ${page.url()}`)
+  }
+  if (selector) {
+    await page.locator(selector).last().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {})
+  }
+  if (marker) {
+    // 标记必须是目标页面独有的文案，否则会立即通过、读到上一页内容
+    const settled = await page
+      .waitForFunction(
+        (m) => (document.querySelector('main')?.innerText || '').includes(m),
+        marker,
+        { timeout: 15000 },
+      )
+      .then(() => true)
+      .catch(() => false)
+    if (!settled) console.log(`  [导航] 未等到「${label}」渲染（标记：${marker}），当前 URL=${page.url()}`)
+  }
+  await page.waitForTimeout(400)
+}
+
+/**
+ * 等「任务管理」的表格真正就绪。
+ * 驾驶舱页同样有 <table>（6 列），任务表是 14 列；且任务页是工具栏先出、表格后到。
+ * 故以列数 >= 10 作为「任务表已渲染」的判据，避免读到上一页或空表。
+ */
+async function waitForTaskTable() {
+  await page
+    .waitForFunction(() => document.querySelectorAll('main thead th').length >= 10, null, { timeout: 15000 })
+    .catch(() => {})
 }
 
 await page.goto(BASE, { waitUntil: 'domcontentloaded' })
@@ -44,7 +97,7 @@ const headerHasPeriod = await page.evaluate(() => {
 })
 ok('顶栏不再显示统计周期', !headerHasPeriod)
 
-await gotoMenu('经营驾驶舱')
+await gotoMenu('经营驾驶舱', '核心指标')
 const dashPicker = await page.evaluate(() => {
   const el = [...document.querySelectorAll('main input[type="month"]')]
   return el.length
@@ -55,13 +108,14 @@ ok('驾驶舱内展示统计周期', !!dashPicker, dashPicker ? `min=${dashPicke
 ok('驾驶舱为月份选择组件', dashPicker?.min === '2026-09' && dashPicker?.max === '2099-12', dashPicker ? `范围 ${dashPicker.min} ~ ${dashPicker.max}` : '')
 ok('默认可选起点为 2026-09', dashPicker?.min === '2026-09')
 
-await gotoMenu('指标维护')
+await gotoMenu('指标维护', '公司整体目标')
 const metricPicker = await page.evaluate(() =>
   [...document.querySelectorAll('main input[type="month"]')].map((e) => ({ min: e.min, max: e.max, value: e.value })),
 )
 ok('指标维护内展示统计周期', metricPicker.length > 0, JSON.stringify(metricPicker[0] ?? {}))
 
-await gotoMenu('任务管理')
+await gotoMenu('任务管理', '按部门分组')
+await waitForTaskTable()
 const taskHasPeriod = await page.evaluate(() => {
   const h = document.querySelector('header')
   const body = document.body.innerText
@@ -70,7 +124,7 @@ const taskHasPeriod = await page.evaluate(() => {
 ok('任务管理不显示统计周期', !taskHasPeriod)
 
 // 选到 2099-12 边界不报错
-await gotoMenu('经营驾驶舱')
+await gotoMenu('经营驾驶舱', '核心指标')
 const boundary = await page.evaluate(async () => {
   const el = document.querySelector('main input[type="month"]')
   if (!el) return { ok: false, reason: 'no input' }
@@ -83,7 +137,7 @@ ok('可选到 2099-12 且不报错', boundary.ok, boundary.reason || '')
 
 // ---------------- 2 累计完成值 ----------------
 console.log('\n──── 2. 累计完成值口径 ────')
-await gotoMenu('指标维护')
+await gotoMenu('指标维护', '公司整体目标')
 const culm = await page.evaluate(() => {
   const t = document.body.innerText
   return { hasCulm: /累计完成值/.test(t), hasOld: /完成值为年初至今累计/.test(t) }
@@ -93,13 +147,14 @@ ok('旧文案已移除', !culm.hasOld)
 const projCol = await page.evaluate(() => /累计完成/.test(document.body.innerText))
 ok('项目公司列为「累计完成」', projCol)
 
-await gotoMenu('经营驾驶舱')
+await gotoMenu('经营驾驶舱', '核心指标')
 const dashCulm = await page.evaluate(() => /累计完成值/.test(document.body.innerText) && !/完成值为年初至今累计/.test(document.body.innerText))
 ok('驾驶舱文案已同步', dashCulm)
 
 // ---------------- 3 任务管理 ----------------
 console.log('\n──── 3. 任务管理 ────')
-await gotoMenu('任务管理')
+await gotoMenu('任务管理', '按部门分组')
+await waitForTaskTable()
 const head = await page.evaluate(() => [...document.querySelectorAll('main thead th')].map((e) => e.innerText.trim()))
 ok('含「创建时间」列', head.includes('创建时间'), head.join('/'))
 ok('含「更新时间」列', head.includes('更新时间'))
@@ -136,7 +191,7 @@ if (await groupBtn.count()) {
 
 // ---------------- 4 权限可配置 ----------------
 console.log('\n──── 4. 权限可配置 ────')
-await gotoMenu('账号管理')
+await gotoMenu('账号管理', '角色权限')
 // 角色表单在「角色权限」标签页内，需先切标签
 await page.click('main button:has-text("角色权限")').catch(() => {})
 await page.waitForTimeout(2000)
@@ -159,7 +214,7 @@ ok('内置标记可配置', roleForm.hasSystemToggle)
 await page.click('button:has-text("取消")').catch(() => {})
 await page.waitForTimeout(900)
 
-await gotoMenu('指标维护')
+await gotoMenu('指标维护', '公司整体目标')
 // 说明条仅在非「全公司」视角下展示，需先切到项目公司视角
 const orgSel = page.locator('header select').first()
 if (await orgSel.count()) {
@@ -168,7 +223,11 @@ if (await orgSel.count()) {
   )
   if (opt) {
     await orgSel.selectOption(opt)
-    await page.waitForTimeout(2500)
+    await page
+      .waitForFunction(() => /能否维护只看权限/.test(document.body.innerText.replace(/\s+/g, '')), null, {
+        timeout: 15000,
+      })
+      .catch(() => {})
   }
 }
 const gate = await page.evaluate(() =>
@@ -178,7 +237,8 @@ ok('指标维护权限说明不再写死角色', gate, `组织视角=${await pag
 
 // ---------------- 5. 本轮：模板一致性与入口调整 ----------------
 console.log('\n──── 5. 任务字段一致性 / 模板入口 ────')
-await gotoMenu('任务管理')
+await gotoMenu('任务管理', '按部门分组')
+await waitForTaskTable()
 const t2 = await page.evaluate(() => {
   const head = [...document.querySelectorAll('main thead th')].map((e) => e.innerText.trim())
   const creatorIdx = head.indexOf('创建人')
@@ -206,7 +266,7 @@ const exp = await page.evaluate(async () => {
 })
 ok('任务导出文件可下载', exp.status === 200 && exp.size > 0, `status=${exp.status} size=${exp.size}`)
 
-await gotoMenu('指标维护')
+await gotoMenu('指标维护', '公司整体目标')
 const mBtns = await page.evaluate(() =>
   [...document.querySelectorAll('main button, main label')].map((b) => b.innerText.trim()),
 )
