@@ -62,11 +62,10 @@ await page.waitForTimeout(2000)
 
 /* ---------- 1. 分析总结卡：底色应当为浅色 ---------- */
 const summary = await page.evaluate(() => {
-  // 分析总结是页面上第一个带状态徽章的卡片
-  const section = [...document.querySelectorAll('main section')].find((s) =>
-    /整体良好|需要关注|存在风险|暂无数据/.test(s.innerText),
-  )
-  if (!section) return null
+  // 用「位置」而不是「文案」定位：分析总结是 main 里的第一个 section。
+  // 早先按文案匹配（如 /整体良好|存在风险/），后端一改措辞这个断言就假失败 —— 别再这么写。
+  const section = document.querySelector('main section')
+  if (!section || !/综合加权达成率/.test(section.innerText)) return null
   const cs = getComputedStyle(section)
   const rgb = cs.backgroundColor.match(/\d+/g)?.map(Number) ?? []
   const lum = rgb.length >= 3 ? (rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114) / 255 : -1

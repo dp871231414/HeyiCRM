@@ -290,7 +290,12 @@ const snapshotHint = computed(() =>
 )
 
 const toneText = computed(
-  () => ({ good: '整体良好', warn: '需要关注', bad: '存在风险', none: '暂无数据' })[summary.value?.verdict ?? 'none'],
+  () =>
+    // 措辞与单指标状态同一套口径（整体结论也是「达成率 ÷ 时间进度」判出来的），
+    // 所以文案直接点明与时间进度的关系，避免出现与事实相反的表述
+    ({ good: '跑赢时间进度', warn: '略慢于时间进度', bad: '滞后时间进度', none: '暂无数据' })[
+      summary.value?.verdict ?? 'none'
+    ],
 )
 /** 总结卡的状态徽章：浅色底 + 深色字，与页面其余卡片同一套配色 */
 const toneChip = computed(

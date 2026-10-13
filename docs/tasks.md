@@ -296,3 +296,13 @@
 | T29-3 | 分析总结改用 tone 分组与文案；整体结论字段 `tone` → `verdict` | `services/summary.py` | ✅ |
 | T29-4 | 前端新增共用样式模块 `utils/tone.ts`，两页接入 | `utils/tone.ts`、`views/DashboardView.vue`、`views/MetricsView.vue`、`types/index.ts` | ✅ |
 | T29-5 | 用例（分档、两页一致性、计数同源、文案）与验收脚本 | `tests/test_changes.py`、`tools/verify-round10.mjs` | ✅ |
+
+## T30 第十二批变更（2026-10-13）
+
+对应 proposal §12.21 / design §13.15。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T30-1 | 整体结论改用 `progress_tone`（阈值 1 / 0.7），去掉绝对值门槛与滞后项数条件 | `services/summary.py` | ✅ |
+| T30-2 | 结论文案改为与时间进度挂钩的表述；前端徽章文案同步 | `services/summary.py`、`views/DashboardView.vue` | ✅ |
+| T30-3 | 用例与验收脚本（含三档实测）；验收脚本改用位置锚点定位总结卡 | `tests/test_changes.py`、`tools/verify-round9.mjs`、`tools/verify-round10.mjs` | ✅ |

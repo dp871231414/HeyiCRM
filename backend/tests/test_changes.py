@@ -920,3 +920,34 @@ def test_summary_uses_unified_wording(client, admin_headers):
     assert "已达成" in s["headline"] and "滞后" in s["headline"], s["headline"]
     assert "未达标" not in s["headline"], "不应再出现旧的「未达标」措辞"
     assert "领先" in s["headline"] and "偏慢" in s["headline"], s["headline"]
+
+
+def test_summary_verdict_uses_the_same_rule_as_metrics(client, admin_headers):
+    """整体结论必须与单指标同一套判定（达成率 ÷ 时间进度），阈值 ≥1 / 0.7。
+
+    回归点：原先整体结论按绝对值判（加权达成率 < 0.9 → 存在风险），
+    年中会出现自相矛盾的表述 —— 实测加权 83.8% 明明跑赢时间进度 78.4%，
+    文案却写「整体低于时间轴」。
+    """
+    from app.services.achievement import progress_tone
+
+    s = client.get("/api/v1/dashboard/summary", params={"org_id": "CO"}, headers=admin_headers).json()
+    if s["weighted"] is None:
+        assert s["verdict"] == "none"
+        return
+
+    # 与单指标同一函数、同一阈值
+    expect = {"done": "good", "ahead": "good", "near": "warn", "risk": "bad", "none": "none"}[
+        progress_tone(s["weighted"], s["timeProgress"])
+    ]
+    assert s["verdict"] == expect, f"加权 {s['weighted']:.3f} / 时间进度 {s['timeProgress']:.3f} → 应为 {expect}"
+
+    # 具体的边界要求：跑赢时间进度就不该判为「存在风险」
+    if s["weighted"] >= s["timeProgress"]:
+        assert s["verdict"] in ("good",), f"跑赢时间进度却判为 {s['verdict']}"
+    # 明显滞后（< 0.7 倍时间进度）才应判为 bad
+    if s["weighted"] >= 0.7 * s["timeProgress"] and s["weighted"] < s["timeProgress"]:
+        assert s["verdict"] == "warn", f"略慢于时间进度应判 warn，实际 {s['verdict']}"
+
+    # 措辞与时间进度挂钩，不再有与事实相反的「低于时间轴」
+    assert "时间进度" in s["headline"]

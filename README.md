@@ -113,7 +113,7 @@ uvicorn app.main:app --port 8000
 cd ../frontend && npm install && npm run dev
 ```
 
-4. 自检：`cd backend && pytest -q`（应为 96 passed）。
+4. 自检：`cd backend && pytest -q`（应为 97 passed）。
 
 > WorkBuddy 的「发布的应用」卡片记录的是「哪个本地目录发布了该应用」。换设备后本机没有那个目录，会提示「找不到本地工程目录」——
 > 这只影响本地预览与重新发布，**不影响已上线的分享链接**。
@@ -165,7 +165,7 @@ cd backend && SEED_RESET=1 sh start.sh
 
 ## 测试与文档
 
-- 后端测试：`cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q`（96 项通过）
+- 后端测试：`cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q`（97 项通过）
 - 浏览器验收：`cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round7.mjs`（另有 6 套历史脚本，见交接说明 §10）
 - 接口文档：启动后访问 `http://localhost:8000/api/docs`
 - 完整规范见 `docs/` 目录，部署细节见 `docs/design.md`

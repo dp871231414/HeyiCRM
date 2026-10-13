@@ -154,17 +154,23 @@ def build_summary(db: Session, period: str, org_id: str) -> dict:
         by_tone[progress_tone(x["ach"]["rate"], tp)].append(x)
     done, lead, slow, lag = by_tone["done"], by_tone["ahead"], by_tone["near"], by_tone["risk"]
 
-    # 整体状态：加权达成率 + 滞后项数（借用 progress_tone 的「滞后」定义）
-    verdict = "good"
-    if weighted < 0.9 or len(lag) >= 2:
-        verdict = "bad"
-    elif weighted < 0.98 or len(lag) >= 1:
-        verdict = "warn"
+    # 整体结论：**用与单指标完全相同的判定**（progress_tone，达成率 ÷ 时间进度），
+    # 阈值也一致 —— ≥1 良好 / 0.7 ~ <1 需关注 / <0.7 存在风险。
+    # 原先按绝对值判（加权达成率 < 0.9 → 存在风险），对年度目标不成立：
+    # 年中看 83.8% 会被判成「低于时间轴」，而它其实跑赢了 78.4% 的时间进度。
+    verdict = {
+        "done": "good",
+        "ahead": "good",
+        "near": "warn",
+        "risk": "bad",
+        "none": "none",
+    }[progress_tone(weighted, tp)]
 
     verdict_text = {
-        "good": "整体经营状况良好，目标可控",
-        "warn": "整体基本持平，存在局部缺口需关注",
-        "bad": "整体低于时间轴，存在明确风险需立即干预",
+        "good": "整体跑赢年度时间进度，目标可控",
+        "warn": "整体略慢于年度时间进度，存在局部缺口需关注",
+        "bad": "整体明显滞后于年度时间进度，存在明确风险需立即干预",
+        "none": "暂无数据",
     }[verdict]
 
     vs = vs_time_progress(weighted, period)

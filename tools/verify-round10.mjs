@@ -56,18 +56,27 @@ const dash = await page.evaluate(() => {
       if (name && chip) cards[name] = chip.innerText.trim()
     }
   }
-  // 汇总统计：分析总结卡右上角那组小卡（label 在下方）
-  const summarySec = [...document.querySelectorAll('main section')].find((s) =>
-    /整体良好|需要关注|存在风险|暂无数据/.test(s.innerText),
-  )
+  // 分析总结卡：用「位置」定位（main 里的第一个 section），不按文案匹配 ——
+  // 按文案匹配的话，后端一改措辞断言就假失败（这个坑踩过两次）。
+  const summarySec = (() => {
+    const first = document.querySelector('main section')
+    return first && /综合加权达成率/.test(first.innerText) ? first : null
+  })()
   const counts = {}
   if (summarySec) {
+    // 右上角那组统计小卡：上面是数字、下面是标签
     for (const box of summarySec.querySelectorAll('div.rounded-xl')) {
       const lines = box.innerText.split('\n').map((x) => x.trim()).filter(Boolean)
       if (lines.length >= 2) counts[lines[1]] = Number(lines[0])
     }
   }
-  return { cards, counts, body: document.body.innerText }
+  return {
+    cards,
+    counts,
+    chip: summarySec?.querySelector('.chip')?.innerText.trim() ?? '',
+    summaryText: summarySec?.innerText.replace(/\s+/g, ' ') ?? '',
+    body: document.body.innerText,
+  }
 })
 ok('驾驶舱渲染出核心指标卡', Object.keys(dash.cards).length > 0, `共 ${Object.keys(dash.cards).length} 张`)
 ok(
@@ -76,6 +85,28 @@ ok(
   JSON.stringify(dash.counts),
 )
 ok('驾驶舱不再出现「未达标 / 接近目标」的旧说法', !/未达标|接近目标/.test(dash.body))
+
+/* ---------- 1b. 整体结论也走同一套判定（达成率 ÷ 时间进度） ---------- */
+const weighted = Number(/综合加权达成率\s*([\d.]+)%/.exec(dash.summaryText)?.[1])
+const timeProg = Number(/年度时间进度\s*([\d.]+)%/.exec(dash.summaryText)?.[1])
+const ratio = weighted && timeProg ? weighted / timeProg : NaN
+const expectChip = !Number.isFinite(ratio)
+  ? ''
+  : ratio >= 1
+    ? '跑赢时间进度'
+    : ratio >= 0.7
+      ? '略慢于时间进度'
+      : '滞后时间进度'
+ok(
+  '整体结论按「达成率 ÷ 时间进度」判档（阈值 1 / 0.7）',
+  !!dash.chip && dash.chip === expectChip,
+  `加权 ${weighted}% ÷ 时间进度 ${timeProg}% = ${Number.isFinite(ratio) ? ratio.toFixed(2) : '—'}｜徽章「${dash.chip}」应为「${expectChip}」`,
+)
+ok(
+  '整体结论文案与事实一致（跑赢时间进度时不写「低于时间轴」）',
+  !/低于时间轴/.test(dash.summaryText) || ratio < 1,
+  dash.summaryText.slice(0, 110),
+)
 
 await page.screenshot({ path: `${SHOT_DIR}/10a-驾驶舱-状态.png` })
 
