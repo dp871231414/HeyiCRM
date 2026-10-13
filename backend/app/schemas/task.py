@@ -31,8 +31,8 @@ class TaskOut(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    parent: str = Field(min_length=1, max_length=128, description="任务名称（一级任务）")
-    title: str | None = Field(default=None, max_length=128, description="任务分类（二级任务）")
+    parent: str = Field(min_length=1, max_length=128, description="任务名称")
+    title: str | None = Field(default=None, max_length=128, description="任务分类")
     description: str = ""
     abnormal: bool = False
     target: float = Field(gt=0)

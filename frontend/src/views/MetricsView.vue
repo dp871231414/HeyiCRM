@@ -20,7 +20,7 @@
       <!-- 模块一 · 公司整体目标 -->
       <section>
         <div class="flex items-center justify-between mb-2.5">
-          <h2 class="text-sm font-bold text-slate-900">一、公司整体目标</h2>
+          <h2 class="section-title">一、公司整体目标</h2>
           <span class="text-xs text-slate-400">累计完成值为「截止当月」的累计值；运营车辆为期末快照</span>
         </div>
         <div v-if="deptView" class="card p-8 text-center text-xs text-slate-500 leading-relaxed">
@@ -112,7 +112,7 @@
       <!-- 模块二 · 指标监控 -->
       <section v-if="board.monitor.length && !deptView">
         <div class="flex items-center justify-between mb-2.5">
-          <h2 class="text-sm font-bold text-slate-900">二、指标监控</h2>
+          <h2 class="section-title">二、指标监控</h2>
           <span class="text-xs text-slate-400">无目标值、不判红黄绿灯，按当期快照录入</span>
         </div>
         <div class="card p-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -147,7 +147,7 @@
       <!-- 模块三 · 项目公司指标 -->
       <section>
         <div class="flex items-center justify-between mb-2.5">
-          <h2 class="text-sm font-bold text-slate-900">三、项目公司指标</h2>
+          <h2 class="section-title">三、项目公司指标</h2>
           <button v-if="canCreateProject" class="btn-primary btn-sm" @click="openProjectForm()">+ 新增项目公司</button>
         </div>
 

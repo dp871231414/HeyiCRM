@@ -18,16 +18,16 @@
       <button class="btn-ghost" @click="applyFilters">查询</button>
 
       <div class="ml-auto flex items-center gap-2">
-        <div class="flex items-center rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+        <div class="flex items-center rounded-xl border border-slate-200/80 p-0.5 bg-slate-100/70">
           <button
-            class="px-2.5 py-1 rounded-md text-xs font-semibold transition"
+            class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-200"
             :class="!groupByDept ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
             @click="switchView(false)"
           >
             列表
           </button>
           <button
-            class="px-2.5 py-1 rounded-md text-xs font-semibold transition"
+            class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-200"
             :class="groupByDept ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
             @click="switchView(true)"
           >
@@ -158,11 +158,11 @@
     <ModalDialog :open="formOpen" :title="form.id ? '编辑任务' : '新建任务'" width="lg" @close="formOpen = false">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="md:col-span-2">
-          <label class="label">任务名称（一级任务）</label>
+          <label class="label">任务名称</label>
           <input v-model.trim="form.parent" class="input" placeholder="如：完成全年营收目标 10.2 亿" />
         </div>
         <div>
-          <label class="label">任务分类（二级任务）</label>
+          <label class="label">任务分类</label>
           <input v-model.trim="form.title" class="input" placeholder="如：华东大区营收达成（可留空）" />
         </div>
         <div>

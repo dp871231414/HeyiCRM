@@ -106,7 +106,7 @@
 ② importer 读取工作簿 → 定位「任务数据」表头 → 逐行解析为 dict
 ③ validate_task_rows 逐行校验（8 类规则）→ 得到 errors[]
 ④ 有错误：返回 200 {imported:0, errors:[{row,field,msg}]}，错误行号回传前端高亮
-⑤ 无错误：批量插入；一级任务相同的多行归组（first(parent).id 作为分组键）
+⑤ 无错误：批量插入；任务名称相同的多行归组（first(parent).id 作为分组键）
 ⑥ 写 operation_log，返回 {imported:N}
 ```
 
@@ -181,8 +181,8 @@
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | varchar(32) PK | 任务ID，T202601… |
-| parent | varchar(128) | 一级任务（任务名称） |
-| title | varchar(128) nullable | 二级任务（任务分类），可空 |
+| parent | varchar(128) | 任务名称 |
+| title | varchar(128) nullable | 任务分类，可空 |
 | description | text | 任务描述 |
 | abnormal | bool | 人工异常标记，默认 false |
 | target | numeric(18,2) | 目标，非量化填 1 |
@@ -959,3 +959,83 @@ if (auth.scope === 'all') {
 
 > **注意**：任务模块的隔离没有被削弱 —— 验收脚本会用同一账号对比两个模块：
 > 管理员 3 条任务 → 部门负责人 1 条（任务侧仍收窄），而驾驶舱与指标维护的数据完全一致。
+
+### 13.12 2026-10-13 · Minimalist Modern 设计系统落地
+
+#### 落地策略：取视觉基因，换结构语言
+
+新设计系统是**营销落地页**配方（hero、pricing、testimonials、3D 等距变形、浮动装饰卡）。
+本项目是数据密集型后台。逐项取舍：
+
+| 设计系统的元素 | 本项目如何处理 |
+|---|---|
+| 签名渐变（Electric Blue） | ✅ 全量采用，色阶两端点即渐变端点 |
+| 彩色阴影（accent-tinted） | ✅ 全量替换原中性灰阴影 |
+| 抬升式交互（hover lift） | ✅ 按钮、可交互卡片 |
+| 区块标识（Section Label） | ✅ 登录页用完整 pill 徽章；数据页用**渐变短竖条**（更克制） |
+| 反转对比区（Inverted Section） | ✅ 落在驾驶舱「分析总结」（全页最重要的结论） |
+| 纹理层次（点阵 / 光晕） | ✅ 深色卡点阵、全局背景光晕 |
+| 双字体系统（Calistoga + Inter + Mono） | ⚠️ 受「零外部字体」约束 → 用**字重/字距/等宽数字**替代 |
+| 3D 等距变形、浮动装饰卡 | ❌ 数据表格会变形、且分散注意力，不采用 |
+| hero 三栏网格、pricing 卡、testimonial | ❌ 营销页专属结构，后台无对应场景 |
+
+> 字体约束是**项目的既有决定**（外链在国内超时、且属渲染阻塞），不是本次的取舍。
+> 补充：Calistoga 是纯拉丁衬线体，**不含中文字形**，中文标题本来也无法用它。
+
+#### 设计代币（`tailwind.config.js`）
+
+```js
+brand: { 400: '#4D7CFF', 600: '#0052FF', ... }   // 400/600 即设计系统的渐变两端点
+boxShadow: {
+  card:      '0 4px 20px -2px rgba(0, 82, 255, 0.10)',
+  cardHover: '0 10px 25px -5px rgba(0, 82, 255, 0.15), 0 8px 10px -6px rgba(0, 82, 255, 0.10)',
+  btn:       '0 4px 14px 0 rgba(0, 82, 255, 0.30)',
+  btnHover:  '0 8px 24px rgba(0, 82, 255, 0.35)',
+}
+letterSpacing: { display: '-0.02em' }
+fontFamily: { mono: ['ui-monospace', 'SFMono-Regular', ...] }   // 替代 JetBrains Mono
+animation: { float, 'float-slow', 'spin-slow', 'pulse-dot' }
+```
+
+**为什么色阶取这两个值**：`600 = #0052FF`、`400 = #4D7CFF` 正好是设计系统签名的起止色，
+于是「单色阶 + 单色渐变」自洽 —— `from-brand-600 to-brand-400` 就是官方渐变，
+无需再引入第二个色相（旧方案是靛蓝 + 紫双色相）。
+
+#### 基础组件（`styles/main.css`）
+
+| 类 | 要点 |
+|---|---|
+| `.card` / `.card-lift` | 16px 圆角 + 品牌阴影；`.card-lift` 只给「点得动」的卡片（静态容器加抬升会误导） |
+| `.btn` 系列 | 12px 圆角、200ms、hover 抬升 2px、按下缩到 0.98；**disabled 时显式关闭抬升与阴影** |
+| `.input` | 8px 圆角，焦点 `border-brand-500 + ring-2 ring-brand-500/25` |
+| `.section-title` | 特粗 + `-0.02em`，左侧 `::before` 渐变竖条（区块标识） |
+| `.section-label` | pill 徽章 + 脉冲圆点，用于登录页等需要强调的场景 |
+| `.stat-value` | `tabular-nums`，让数值纵向对齐 |
+| `.dot-grid` | 点阵纹理，铺在深色容器上 |
+| `.gradient-text` | 渐变文字（克制使用，登录页等强调位） |
+
+无障碍：新增 `@media (prefers-reduced-motion: reduce)` 兜底，装饰动画（浮动/旋转/脉冲）全部停用。
+
+#### 深色反转卡（驾驶舱分析总结）
+
+| 元素 | 处理 |
+|---|---|
+| 容器 | `bg-slate-900` + `border-slate-800/60` + `shadow-pop` + `rounded-xl2` |
+| 纹理 | 绝对定位 `.dot-grid` 覆盖层，`opacity-[0.06]` |
+| 光晕 | 右上角 56×56 模糊圆，颜色随语义变化（`toneGlow`） |
+| 语义标签 | 由「浅底深字」改为「半透明底 + 亮色字」：`bg-good-500/15 text-good-500 border-good-500/30` 等 |
+| 正文 | `text-slate-100` / 次要 `text-slate-300` / 更弱 `text-slate-400` |
+| 统计小卡 | `bg-white/10 border-white/10` |
+
+> **为什么改语义标签配色**：原先的 `bg-good-50 text-good-700` 是给浅色背景设计的，
+> 直接搬到 `slate-900` 上会糊成一片且对比度不足。深色场景必须换成「半透明色底 + 中亮色字」。
+
+#### 旧叫法清理（M-25）
+
+统一为「任务名称 / 任务分类 / 任务描述」一套命名（导入模板、列表、表单三处一致）。
+数据字段 `parent` / `title` 与列表列保持不变。清理范围：前端 label、后端 schema 描述与注释、
+README、交接说明、proposal、design、layouts。
+
+> **有意保留**：`tests/test_changes.py` 中的一条负向断言
+> （`assert "一级任务" not in TASK_COLUMNS ...`）—— 它是防止旧叫法回归的守卫，
+> 字面量本身即是检查目标，不能一并替换掉。

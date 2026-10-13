@@ -4,10 +4,10 @@
     <button
       ref="triggerRef"
       type="button"
-      class="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-100"
+      class="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-500/25"
       :class="
         open
-          ? 'border-brand-400 text-brand-700 ring-2 ring-brand-100'
+          ? 'border-brand-500 text-brand-700 ring-2 ring-brand-500/25'
           : 'border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50/40'
       "
       aria-haspopup="dialog"
@@ -193,14 +193,14 @@ function monthClass(y: number, m: number) {
   const v = monthValue(y, m)
   if (!inRange(y, m)) return 'text-slate-300 cursor-not-allowed'
   if (v === props.modelValue) return 'bg-brand-600 font-semibold text-white shadow-sm'
-  if (v === todayPeriod) return 'font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 hover:bg-brand-50'
+  if (v === todayPeriod) return 'font-semibold text-brand-600 ring-1 ring-inset ring-brand-300 hover:bg-brand-50'
   return 'text-slate-600 hover:bg-brand-50 hover:text-brand-700'
 }
 
 function yearClass(y: number) {
   if (y < MIN_Y || y > MAX_Y) return 'text-slate-300 cursor-not-allowed'
   if (y === selectedYear.value) return 'bg-brand-600 font-semibold text-white shadow-sm'
-  if (y === viewYear.value) return 'font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 hover:bg-brand-50'
+  if (y === viewYear.value) return 'font-semibold text-brand-600 ring-1 ring-inset ring-brand-300 hover:bg-brand-50'
   return 'text-slate-600 hover:bg-brand-50 hover:text-brand-700'
 }
 

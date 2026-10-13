@@ -15,7 +15,7 @@ from tests.conftest import login
 def _task_body(dept_id: str = "D01", owner: str = "林雪") -> dict:
     return {
         "parent": "变更测试任务",
-        "title": "二级分类",
+        "title": "分类A",
         "description": "",
         "abnormal": False,
         "target": 100,

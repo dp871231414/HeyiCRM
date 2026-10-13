@@ -16,7 +16,8 @@
 import { computed } from 'vue'
 
 const props = withDefaults(defineProps<{ values: number[]; color?: string; height?: number; area?: boolean }>(), {
-  color: '#4F46E5',
+  // 与设计代币一致：brand-600 (#0052FF)。调用方需要区分状态时可显式传入 good/warn/bad 色。
+  color: '#0052FF',
   height: 120,
   area: true,
 })

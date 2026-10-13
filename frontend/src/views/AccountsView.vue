@@ -84,7 +84,7 @@
     <template v-else-if="tab === 'org'">
       <div class="card">
         <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 class="text-sm font-bold text-slate-900">组织结构</h2>
+          <h2 class="section-title">组织结构</h2>
           <button v-if="auth.hasPerm('account.edit')" class="btn-primary btn-sm" @click="openOrgForm(null, 'CO')">
             创建二级部门
           </button>

@@ -259,3 +259,17 @@
 | T26-3 | 前端取数口径统一为全公司，移除「本人范围」空态 | `layouts/AppLayout.vue`、`stores/view.ts`、`views/DashboardView.vue`、`views/MetricsView.vue` | ✅ |
 | T26-4 | `services/scope.py` 收敛语义（仅任务模块）并清理死代码 | `services/scope.py`、`core/deps.py` 注释 | ✅ |
 | T26-5 | 用例调整与新增、验收脚本、文档同步 | `tests/`、`tools/verify-round7.mjs`、`docs/` | ✅ |
+
+## T27 第九批变更（2026-10-13）
+
+对应 proposal §12.15 / design §13.12。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T27-1 | 设计代币重建：Electric Blue 色阶、accent-tinted 阴影、圆角、等宽字体栈、动效关键帧 | `tailwind.config.js` | ✅ |
+| T27-2 | 基础组件层重做（card/btn/input/th/td/chip）+ 新增 section-title / section-label / gradient-text / stat-value / dot-grid | `styles/main.css` | ✅ |
+| T27-3 | 布局与登录页改造（品牌标识、侧边栏选中态、顶栏、登录视觉区、区块标识） | `layouts/AppLayout.vue`、`views/LoginView.vue` | ✅ |
+| T27-4 | 驾驶舱深色反转总结卡（语义色深色适配 + 纹理 + 光晕） | `views/DashboardView.vue` | ✅ |
+| T27-5 | 页面与组件配色统一（标题/数值样式收口、Sparkline 硬编码色、MonthPicker 焦点环、分段控件） | `views/*.vue`、`components/*.vue` | ✅ |
+| T27-6 | 清理「一级任务/二级任务」旧叫法（前端/后端/文档） | 多文件 | ✅ |
+| T27-7 | 视觉验收脚本与文档同步 | `tools/verify-round8.mjs`、`docs/` | ✅ |

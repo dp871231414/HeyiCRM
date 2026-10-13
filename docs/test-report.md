@@ -550,3 +550,64 @@ cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q
 # 本轮专项（16 项；会临时改可见范围与造数，脚本内已还原）
 cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round7.mjs
 ```
+
+---
+
+## 十六、第九轮变更测试（2026-10-13）
+
+### 16.1 后端用例（92 项）
+
+无新增用例（本轮为前端视觉与文案清理）。全量回归 **92 passed**。
+
+> 旧叫法清理涉及后端 `schemas/task.py` 的描述字段与 `importer.py` 注释，
+> 已有用例 `test_task_template_columns_match_list_and_form` 覆盖模板列名一致性 ✅
+
+### 16.2 浏览器验收（119 项全绿）
+
+| 脚本 | 覆盖 | 结果 |
+|---|---|---|
+| `tools/verify-round8.mjs`（**本轮新增**） | 视觉体系落地与一致性 | ✅ 17/17 |
+| `tools/verify-changes.mjs` | 历史需求 | ✅ 26/26（3 跳过） |
+| `tools/verify-round3.mjs` | 月份组件、项目公司入口 | ✅ 23/23 |
+| `tools/verify-round4.mjs` | 分页、冻结列、分组标题 | ✅ 17/17（2 跳过） |
+| `tools/verify-round5.mjs` | 权限三块分组、指标维护页性能 | ✅ 8/8 |
+| `tools/verify-round6.mjs` | 组织结构保存体验 | ✅ 12/12 |
+| `tools/verify-round7.mjs` | 数据权限边界 | ✅ 16/16 |
+| `tools/verify-no-external-font.mjs` | 零外部请求与零外部字体 | ✅ 通过 |
+
+本轮视觉专项要点：
+
+| 检查 | 结果 |
+|---|---|
+| 登录页新渐变（单色相 Electric Blue） | ✅ |
+| 区块标识（pill + 脉冲点） | ✅ 动画名 `pulseDot` 生效 |
+| 侧边栏选中项新渐变 | ✅ |
+| 旧靛蓝/紫色（`#4F46E5` / `#7C3AED`）残留 | ✅ 0 处 |
+| 主按钮 12px 圆角 + 品牌色阴影 | ✅ 三个页面均通过 |
+| 卡片 16px 圆角 + 品牌色阴影 | ✅ 四个页面均通过 |
+| 区块标题特粗（800）+ `-0.28px` 字距 | ✅ |
+| 零外部请求 / 零外部字体 | ✅ |
+| 控制台错误 | ✅ 0 个 |
+
+### 16.3 本轮的过程记录（两处断言自身的错误）
+
+| 现象 | 原因 | 修正 |
+|---|---|---|
+| 阴影断言全部失败，读出 `rgba(0,0,0,0) 0px 0px 0px 0px, ...` | `box-shadow` 由三个 CSS 变量拼接（前两段是透明的 ring 占位），真实阴影在第三段，我的 `.slice(0, 46)` 把它截掉了 | 读完整字符串再判断 |
+| 字距断言失败（实测 `-0.28px`，断言写 `-0.32px`） | `.section-title` 是 `text-sm`（14px），`-0.02em × 14px = -0.28px`；我按 16px 计算 | 按实际字号修正 |
+
+> 两次都是**断言写错而非实现有问题**。构建产物核对确认样式正确
+> （`.card{--tw-shadow: 0 4px 20px -2px rgba(0, 82, 255, .1); ...}`）。
+
+### 16.4 复现命令
+
+```bash
+# 后端（92 项）
+cd backend && DATABASE_URL="sqlite:///./test.db" .venv/bin/python -m pytest -q
+
+# 视觉专项（17 项，含截图输出到 /tmp/ui-shots）
+cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round8.mjs
+
+# 零外部字体硬约束
+cd tools && BASE_URL=http://127.0.0.1:8000 node verify-no-external-font.mjs
+```

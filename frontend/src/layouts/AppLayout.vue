@@ -7,12 +7,14 @@
     >
       <div class="h-16 flex items-center gap-2.5 px-4 border-b border-slate-200 shrink-0">
         <div
-          class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-600 to-violetx-600 text-white grid place-items-center font-extrabold text-sm shrink-0"
+          class="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-600 to-brand-400 text-white grid place-items-center font-extrabold text-sm shrink-0 shadow-[0_4px_14px_rgba(0,82,255,0.35)]"
         >
           合
         </div>
         <div v-if="!collapsed" class="min-w-0">
-          <div class="text-[13px] font-extrabold text-slate-900 leading-tight truncate">合一重卡生态</div>
+          <div class="text-[13px] font-extrabold text-slate-900 leading-tight truncate tracking-display">
+            合一重卡生态
+          </div>
           <div class="text-[11px] text-slate-400 leading-tight">经营看板</div>
         </div>
       </div>
@@ -22,11 +24,11 @@
           v-for="item in menus"
           :key="item.name"
           :to="{ name: item.name }"
-          class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition"
+          class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ease-out"
           :class="
             route.name === item.name
-              ? 'bg-gradient-to-r from-brand-600 to-violetx-600 text-white shadow-btn'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              ? 'bg-gradient-to-r from-brand-600 to-brand-400 text-white shadow-btn'
+              : 'text-slate-600 hover:bg-brand-50/70 hover:text-brand-700'
           "
           :title="collapsed ? item.label : ''"
         >
@@ -36,7 +38,7 @@
       </nav>
 
       <div v-if="!collapsed" class="px-4 py-3 border-t border-slate-200 text-[11px] text-slate-400">
-        数据截至 {{ view.dataAsOf || '—' }}
+        数据截至 <span class="tabular-nums">{{ view.dataAsOf || '—' }}</span>
       </div>
     </aside>
 
@@ -50,16 +52,16 @@
             <path d="M3 6h18M3 12h18M3 18h18" stroke-linecap="round" />
           </svg>
         </button>
-        <h1 class="text-[15px] font-bold text-slate-900">{{ title }}</h1>
+        <h1 class="text-[15px] font-extrabold tracking-display text-slate-900">{{ title }}</h1>
 
         <div class="ml-auto flex items-center gap-2">
           <div class="relative">
             <button
-              class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition"
+              class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl transition hover:bg-brand-50/70"
               @click="menuOpen = !menuOpen"
             >
               <span
-                class="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-violetx-600 text-white grid place-items-center text-xs font-bold"
+                class="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-brand-400 text-white grid place-items-center text-xs font-bold"
               >
                 {{ (auth.user?.name || '?').slice(0, 1) }}
               </span>

@@ -16,33 +16,48 @@
     <div v-if="loading" class="card p-10 text-center text-slate-400 text-sm">数据加载中…</div>
 
     <template v-else-if="summary && overview">
-      <!-- 分析总结 -->
-      <section class="card p-5" :class="toneBorder">
-        <div class="flex items-start justify-between gap-4">
+      <!-- 分析总结 · 反转对比区：全页最重要的结论放在深色卡片上，形成视觉锚点。
+           设计系统的 Inverted Contrast Section 在后台语境下的落点 —— 营销页用它放
+           stats / 最终 CTA，这里用来放「本期经营结论」。 -->
+      <section class="relative overflow-hidden rounded-xl2 border border-slate-800/60 bg-slate-900 p-5 shadow-pop">
+        <div class="pointer-events-none absolute inset-0 dot-grid opacity-[0.06]" />
+        <div
+          class="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full blur-3xl"
+          :class="toneGlow"
+        />
+
+        <div class="relative flex items-start justify-between gap-4">
           <div class="min-w-0">
             <div class="flex items-center gap-2 mb-2">
               <span class="chip border" :class="toneChip">{{ toneText }}</span>
               <span class="text-xs text-slate-400">{{ overview.period }} · {{ overview.orgName }}</span>
             </div>
-            <p class="text-[15px] leading-relaxed text-slate-800 font-medium">{{ summary.headline }}</p>
+            <p class="text-[15px] leading-relaxed font-medium text-slate-100">{{ summary.headline }}</p>
           </div>
           <div class="hidden lg:flex gap-2 shrink-0">
-            <div v-for="c in countCards" :key="c.label" class="text-center px-3.5 py-2 rounded-lg bg-white border border-slate-200">
-              <div class="text-lg font-extrabold" :class="c.cls">{{ c.value }}</div>
+            <div
+              v-for="c in countCards"
+              :key="c.label"
+              class="text-center px-3.5 py-2 rounded-xl bg-white/10 border border-white/10"
+            >
+              <div class="text-lg stat-value" :class="c.cls">{{ c.value }}</div>
               <div class="text-[11px] text-slate-400">{{ c.label }}</div>
             </div>
           </div>
         </div>
 
-        <div v-if="summary.wins.length" class="mt-4 grid md:grid-cols-2 gap-x-6 gap-y-1.5">
-          <div v-for="(w, i) in summary.wins" :key="i" class="flex gap-2 text-sm text-slate-600">
-            <span class="text-good-600 font-bold shrink-0">亮点</span><span>{{ w }}</span>
+        <div v-if="summary.wins.length" class="relative mt-4 grid md:grid-cols-2 gap-x-6 gap-y-1.5">
+          <div v-for="(w, i) in summary.wins" :key="i" class="flex gap-2 text-sm text-slate-300">
+            <span class="text-good-500 font-bold shrink-0">亮点</span><span>{{ w }}</span>
           </div>
         </div>
 
-        <div v-if="summary.points.length" class="mt-4 pt-4 border-t border-slate-200 space-y-1.5">
-          <div v-for="(p, i) in summary.points" :key="i" class="flex gap-2 text-sm text-slate-600">
-            <span class="text-brand-600 font-bold shrink-0">建议 {{ i + 1 }}</span><span>{{ p }}</span>
+        <div
+          v-if="summary.points.length"
+          class="relative mt-4 pt-4 border-t border-white/10 space-y-1.5"
+        >
+          <div v-for="(p, i) in summary.points" :key="i" class="flex gap-2 text-sm text-slate-300">
+            <span class="text-brand-400 font-bold shrink-0">建议 {{ i + 1 }}</span><span>{{ p }}</span>
           </div>
         </div>
       </section>
@@ -50,7 +65,7 @@
       <!-- 核心指标 -->
       <section>
         <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-bold text-slate-900">核心指标 · 年度目标</h2>
+          <h2 class="section-title">核心指标 · 年度目标</h2>
           <span class="text-xs text-slate-400">
             累计完成值为「截止当月」的累计值{{ snapshotHint }}
           </span>
@@ -65,7 +80,7 @@
           <button
             v-for="row in revenueRows"
             :key="row.metricId"
-            class="card p-4 text-left transition hover:shadow-cardHover"
+            class="card card-lift p-4 text-left"
             @click="openDrilldown(row)"
           >
             <div class="flex items-center justify-between">
@@ -73,7 +88,7 @@
               <StatusBadge :light="row.light" />
             </div>
             <div class="mt-3 flex items-baseline gap-1.5">
-              <span class="text-2xl font-extrabold text-slate-900">{{ fmt(row.actual) }}</span>
+              <span class="text-2xl stat-value text-slate-900">{{ fmt(row.actual) }}</span>
               <span class="text-xs text-slate-400">/ {{ fmt(row.target) }} {{ row.unit }}</span>
             </div>
             <div class="mt-2.5 h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -97,7 +112,7 @@
               <StatusBadge :light="row.light" />
             </div>
             <div class="mt-3 flex items-baseline gap-1.5">
-              <span class="text-2xl font-extrabold text-slate-900">{{ fmt(row.actual) }}</span>
+              <span class="text-2xl stat-value text-slate-900">{{ fmt(row.actual) }}</span>
               <span class="text-xs text-slate-400">/ {{ fmt(row.target) }} {{ row.unit }}</span>
             </div>
             <div class="mt-2 flex items-center justify-between text-xs">
@@ -110,7 +125,7 @@
 
       <!-- 项目公司对比 -->
       <section v-if="overview.projectCompare.length">
-        <h2 class="text-sm font-bold text-slate-900 mb-3">项目公司经营对比</h2>
+        <h2 class="section-title mb-3">项目公司经营对比</h2>
         <div class="card overflow-x-auto">
           <table class="w-full min-w-[760px]">
             <thead>
@@ -149,7 +164,7 @@
 
       <!-- 监控指标 -->
       <section v-if="overview.monitor.length">
-        <h2 class="text-sm font-bold text-slate-900 mb-3">指标监控 · {{ overview.period }}</h2>
+        <h2 class="section-title mb-3">指标监控 · {{ overview.period }}</h2>
         <div class="card p-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
           <div v-for="row in overview.monitor" :key="row.metricId" class="rounded-lg border border-slate-200 px-3.5 py-3">
             <div class="text-xs text-slate-500">{{ row.name }}</div>
@@ -162,7 +177,7 @@
 
       <!-- 部门任务完成度 -->
       <section v-if="overview.deptTaskStats.length">
-        <h2 class="text-sm font-bold text-slate-900 mb-3">部门任务完成度</h2>
+        <h2 class="section-title mb-3">部门任务完成度</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <div
             v-for="d in overview.deptTaskStats"
@@ -175,7 +190,7 @@
               <span class="text-[11px] text-slate-400">{{ d.total }} 项任务</span>
             </div>
             <div class="mt-3 flex items-baseline gap-1">
-              <span class="text-2xl font-extrabold text-slate-900">{{ d.completion }}%</span>
+              <span class="text-2xl stat-value text-slate-900">{{ d.completion }}%</span>
               <span class="text-[11px] text-slate-400">平均完成度</span>
             </div>
             <div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
@@ -190,7 +205,7 @@
 
       <!-- 风险与异常（文末） -->
       <section>
-        <h2 class="text-sm font-bold text-slate-900 mb-3">风险与异常</h2>
+        <h2 class="section-title mb-3">风险与异常</h2>
         <div class="card divide-y divide-slate-100">
           <div v-if="!summary.risks.length" class="px-4 py-6 text-sm text-slate-400 text-center">
             本周期未发现风险项
@@ -281,26 +296,35 @@ const snapshotHint = computed(() =>
 const toneText = computed(
   () => ({ good: '整体良好', warn: '需要关注', bad: '存在风险', none: '暂无数据' })[summary.value?.tone ?? 'none'],
 )
+// 深色卡片上的语义色要用「半透明底 + 亮色字」：浅底深字（good-50/good-700 那套）
+// 放在 slate-900 上会糊成一片，对比度也不达标。
 const toneChip = computed(
   () =>
     ({
-      good: 'bg-good-50 text-good-700 border-good-100',
-      warn: 'bg-warn-50 text-warn-700 border-warn-100',
-      bad: 'bg-bad-50 text-bad-700 border-bad-100',
-      none: 'bg-slate-100 text-slate-600 border-slate-200',
+      good: 'bg-good-500/15 text-good-500 border-good-500/30',
+      warn: 'bg-warn-500/15 text-warn-500 border-warn-500/30',
+      bad: 'bg-bad-500/20 text-bad-500 border-bad-500/30',
+      none: 'bg-white/10 text-slate-300 border-white/20',
     })[summary.value?.tone ?? 'none'],
 )
-const toneBorder = computed(() =>
-  summary.value?.tone === 'bad' ? 'border-bad-100' : summary.value?.tone === 'warn' ? 'border-warn-100' : 'border-slate-200',
+/** 卡片右上角的语义色光晕，替代原先「靠边框颜色暗示状态」的做法 */
+const toneGlow = computed(
+  () =>
+    ({
+      good: 'bg-good-500/25',
+      warn: 'bg-warn-500/25',
+      bad: 'bg-bad-500/25',
+      none: 'bg-brand-500/20',
+    })[summary.value?.tone ?? 'none'],
 )
 
 const countCards = computed(() => {
   const c = summary.value?.counts
   if (!c) return []
   return [
-    { label: '达标', value: c.green, cls: 'text-good-600' },
-    { label: '接近', value: c.amber, cls: 'text-warn-600' },
-    { label: '未达标', value: c.red, cls: 'text-bad-600' },
+    { label: '达标', value: c.green, cls: 'text-good-500' },
+    { label: '接近', value: c.amber, cls: 'text-warn-500' },
+    { label: '未达标', value: c.red, cls: 'text-bad-500' },
     { label: '未录入', value: c.none, cls: 'text-slate-400' },
   ]
 })

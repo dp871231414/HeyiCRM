@@ -487,7 +487,7 @@ def test_board_org_type_exposed(client, admin_headers):
 def test_task_create_and_update_contract(client, admin_headers):
     body = {
         "parent": "契约验证任务",
-        "title": "二级分类",
+        "title": "分类A",
         "description": "",
         "abnormal": False,
         "target": 4,

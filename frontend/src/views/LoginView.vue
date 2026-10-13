@@ -10,20 +10,24 @@
       <div class="relative z-10">
         <div class="flex items-center gap-3.5 mb-8">
           <div
-            class="w-12 h-12 rounded-xl bg-white/15 border border-white/25 backdrop-blur grid place-items-center text-xl font-extrabold"
+            class="w-12 h-12 rounded-xl bg-white/15 border border-white/25 backdrop-blur grid place-items-center text-xl font-extrabold shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
           >
             合
           </div>
           <div class="text-sm font-semibold tracking-wide text-white/80">合一绿能 · 数字化经营</div>
         </div>
 
-        <h1 class="text-[40px] leading-[1.15] font-extrabold tracking-tight">合一重卡生态经营看板</h1>
+        <h1 class="text-[40px] leading-[1.15] font-extrabold tracking-display">合一重卡生态经营看板</h1>
         <p class="mt-4 text-[15px] leading-relaxed text-white/80 max-w-[620px]">
           目标下达 · 数据填报 · 达成判定 · 风险提示 —— 让经营数据一次填报、全员同源、责任可追溯。
         </p>
 
         <div class="mt-12 grid grid-cols-3 gap-4 max-w-[520px]">
-          <div v-for="item in highlights" :key="item.t" class="rounded-xl bg-white/10 border border-white/15 px-3.5 py-3">
+          <div
+            v-for="item in highlights"
+            :key="item.t"
+            class="rounded-xl bg-white/10 border border-white/15 px-3.5 py-3 transition-all duration-200 ease-out hover:-translate-y-1 hover:bg-white/15"
+          >
             <div class="text-[13px] font-bold">{{ item.t }}</div>
             <div class="text-[11px] text-white/70 mt-1">{{ item.d }}</div>
           </div>
@@ -36,14 +40,18 @@
       <div class="w-full max-w-[380px]">
         <div class="lg:hidden flex items-center gap-3 mb-8">
           <div
-            class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-violetx-600 text-white grid place-items-center font-extrabold"
+            class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-brand-400 text-white grid place-items-center font-extrabold shadow-btn"
           >
             合
           </div>
-          <div class="text-lg font-extrabold text-slate-900">合一重卡生态经营看板</div>
+          <div class="text-lg font-extrabold text-slate-900 tracking-display">合一重卡生态经营看板</div>
         </div>
 
-        <h2 class="text-2xl font-extrabold text-slate-900">账号登录</h2>
+        <span class="section-label mb-3">
+          <span class="section-label-dot animate-pulse-dot" />
+          OPERATIONS CONSOLE
+        </span>
+        <h2 class="text-2xl font-extrabold text-slate-900 tracking-display">账号登录</h2>
         <p class="text-sm text-slate-500 mt-1.5">请使用系统分配的账号登录经营看板</p>
 
         <form class="mt-8 space-y-4" @submit.prevent="submit">
@@ -100,7 +108,7 @@ const loading = ref(false)
 const highlights = [
   { t: '统一口径', d: '指标定义唯一来源' },
   { t: '自动判定', d: '红黄绿灯与风险规则生成' },
-  { t: '分权可见', d: '按组织与角色隔离数据' },
+  { t: '权限可控', d: '按角色与权限点授权' },
 ]
 
 onMounted(() => {

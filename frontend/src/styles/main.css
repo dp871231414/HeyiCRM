@@ -2,12 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== 设计令牌（与原型 tokens.css 对齐）===== */
+/* ===== 设计令牌 =====
+   与 tailwind.config.js 同源：颜色/阴影在 config，这里只放布局与动效的运行时变量。 */
 :root {
   --sidebar-w: 232px;
   --sidebar-w-collapsed: 64px;
   --topbar-h: 64px;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* 品牌色的两个锚点，供需要裸写 CSS 的场景使用（渐变、光晕） */
+  --accent: #0052ff;
+  --accent-secondary: #4d7cff;
+  --accent-soft: rgba(0, 82, 255, 0.12);
 }
 
 html,
@@ -21,7 +26,7 @@ body {
   margin: 0;
 }
 
-/* 滚动条 */
+/* 滚动条：细、悬停时偏品牌色，避免默认灰条割裂画面 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -31,13 +36,13 @@ body {
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #93baff;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* 背景装饰 */
+/* 背景装饰：两团品牌色光晕，营造氛围深度（设计系统的「柔和斑点」） */
 .bg-blob {
   position: fixed;
   border-radius: 999px;
@@ -48,72 +53,141 @@ body {
 .bg-blob-1 {
   width: 480px;
   height: 480px;
-  background: rgba(99, 102, 241, 0.18);
+  background: rgba(0, 82, 255, 0.15);
   top: -160px;
   left: -120px;
 }
 .bg-blob-2 {
   width: 420px;
   height: 420px;
-  background: rgba(124, 58, 237, 0.14);
+  background: rgba(77, 124, 255, 0.12);
   bottom: -180px;
   right: -100px;
 }
 
+/* 点阵纹理：铺在深色/强调容器上，避免大色块显得平 */
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.6) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
 @layer components {
+  /* ---------- 卡片 ---------- */
   .card {
-    @apply bg-white rounded-xl2 border border-slate-200 shadow-card;
+    @apply bg-white rounded-xl2 border border-slate-200/80 shadow-card;
   }
+  /* 可交互卡片：hover 抬升一级。只给「点得动」的卡片用，
+     表格容器这类静态卡片加抬升会让人觉得可点、造成困惑。 */
+  .card-lift {
+    @apply transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-cardHover;
+  }
+
+  /* ---------- 按钮 ----------
+     统一：圆角 12px、200ms 过渡、hover 抬升半像素、按下轻微缩小（触感反馈）。
+     disabled 时显式禁用抬升与阴影，否则禁用态看起来仍像可点。 */
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold
-      transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed select-none;
+    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold
+      transition-all duration-200 ease-out select-none
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2
+      disabled:opacity-50 disabled:cursor-not-allowed
+      disabled:hover:translate-y-0 disabled:hover:shadow-none disabled:active:scale-100;
   }
   .btn-primary {
-    @apply btn bg-gradient-to-r from-brand-600 to-violetx-600 text-white shadow-btn hover:brightness-110;
+    @apply btn bg-gradient-to-r from-brand-600 to-brand-400 text-white shadow-btn
+      hover:-translate-y-0.5 hover:shadow-btnHover hover:brightness-110 active:scale-[0.98];
   }
   .btn-ghost {
-    @apply btn bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-900;
+    @apply btn bg-white text-slate-700 border border-slate-200
+      hover:border-brand-300 hover:text-brand-700 hover:shadow-sm active:scale-[0.98];
   }
   .btn-danger {
-    @apply btn bg-bad-50 text-bad-700 border border-bad-100 hover:bg-bad-100;
+    @apply btn bg-bad-50 text-bad-700 border border-bad-100
+      hover:bg-bad-100 active:scale-[0.98];
   }
   .btn-sm {
-    @apply px-2.5 py-1.5 text-xs rounded-md;
+    @apply px-2.5 py-1.5 text-xs rounded-lg;
   }
+
+  /* ---------- 表单 ---------- */
   .input {
     @apply w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900
-      outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100
-      placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-500;
+      outline-none transition-all duration-200
+      placeholder:text-slate-400
+      focus:border-brand-500 focus:ring-2 focus:ring-brand-500/25
+      disabled:bg-slate-50 disabled:text-slate-500;
   }
   .label {
     @apply block text-xs font-semibold text-slate-500 mb-1.5;
   }
+
+  /* ---------- 表格 ---------- */
   .th {
     @apply px-3 py-2.5 text-left text-xs font-bold text-slate-500 bg-slate-50 whitespace-nowrap;
   }
   .td {
     @apply px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap;
   }
+
+  /* ---------- 标签 / 徽章 ---------- */
   .chip {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
   }
+  /* 区块标识：等宽字体 + 圆点，用于页面与区块的分组标签。
+     数字与拉丁字母走等宽（呼应设计系统的 JetBrains Mono），中文由系统字体接管。 */
+  .section-label {
+    @apply inline-flex items-center gap-2 rounded-full border border-brand-200/70 bg-brand-50/60
+      px-3 py-1 font-mono text-[11px] font-medium text-brand-700;
+  }
+  .section-label-dot {
+    @apply h-1.5 w-1.5 rounded-full bg-brand-600;
+  }
+
+  /* ---------- 排版 ---------- */
+  /* 区块标题：集中一处定义，避免各页面重复写 text-sm font-bold text-slate-900。
+     用特粗字重 + 紧字距补足「没有衬线显示体」的个性缺失；
+     左侧渐变短竖条是设计系统「区块标识」在后台语境下的克制转译
+     （营销页用整枚 pill 徽章，数据密集页面里那样太重）。 */
+  .section-title {
+    @apply relative pl-3 text-sm font-extrabold tracking-display text-slate-900;
+  }
+  .section-title::before {
+    content: '';
+    @apply absolute left-0 top-1/2 h-3.5 w-1 -translate-y-1/2 rounded-full
+      bg-gradient-to-b from-brand-600 to-brand-400;
+  }
+  /* 页面/卡片主标题 */
+  .title-lg {
+    @apply text-lg font-extrabold tracking-display text-slate-900;
+  }
+  /* 渐变文字：标题关键词强调（设计系统的标志性元素，克制使用） */
+  .gradient-text {
+    @apply bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent;
+  }
+  /* 数值：等宽数字保证纵向对齐，指标卡与表格通用 */
+  .stat-value {
+    @apply font-extrabold tracking-display tabular-nums;
+  }
+  .stat-label {
+    @apply text-xs font-medium text-slate-500;
+  }
+
   /* 月份选择面板的翻页按钮 */
   .picker-nav {
     @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500
-      transition hover:bg-slate-100 hover:text-slate-800
+      transition hover:bg-brand-50 hover:text-brand-700
       disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent;
   }
 }
 
-/* 表格冻结列 */
+/* ===== 表格冻结列 =====
+   冻结列必须是「不透明 + 覆盖住自身列宽」的纯色块：横向滚动时它们浮在其他列之上，
+   背景透明或列宽不足都会透出正在滚动的内容。
+   注意不要给所有 th/td 设背景 —— 那会压掉行级的 hover 与分组底色。 */
 .table-freeze {
   border-collapse: separate;
   border-spacing: 0;
 }
 
-/* 冻结列必须是「不透明 + 覆盖住自身列宽」的纯色块：横向滚动时它们浮在其他列之上，
-   背景透明或列宽不足都会透出正在滚动的内容。
-   注意不要给所有 th/td 设背景 —— 那会压掉行级的 hover 与分组底色。 */
 .table-freeze .col-id,
 .table-freeze .col-name,
 .table-freeze .col-ops {
@@ -134,7 +208,7 @@ body {
 .table-freeze tbody tr:hover .col-id,
 .table-freeze tbody tr:hover .col-name,
 .table-freeze tbody tr:hover .col-ops {
-  background: #f8fafc;
+  background: #f5f8ff;
 }
 
 .col-id,
@@ -178,18 +252,20 @@ body {
 }
 @keyframes rowFocus {
   0% {
-    background: #e0e7ff;
+    background: #dbe8ff;
   }
   100% {
     background: transparent;
   }
 }
 
-/* 登录页科技感装饰 */
+/* ===== 登录页视觉区 =====
+   单色相的三段渐变（深 → 主 → 亮）取代旧的双色相（靛蓝+紫），
+   层次全部由明度变化表达，与全局「单色渐变」体系一致。 */
 .login-visual {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 55%, #4f46e5 100%);
+  background: linear-gradient(135deg, #002b85 0%, #0043d6 30%, #0052ff 62%, #1f63ff 100%);
 }
 .login-visual > .lv-deco {
   position: absolute;
@@ -205,7 +281,7 @@ body {
   width: 420px;
   height: 420px;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(165, 180, 252, 0.45) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(147, 186, 255, 0.5) 0%, transparent 70%);
   top: -80px;
   right: -60px;
 }
@@ -216,7 +292,7 @@ body {
   border: 1px dashed rgba(255, 255, 255, 0.18);
   bottom: -160px;
   left: -120px;
-  animation: spin 26s linear infinite;
+  animation: spin 60s linear infinite;
 }
 .lv-ring {
   width: 260px;
@@ -239,4 +315,17 @@ body {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* ===== 无障碍：尊重系统的「减少动态效果」偏好 =====
+   装饰性动画（浮动、旋转、脉冲）在开启该偏好时停用，避免引起不适。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
