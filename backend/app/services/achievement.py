@@ -58,6 +58,48 @@ def vs_time_progress(rate: float | None, period: str) -> float | None:
     return rate - time_progress_of(period)
 
 
+def progress_tone(rate: float | None, time_progress: float) -> str:
+    """进度状态：按「达成率 ÷ 时间进度」判断节奏快慢。
+
+    这是**全系统唯一的状态口径**（经营驾驶舱、指标维护、汇总统计共用），
+    替代原先各页各判的做法 —— 那会导致同一指标在驾驶舱显示「领先」、
+    在指标维护显示「未达标」（后者只比实际与目标：年度目标没走完就一律红，
+    年中看等于恒为「未达标」，没有参考价值）。
+
+    返回值：
+        done  已完成（达成率 ≥ 100%）
+        ahead 领先（≥ 1 倍时间进度）
+        near  偏慢（0.7 ~ 1 倍时间进度）
+        risk  滞后（< 0.7 倍时间进度）
+        none  未录入（无目标值或未填实际值）
+
+    注意「已完成」优先于比值：达成率 ≥ 100% 时比值必然 ≥ 1，
+    若不单独判断，已达成的指标会被显示成「领先」，弱化了更强的事实。
+    """
+    if rate is None:
+        return "none"
+    if rate >= 1:
+        return "done"
+    if time_progress <= 0:
+        return "none"
+    ratio = rate / time_progress
+    if ratio >= 1:
+        return "ahead"
+    if ratio >= 0.7:
+        return "near"
+    return "risk"
+
+
+#: 进度状态的中文名（全系统统一用词，前端另有同一份用于取色）
+TONE_LABEL: dict[str, str] = {
+    "done": "已达成",
+    "ahead": "领先",
+    "near": "偏慢",
+    "risk": "滞后",
+    "none": "未录入",
+}
+
+
 # ---------------------------------------------------------------- 取值索引
 
 
@@ -243,6 +285,7 @@ def group_metric_stats(
     defs_all = all_defs(db)
     cb = children_by_parent(defs_all)
     idx = idx or load_index(db)
+    tp = time_progress_of(period)
     rows = []
     for d in defs:
         if d.family == "collection":
@@ -264,17 +307,21 @@ def group_metric_stats(
                 "target": target,
                 "actual": actual,
                 "ach": ach,
+                # light：目标达成判定（实际 vs 目标，含 warn/danger 阈值）
                 "light": light_of(d, target, actual),
+                # tone：进度状态（达成率 ÷ 时间进度）—— 界面统一用它，见 progress_tone
+                "tone": progress_tone(ach["rate"] if ach else None, tp),
                 "collRate": coll_rate,
                 "collLight": coll_light,
             }
         )
     counts = {
         "total": len(rows),
-        "green": sum(1 for r in rows if r["light"] == "green"),
-        "amber": sum(1 for r in rows if r["light"] == "amber"),
-        "red": sum(1 for r in rows if r["light"] == "red"),
-        "none": sum(1 for r in rows if r["light"] == "none"),
+        "done": sum(1 for r in rows if r["tone"] == "done"),
+        "ahead": sum(1 for r in rows if r["tone"] == "ahead"),
+        "near": sum(1 for r in rows if r["tone"] == "near"),
+        "risk": sum(1 for r in rows if r["tone"] == "risk"),
+        "none": sum(1 for r in rows if r["tone"] == "none"),
         "filled": sum(1 for r in rows if r["actual"] is not None),
     }
     return {"rows": rows, "counts": counts}

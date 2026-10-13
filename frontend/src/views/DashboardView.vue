@@ -81,17 +81,17 @@
           >
             <div class="flex items-center justify-between">
               <span class="text-[13px] font-bold text-slate-700">{{ row.name }}</span>
-              <span class="chip border" :class="TONE_CHIP[perfTone(row)]">{{ TONE_LABEL[perfTone(row)] }}</span>
+              <span class="chip border" :class="TONE_CHIP[toneOf(row.tone)]">{{ TONE_LABEL[toneOf(row.tone)] }}</span>
             </div>
             <div class="mt-3 flex items-baseline gap-1.5">
               <span class="text-2xl stat-value text-slate-900">{{ fmt(row.actual) }}</span>
               <span class="text-xs text-slate-400">/ {{ fmt(row.target) }} {{ row.unit }}</span>
             </div>
             <div class="mt-2.5 h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div class="h-full rounded-full transition-all" :class="TONE_BAR[perfTone(row)]" :style="{ width: barWidth(row) }" />
+              <div class="h-full rounded-full transition-all" :class="TONE_BAR[toneOf(row.tone)]" :style="{ width: barWidth(row) }" />
             </div>
             <div class="mt-2 flex items-center justify-between text-xs">
-              <span class="font-bold" :class="TONE_TEXT[perfTone(row)]">{{ row.rateText }}</span>
+              <span class="font-bold" :class="TONE_TEXT[toneOf(row.tone)]">{{ row.rateText }}</span>
               <span class="text-slate-400">vs 时间进度 {{ fmtDelta(row.vsTime) }}</span>
             </div>
             <div v-if="row.hasCollection" class="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -105,14 +105,14 @@
           <div v-for="row in simpleRows" :key="row.metricId" class="card p-4">
             <div class="flex items-center justify-between">
               <span class="text-[13px] font-bold text-slate-700">{{ row.name }}</span>
-              <span class="chip border" :class="TONE_CHIP[perfTone(row)]">{{ TONE_LABEL[perfTone(row)] }}</span>
+              <span class="chip border" :class="TONE_CHIP[toneOf(row.tone)]">{{ TONE_LABEL[toneOf(row.tone)] }}</span>
             </div>
             <div class="mt-3 flex items-baseline gap-1.5">
               <span class="text-2xl stat-value text-slate-900">{{ fmt(row.actual) }}</span>
               <span class="text-xs text-slate-400">/ {{ fmt(row.target) }} {{ row.unit }}</span>
             </div>
             <div class="mt-2 flex items-center justify-between text-xs">
-              <span class="font-bold" :class="TONE_TEXT[perfTone(row)]">{{ row.rateText }}</span>
+              <span class="font-bold" :class="TONE_TEXT[toneOf(row.tone)]">{{ row.rateText }}</span>
               <span class="text-slate-400">vs 时间进度 {{ fmtDelta(row.vsTime) }}</span>
             </div>
           </div>
@@ -145,7 +145,7 @@
                   <div class="text-[11px] text-slate-400">目标 {{ fmt(cellOf(c, m.id)?.target) }}</div>
                 </td>
                 <td class="td text-right">
-                  <span class="font-bold" :class="c.completion === null ? 'text-slate-400' : c.completion >= 0.98 ? 'text-good-600' : c.completion >= 0.9 ? 'text-warn-600' : 'text-bad-600'">
+                  <span class="font-bold" :class="TONE_TEXT[toneOf(c.completionTone)]">
                     {{ fmtPct(c.completion) }}
                   </span>
                 </td>
@@ -225,7 +225,7 @@
     <ModalDialog :open="!!drill" :title="drill ? `${drill.name} · 趋势` : ''" @close="drill = null">
       <div v-if="drill">
         <div class="flex items-center gap-3 mb-4">
-          <StatusBadge :light="drill.light" />
+          <span class="chip border" :class="TONE_CHIP[toneOf(drill.tone)]">{{ TONE_LABEL[toneOf(drill.tone)] }}</span>
           <span class="text-sm text-slate-500">
             目标 {{ fmt(drill.target) }} / 完成 {{ fmt(drill.actual) }} {{ drill.unit }} · 达成率 {{ drill.rateText }}
           </span>
@@ -266,10 +266,10 @@ import { dashboardApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import MonthPicker from '@/components/MonthPicker.vue'
 import Sparkline from '@/components/Sparkline.vue'
-import StatusBadge from '@/components/StatusBadge.vue'
 import { useViewStore } from '@/stores/view'
-import type { Light, MetricRow, OverviewResult, ProjectCompanyBlock, SummaryResult, TrendResult } from '@/types'
+import type { Light, MetricRow, OverviewResult, PerfTone, ProjectCompanyBlock, SummaryResult, TrendResult } from '@/types'
 import { fmt, fmtDelta, fmtPct } from '@/utils/format'
+import { COLL_TEXT, TONE_BAR, TONE_CHIP, TONE_LABEL, TONE_TEXT, toneOf } from '@/utils/tone'
 
 const view = useViewStore()
 const router = useRouter()
@@ -290,7 +290,7 @@ const snapshotHint = computed(() =>
 )
 
 const toneText = computed(
-  () => ({ good: '整体良好', warn: '需要关注', bad: '存在风险', none: '暂无数据' })[summary.value?.tone ?? 'none'],
+  () => ({ good: '整体良好', warn: '需要关注', bad: '存在风险', none: '暂无数据' })[summary.value?.verdict ?? 'none'],
 )
 /** 总结卡的状态徽章：浅色底 + 深色字，与页面其余卡片同一套配色 */
 const toneChip = computed(
@@ -300,7 +300,7 @@ const toneChip = computed(
       warn: 'bg-warn-50 text-warn-700 border-warn-100',
       bad: 'bg-bad-50 text-bad-700 border-bad-100',
       none: 'bg-slate-100 text-slate-600 border-slate-200',
-    })[summary.value?.tone ?? 'none'],
+    })[summary.value?.verdict ?? 'none'],
 )
 /** 卡片左侧的语义色条，替代深色卡时代的模糊光晕 */
 const toneAccent = computed(
@@ -310,89 +310,31 @@ const toneAccent = computed(
       warn: 'bg-warn-500',
       bad: 'bg-bad-500',
       none: 'bg-brand-500',
-    })[summary.value?.tone ?? 'none'],
+    })[summary.value?.verdict ?? 'none'],
 )
 
 const countCards = computed(() => {
   const c = summary.value?.counts
   if (!c) return []
+  // 与卡片标签同源（后端按同一套进度状态统计），标签文案也保持一致
   return [
-    { label: '达标', value: c.green, cls: 'text-good-600' },
-    { label: '接近', value: c.amber, cls: 'text-warn-600' },
-    { label: '未达标', value: c.red, cls: 'text-bad-600' },
+    { label: '已达成', value: c.done, cls: 'text-good-600' },
+    { label: '领先', value: c.ahead, cls: 'text-brand-600' },
+    { label: '偏慢', value: c.near, cls: 'text-warn-600' },
+    { label: '滞后', value: c.risk, cls: 'text-bad-600' },
     { label: '未录入', value: c.none, cls: 'text-slate-400' },
   ]
 })
 
-/* ---------------- 核心指标的表现分级 ----------------
- * 一张卡只用一种颜色：状态徽章、达成率文字、进度条共用同一个 tone。
- * （此前三者各按各的判据取色，且「vs 时间进度」还按正负另配一对绿/红，
- *   同一张卡里能出现两三种色相，整页看着杂。）
- *
- * 判据 —— 按「完成率 ÷ 时间进度」的比值判断节奏：
- *   已完成（达成率 ≥ 100%）  → 绿
- *   比值 ≥ 1                → 蓝（进度领先时间）
- *   0.7 ≤ 比值 < 1          → 黄（略慢于时间进度）
- *   比值 < 0.7              → 红（明显滞后）
- *   未录入（无达成率）       → 灰
+/**
+ * 核心指标的状态判定在服务端（`services/achievement.progress_tone`，按「达成率 ÷ 时间进度」），
+ * 这里只把接口返回的 tone 映射成样式 —— 样式表在 `@/utils/tone`，
+ * 与指标维护页共用同一份，两页不会出现「领先 / 未达标」并存的矛盾。
  */
-type PerfTone = 'done' | 'ahead' | 'near' | 'risk' | 'none'
 
-function perfTone(row: MetricRow): PerfTone {
-  if (row.rate === null) return 'none'
-  if (row.rate >= 1) return 'done'
-  const tp = overview.value?.timeProgress ?? 0
-  if (!(tp > 0)) return 'none'
-  const ratio = row.rate / tp
-  if (ratio >= 1) return 'ahead'
-  if (ratio >= 0.7) return 'near'
-  return 'risk'
-}
-
-/** 回款率沿用后端的红黄绿灯判定，映射到同一套 tone 取色 */
+/** 回款率是卡内次要指标，沿用后端的红黄绿灯判定（它有独立目标），映射到同一套取色 */
 function lightTone(light: Light): PerfTone {
   return ({ green: 'done', amber: 'near', red: 'risk', none: 'none' } as Record<string, PerfTone>)[light] ?? 'none'
-}
-
-const TONE_CHIP: Record<PerfTone, string> = {
-  done: 'bg-good-50 text-good-700 border-good-100',
-  ahead: 'bg-brand-50 text-brand-700 border-brand-100',
-  near: 'bg-warn-50 text-warn-700 border-warn-100',
-  risk: 'bg-bad-50 text-bad-700 border-bad-100',
-  none: 'bg-slate-100 text-slate-500 border-slate-200',
-}
-const TONE_LABEL: Record<PerfTone, string> = {
-  done: '已达成',
-  ahead: '领先',
-  near: '偏慢',
-  risk: '滞后',
-  none: '未录入',
-}
-const TONE_BAR: Record<PerfTone, string> = {
-  done: 'bg-good-500',
-  ahead: 'bg-brand-500',
-  near: 'bg-warn-500',
-  risk: 'bg-bad-500',
-  none: 'bg-slate-300',
-}
-const TONE_TEXT: Record<PerfTone, string> = {
-  done: 'text-good-600',
-  ahead: 'text-brand-600',
-  near: 'text-warn-600',
-  risk: 'text-bad-600',
-  none: 'text-slate-400',
-}
-/**
- * 回款率是卡片里的第二个指标，有自己的目标（默认 95%）。
- * 它的颜色若一直亮着，同一张卡就会出现两种色相 —— 所以只在未达目标时提示，
- * 达标时用中性深灰（数字本身已能说明）。卡片的主色只留给「表现分级」。
- */
-const COLL_TEXT: Record<PerfTone, string> = {
-  done: 'text-slate-600',
-  ahead: 'text-slate-600',
-  near: 'text-warn-600',
-  risk: 'text-bad-600',
-  none: 'text-slate-400',
 }
 
 function barWidth(row: MetricRow) {

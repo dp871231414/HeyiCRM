@@ -1,6 +1,26 @@
 /** 与后端 schema 对齐的类型定义（见 design.md §6） */
 
 export type Light = 'green' | 'amber' | 'red' | 'none'
+
+/**
+ * 单个指标的进度状态 —— 全系统统一口径，由服务端按「达成率 ÷ 时间进度」判定。
+ * done=已完成（达成率 ≥ 100%）/ ahead=领先 / near=偏慢 / risk=滞后 / none=未录入
+ *
+ * 与 `Light` 的区别：Light 是「实际 vs 目标」的达成判定（含 warn/danger 阈值，年中看
+ * 年度目标恒为未达标），仅用于回款率等子指标；界面上的指标状态一律用 PerfTone。
+ */
+export type PerfTone = 'done' | 'ahead' | 'near' | 'risk' | 'none'
+
+/** 汇总统计：与卡片标签同源，按 PerfTone 分档 */
+export interface ToneCounts {
+  total: number
+  done: number
+  ahead: number
+  near: number
+  risk: number
+  none: number
+  filled: number
+}
 export type ScopeKey = 'self' | 'dept' | 'dept_sub' | 'all'
 
 export interface UserBrief {
@@ -117,6 +137,8 @@ export interface MetricRow {
   rate: number | null
   rateText: string
   light: Light
+  /** 进度状态（界面统一用这个，不用 light） */
+  tone: PerfTone
   gap: number | null
   hasCollection: boolean
   collMetricId: string | null
@@ -133,6 +155,8 @@ export interface ProjectCompanyBlock {
   head: string
   cells: MetricRow[]
   completion: number | null
+  /** 完成率的进度状态（与单元格徽章同一套判档） */
+  completionTone: PerfTone
   filled: number
   total: number
 }
@@ -148,7 +172,7 @@ export interface MetricBoard {
   annual: MetricRow[]
   monitor: MetricRow[]
   project: { companies: ProjectCompanyBlock[]; metrics: { id: string; name: string; unit: string; snapshot: boolean }[] }
-  counts: { total: number; green: number; amber: number; red: number; none: number; filled: number }
+  counts: ToneCounts
   /** 能否编辑「公司整体目标」（需 metric.edit_company，且当前视角为公司） */
   canEditAll?: boolean
   /** 能否编辑「指标监控」（需 metric.edit） */
@@ -197,11 +221,12 @@ export interface DeptTaskStat {
 
 export interface SummaryResult {
   headline: string
-  tone: 'good' | 'warn' | 'bad' | 'none'
+  /** 整体经营结论（与单指标的 PerfTone 不是同一概念） */
+  verdict: 'good' | 'warn' | 'bad' | 'none'
   weighted: number | null
   timeProgress: number
   vsTime: number | null
-  counts: { total: number; green: number; amber: number; red: number; none: number; filled: number }
+  counts: ToneCounts
   points: string[]
   risks: { type: string; org: string; text: string }[]
   wins: string[]
@@ -217,7 +242,7 @@ export interface OverviewResult {
   monitor: MetricRow[]
   projectCompare: ProjectCompanyBlock[]
   projectMetrics: { id: string; name: string; unit: string; snapshot: boolean }[]
-  counts: { total: number; green: number; amber: number; red: number; none: number; filled: number }
+  counts: ToneCounts
   deptTaskStats: DeptTaskStat[]
 }
 

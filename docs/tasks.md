@@ -284,3 +284,15 @@
 | T28-2 | 新增表现分级 `perfTone`，三处（徽章/文字/进度条）共用一套取色 | `views/DashboardView.vue` | ✅ |
 | T28-3 | 「vs 时间进度」改为中性色；回款率仅未达目标时着色 | `views/DashboardView.vue` | ✅ |
 | T28-4 | 验收脚本与文档同步 | `tools/verify-round9.mjs`、`docs/` | ✅ |
+
+## T29 第十一批变更（2026-10-13）
+
+对应 proposal §12.19 / design §13.14。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T29-1 | 新增 `progress_tone`，作为全系统唯一状态判定 | `services/achievement.py` | ✅ |
+| T29-2 | 指标行新增 `tone` 字段；汇总统计按 tone；项目公司完成率带 `completionTone` | `api/v1/metrics.py`、`services/achievement.py` | ✅ |
+| T29-3 | 分析总结改用 tone 分组与文案；整体结论字段 `tone` → `verdict` | `services/summary.py` | ✅ |
+| T29-4 | 前端新增共用样式模块 `utils/tone.ts`，两页接入 | `utils/tone.ts`、`views/DashboardView.vue`、`views/MetricsView.vue`、`types/index.ts` | ✅ |
+| T29-5 | 用例（分档、两页一致性、计数同源、文案）与验收脚本 | `tests/test_changes.py`、`tools/verify-round10.mjs` | ✅ |

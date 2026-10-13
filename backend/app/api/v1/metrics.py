@@ -26,6 +26,7 @@ from app.services.achievement import (
     group_metric_stats,
     light_of,
     load_index,
+    progress_tone,
     reference_date,
     resolve_target,
     target_period_of,
@@ -59,6 +60,7 @@ def fmt_rate(rate: float | None) -> str:
 def build_row(def_: MetricDef, target, actual, idx, period: str, org_id: str, coll_defs) -> dict:
     ach = calc_achievement(def_, target, actual)
     lig = light_of(def_, target, actual)
+    tp = time_progress_of(period)
     row = {
         "metricId": def_.id,
         "name": def_.name,
@@ -76,14 +78,17 @@ def build_row(def_: MetricDef, target, actual, idx, period: str, org_id: str, co
         "actual": actual,
         "rate": ach["rate"] if ach else None,
         "rateText": fmt_rate(ach["rate"]) if ach else "—",
+        # light：目标达成判定（实际 vs 目标）；tone：进度状态（达成率 ÷ 时间进度）。
+        # 界面统一用 tone —— 两个页面用不同判据会出现同一指标「领先 / 未达标」并存的矛盾。
         "light": lig,
+        "tone": progress_tone(ach["rate"] if ach else None, tp),
         "gap": ach["gap"] if ach else None,
         "hasCollection": bool(coll_defs.get(def_.id)),
         "collMetricId": coll_defs[def_.id][0].id if coll_defs.get(def_.id) else None,
         "collActual": None,
         "collRate": None,
         "collLight": "none",
-        "vsTime": (ach["rate"] - time_progress_of(period)) if ach else None,
+        "vsTime": (ach["rate"] - tp) if ach else None,
         "periodLabel": "年度" if def_.group in ("annual", "project") else period,
     }
     if coll_defs.get(def_.id):
@@ -155,6 +160,11 @@ def build_board(db: Session, period: str, org_id: str) -> dict:
                 "head": org.head,
                 "cells": cells,
                 "completion": (sum(rates) / len(rates)) if rates else None,
+                # 完成率（各指标达成率的平均值）也按同一套进度状态判档，
+                # 避免表格里的颜色与指标行的徽章各说各话
+                "completionTone": progress_tone(
+                    (sum(rates) / len(rates)) if rates else None, time_progress_of(period)
+                ),
                 "filled": filled,
                 "total": len(proj_defs),
             }

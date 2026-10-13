@@ -846,3 +846,77 @@ def test_projects_list_not_scope_filtered(client, head_headers):
     """项目公司列表按全公司口径返回，不按可见范围裁剪。"""
     ids = {p["id"] for p in client.get("/api/v1/projects", headers=head_headers).json()}
     assert {"PC1", "PC2", "PC3"} <= ids
+
+
+# ---------------------- 进度状态口径统一：驾驶舱与指标维护必须给出同一状态 ----------------------
+
+
+def test_progress_tone_bands():
+    """progress_tone 的分档规则（全系统唯一状态口径）。"""
+    from app.services.achievement import progress_tone
+
+    tp = 0.8
+    assert progress_tone(None, tp) == "none", "无达成率 → 未录入"
+    assert progress_tone(1.0, tp) == "done", "达成率 100% → 已完成"
+    assert progress_tone(1.35, tp) == "done", "超额完成仍是已完成（优先于比值）"
+    assert progress_tone(0.8, tp) == "ahead", "比值 1.0 → 领先（边界含等号）"
+    assert progress_tone(0.9, tp) == "ahead"
+    assert progress_tone(0.56, tp) == "near", "比值 0.7 → 偏慢（边界含等号）"
+    assert progress_tone(0.79, tp) == "near"
+    assert progress_tone(0.55, tp) == "risk", "比值 < 0.7 → 滞后"
+    assert progress_tone(0.1, 0) == "none", "时间进度为 0 时不做比值判断"
+
+
+def test_status_is_consistent_across_dashboard_and_metrics(client, admin_headers):
+    """回归：同一指标在驾驶舱与指标维护必须给出同一个状态。
+
+    此前两处判据不同 —— 驾驶舱按「达成率 ÷ 时间进度」，指标维护按「实际 vs 目标」
+    （年度目标未走完就一律红，年中看恒为「未达标」），同一指标会同时出现
+    「领先」与「未达标」两种说法。
+    """
+    overview = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=admin_headers).json()
+    board = client.get("/api/v1/metrics/board", params={"org_id": "CO"}, headers=admin_headers).json()
+
+    ov = {r["metricId"]: r["tone"] for r in overview["annual"]}
+    bd = {r["metricId"]: r["tone"] for r in board["annual"]}
+    assert ov == bd, f"两处状态不一致：{ {k: (ov.get(k), bd.get(k)) for k in ov if ov.get(k) != bd.get(k)} }"
+
+    # 项目公司单元格同样一致
+    ov_cells = {
+        (c["orgId"], m["metricId"]): m["tone"]
+        for c in overview["projectCompare"]
+        for m in c["cells"]
+    }
+    bd_cells = {
+        (c["orgId"], m["metricId"]): m["tone"]
+        for c in board["project"]["companies"]
+        for m in c["cells"]
+    }
+    assert ov_cells == bd_cells, "项目公司单元格的状态在两处不一致"
+
+
+def test_counts_follow_the_same_tone(client, admin_headers):
+    """汇总统计（卡片右上角那组数字）必须与卡片标签同源。"""
+    overview = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=admin_headers).json()
+    counts = overview["counts"]
+
+    assert set(counts) >= {"total", "done", "ahead", "near", "risk", "none", "filled"}
+    assert counts["done"] + counts["ahead"] + counts["near"] + counts["risk"] + counts["none"] == counts["total"]
+
+    # 与 annual 行的 tone 分布一致
+    from collections import Counter
+
+    dist = Counter(r["tone"] for r in overview["annual"])
+    for key in ("done", "ahead", "near", "risk", "none"):
+        assert counts[key] == dist.get(key, 0), f"{key} 的计数与卡片标签不一致"
+
+
+def test_summary_uses_unified_wording(client, admin_headers):
+    """分析结论文案用与卡片一致的词，不再出现「达标 / 未达标」这套旧说法。"""
+    s = client.get("/api/v1/dashboard/summary", params={"org_id": "CO"}, headers=admin_headers).json()
+
+    assert "verdict" in s, "整体状态字段应为 verdict（与单指标 tone 区分开）"
+    assert s["verdict"] in ("good", "warn", "bad", "none")
+    assert "已达成" in s["headline"] and "滞后" in s["headline"], s["headline"]
+    assert "未达标" not in s["headline"], "不应再出现旧的「未达标」措辞"
+    assert "领先" in s["headline"] and "偏慢" in s["headline"], s["headline"]

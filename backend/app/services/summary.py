@@ -22,8 +22,9 @@ from app.services.achievement import (
     defs_by_group,
     all_defs,
     group_metric_stats,
-    light_of,
     load_index,
+    progress_tone,
+    TONE_LABEL,
     reference_date,
     resolve_target,
     task_health,
@@ -66,9 +67,10 @@ def _fmt_pct(rate: float | None) -> str:
     return f"{rate * 100:.1f}%"
 
 
-def _metric_sentence(def_: MetricDef, ach: dict, trend: dict | None) -> str:
-    light = light_of(def_, ach["target"], ach["actual"])
-    light_text = {"green": "达标", "amber": "接近目标", "red": "未达标"}[light]
+def _metric_sentence(def_: MetricDef, ach: dict, trend: dict | None, period: str) -> str:
+    # 与卡片徽章同一口径：进度状态（达成率 ÷ 时间进度），而不是「实际 vs 目标」
+    status = TONE_LABEL[progress_tone(ach["rate"], time_progress_of(period))]
+    light_text = status
     s = (
         f"{def_.name}实际 {_fmt(ach['actual'])} {def_.unit}，"
         f"目标 {_fmt(ach['target'])} {def_.unit}，达成率 {_fmt_pct(ach['rate'])}，{light_text}"
@@ -131,7 +133,7 @@ def build_summary(db: Session, period: str, org_id: str) -> dict:
     if not metrics:
         return {
             "headline": "本周期暂无指标数据",
-            "tone": "none",
+            "verdict": "none",
             "weighted": None,
             "timeProgress": time_progress_of(period),
             "vsTime": None,
@@ -144,23 +146,27 @@ def build_summary(db: Session, period: str, org_id: str) -> dict:
     total_w = sum(x["def"].weight for x in metrics)
     weighted = sum(x["ach"]["rate"] * x["def"].weight for x in metrics) / total_w
 
-    greens = [x for x in metrics if light_of(x["def"], x["ach"]["target"], x["ach"]["actual"]) == "green"]
-    ambers = [x for x in metrics if light_of(x["def"], x["ach"]["target"], x["ach"]["actual"]) == "amber"]
-    reds = [x for x in metrics if light_of(x["def"], x["ach"]["target"], x["ach"]["actual"]) == "red"]
+    tp = time_progress_of(period)
+    # 与卡片徽章同源：单指标状态一律按「达成率 ÷ 时间进度」分档（见 progress_tone）。
+    # 用同一口径才能保证汇总统计、亮点、风险与卡片标签互不矛盾。
+    by_tone: dict[str, list[dict]] = {"done": [], "ahead": [], "near": [], "risk": []}
+    for x in metrics:
+        by_tone[progress_tone(x["ach"]["rate"], tp)].append(x)
+    done, lead, slow, lag = by_tone["done"], by_tone["ahead"], by_tone["near"], by_tone["risk"]
 
-    tone = "good"
-    if weighted < 0.9 or len(reds) >= 2:
-        tone = "bad"
-    elif weighted < 0.98 or len(reds) >= 1:
-        tone = "warn"
+    # 整体状态：加权达成率 + 滞后项数（借用 progress_tone 的「滞后」定义）
+    verdict = "good"
+    if weighted < 0.9 or len(lag) >= 2:
+        verdict = "bad"
+    elif weighted < 0.98 or len(lag) >= 1:
+        verdict = "warn"
 
-    tone_text = {
+    verdict_text = {
         "good": "整体经营状况良好，目标可控",
         "warn": "整体基本持平，存在局部缺口需关注",
         "bad": "整体低于时间轴，存在明确风险需立即干预",
-    }[tone]
+    }[verdict]
 
-    tp = time_progress_of(period)
     vs = vs_time_progress(weighted, period)
     if vs is None:
         vs_text = "—"
@@ -168,25 +174,26 @@ def build_summary(db: Session, period: str, org_id: str) -> dict:
         vs_text = f"跑赢年度时间进度 {_fmt_pct(abs(vs))}" if vs >= 0 else f"落后年度时间进度 {_fmt_pct(abs(vs))}"
 
     headline = (
-        f"{period.replace('-', '年')}月综合加权达成率 {_fmt_pct(weighted)}，{tone_text}。"
-        f"共 {len(metrics)} 项指标，其中达标 {len(greens)} 项、接近 {len(ambers)} 项、未达标 {len(reds)} 项。"
+        f"{period.replace('-', '年')}月综合加权达成率 {_fmt_pct(weighted)}，{verdict_text}。"
+        f"共 {len(metrics)} 项指标，其中已达成 {len(done)} 项、领先 {len(lead)} 项、"
+        f"偏慢 {len(slow)} 项、滞后 {len(lag)} 项。"
         f"年度时间进度 {_fmt_pct(tp)}，{vs_text}。"
     )
 
     wins = []
-    for x in greens[:3]:
-        wins.append(_metric_sentence(x["def"], x["ach"], _trend_for(db, x["def"], period, org_id, idx)))
+    for x in done[:3]:
+        wins.append(_metric_sentence(x["def"], x["ach"], _trend_for(db, x["def"], period, org_id, idx), period))
 
     risks: list[dict] = []
-    for x in reds:
+    for x in lag:
         risks.append(
             {
                 "type": "indicator",
                 "org": org_id,
-                "text": _metric_sentence(x["def"], x["ach"], _trend_for(db, x["def"], period, org_id, idx)),
+                "text": _metric_sentence(x["def"], x["ach"], _trend_for(db, x["def"], period, org_id, idx), period),
             }
         )
-    for x in ambers:
+    for x in slow:
         t = _trend_for(db, x["def"], period, org_id, idx)
         if t.get("delta") is not None and (
             (x["def"].direction == "positive" and t["delta"] < 0) or (x["def"].direction == "negative" and t["delta"] > 0)
@@ -195,7 +202,7 @@ def build_summary(db: Session, period: str, org_id: str) -> dict:
                 {
                     "type": "indicator",
                     "org": org_id,
-                    "text": f"{x['def'].name}环比走弱，{_metric_sentence(x['def'], x['ach'], t)}",
+                    "text": f"{x['def'].name}环比走弱，{_metric_sentence(x['def'], x['ach'], t, period)}",
                 }
             )
 
@@ -227,12 +234,14 @@ def build_summary(db: Session, period: str, org_id: str) -> dict:
         risks.append({"type": "task", "org": x["t"].dept_id, "text": _task_sentence(x["t"]) + f"。{x['t'].note or ''}"})
 
     points = []
-    if reds:
-        worst = sorted(reds, key=lambda x: x["ach"]["rate"])[0]
+    if lag:
+        worst = sorted(lag, key=lambda x: x["ach"]["rate"])[0]
         points.append(
-            f"优先处理「{worst['def'].name}」，缺口 {_fmt(abs(worst['ach']['gap']))} {worst['def'].unit}，"
+            f"优先处理「{worst['def'].name}」（进度滞后），缺口 {_fmt(abs(worst['ach']['gap']))} {worst['def'].unit}，"
             f"建议由 {_org_name(db, worst['def'].owner_org_id)}牵头分析原因并给出改进计划。"
         )
+    elif slow:
+        points.append(f"{len(slow)} 项指标进度偏慢（低于年度时间进度），建议关注承接节奏，避免累积为缺口。")
     if overdue:
         points.append(f"{len(overdue)} 项任务已逾期，建议在最近一次经营会上逐项过堂，明确补救计划与新的完成时点。")
     if abnormal:
@@ -244,7 +253,7 @@ def build_summary(db: Session, period: str, org_id: str) -> dict:
 
     return {
         "headline": headline,
-        "tone": tone,
+        "verdict": verdict,
         "weighted": weighted,
         "timeProgress": tp,
         "vsTime": vs,

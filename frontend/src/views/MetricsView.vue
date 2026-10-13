@@ -72,10 +72,8 @@
                 </td>
                 <td class="td">
                   <div class="flex items-center gap-2">
-                    <span class="font-bold w-14" :class="rateClass(row.light)">{{ row.rateText }}</span>
-                    <span class="text-[11px]" :class="(row.vsTime ?? 0) >= 0 ? 'text-good-600' : 'text-bad-600'">
-                      vs {{ fmtDelta(row.vsTime) }}
-                    </span>
+                    <span class="font-bold w-14" :class="TONE_TEXT[toneOf(row.tone)]">{{ row.rateText }}</span>
+                    <span class="text-[11px] text-slate-400">vs {{ fmtDelta(row.vsTime) }}</span>
                   </div>
                 </td>
                 <td class="td">
@@ -89,10 +87,14 @@
                   <span v-else class="text-slate-300">—</span>
                 </td>
                 <td class="td">
-                  <StatusBadge v-if="row.hasCollection" :light="row.collLight" :text="fmtPct(row.collRate)" />
+                  <span
+                    v-if="row.hasCollection"
+                    class="font-bold"
+                    :class="COLL_TEXT[lightTone(row.collLight)]"
+                  >{{ fmtPct(row.collRate) }}</span>
                   <span v-else class="text-slate-300">—</span>
                 </td>
-                <td class="td"><StatusBadge :light="row.light" /></td>
+                <td class="td"><span class="chip border" :class="TONE_CHIP[toneOf(row.tone)]">{{ TONE_LABEL[toneOf(row.tone)] }}</span></td>
                 <td class="td text-right">
                   <button
                     class="btn-sm"
@@ -206,7 +208,11 @@
                     />
                   </td>
                   <td class="td">
-                    <StatusBadge :light="cellOf(c, m.id)?.light ?? 'none'" :text="cellOf(c, m.id)?.rateText" />
+                    <span
+                      class="chip border"
+                      :class="TONE_CHIP[toneOf(cellOf(c, m.id)?.tone)]"
+                      :title="TONE_LABEL[toneOf(cellOf(c, m.id)?.tone)]"
+                    >{{ cellOf(c, m.id)?.rateText ?? '—' }}</span>
                   </td>
                   <template v-if="m.id === 'OP_REV'">
                     <td class="td">
@@ -222,7 +228,7 @@
                 <td class="td text-center">
                   <span
                     class="font-bold"
-                    :class="c.completion === null ? 'text-slate-400' : c.completion >= 0.98 ? 'text-good-600' : c.completion >= 0.9 ? 'text-warn-600' : 'text-bad-600'"
+                    :class="TONE_TEXT[toneOf(c.completionTone)]"
                   >
                     {{ fmtPct(c.completion) }}
                   </span>
@@ -299,11 +305,11 @@ import { useRouter } from 'vue-router'
 import { dashboardApi, metricApi, projectApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import MonthPicker from '@/components/MonthPicker.vue'
-import StatusBadge from '@/components/StatusBadge.vue'
+import { COLL_TEXT, TONE_CHIP, TONE_LABEL, TONE_TEXT, toneOf } from '@/utils/tone'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { useViewStore } from '@/stores/view'
-import type { MetricBoard, MetricRow, ProjectCompanyBlock, ProjectItem } from '@/types'
+import type { MetricBoard, MetricRow, PerfTone, ProjectCompanyBlock, ProjectItem } from '@/types'
 import { fmt, fmtDelta, fmtPct } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -558,8 +564,9 @@ async function doDeleteProject() {
   }
 }
 
-function rateClass(light: string) {
-  return { green: 'text-good-600', amber: 'text-warn-600', red: 'text-bad-600', none: 'text-slate-400' }[light] ?? 'text-slate-400'
+/** 回款率沿用后端的红黄绿灯判定（它有独立目标），映射到共用的 PerfTone 取色 */
+function lightTone(light: string): PerfTone {
+  return ({ green: 'done', amber: 'near', red: 'risk', none: 'none' } as Record<string, PerfTone>)[light] ?? 'none'
 }
 
 watch([() => view.period, () => view.orgId, () => view.contextReady], load, { immediate: true })

@@ -21,6 +21,13 @@ export function fmtDelta(delta: number | null | undefined, digits = 1): string {
   return `${sign}${(delta * 100).toFixed(digits)}pp`
 }
 
+/**
+ * 目标达成判定（`light`）的展示文案。
+ *
+ * 注意：**指标的界面状态请用 `@/utils/tone`**（按「达成率 ÷ 时间进度」分档，
+ * 与后端 progress_tone 同源）。这里的 light 是「实际 vs 目标」的判定，
+ * 年度目标未走完时恒为「未达标」，只在回款率等有独立目标的子指标上使用。
+ */
 export const LIGHT_LABEL: Record<Light, string> = {
   green: '达标',
   amber: '接近目标',
