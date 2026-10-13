@@ -273,3 +273,14 @@
 | T27-5 | 页面与组件配色统一（标题/数值样式收口、Sparkline 硬编码色、MonthPicker 焦点环、分段控件） | `views/*.vue`、`components/*.vue` | ✅ |
 | T27-6 | 清理「一级任务/二级任务」旧叫法（前端/后端/文档） | 多文件 | ✅ |
 | T27-7 | 视觉验收脚本与文档同步 | `tools/verify-round8.mjs`、`docs/` | ✅ |
+
+## T28 第十批变更（2026-10-13）
+
+对应 proposal §12.17 / design §13.13。
+
+| 项 | 内容 | 涉及 | 状态 |
+|---|---|---|---|
+| T28-1 | 分析总结卡改浅色（左侧语义色条 + 浅色徽章），移除深色底/点阵/光晕 | `views/DashboardView.vue` | ✅ |
+| T28-2 | 新增表现分级 `perfTone`，三处（徽章/文字/进度条）共用一套取色 | `views/DashboardView.vue` | ✅ |
+| T28-3 | 「vs 时间进度」改为中性色；回款率仅未达目标时着色 | `views/DashboardView.vue` | ✅ |
+| T28-4 | 验收脚本与文档同步 | `tools/verify-round9.mjs`、`docs/` | ✅ |

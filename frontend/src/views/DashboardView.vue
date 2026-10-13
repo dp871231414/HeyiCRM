@@ -16,29 +16,25 @@
     <div v-if="loading" class="card p-10 text-center text-slate-400 text-sm">数据加载中…</div>
 
     <template v-else-if="summary && overview">
-      <!-- 分析总结 · 反转对比区：全页最重要的结论放在深色卡片上，形成视觉锚点。
-           设计系统的 Inverted Contrast Section 在后台语境下的落点 —— 营销页用它放
-           stats / 最终 CTA，这里用来放「本期经营结论」。 -->
-      <section class="relative overflow-hidden rounded-xl2 border border-slate-800/60 bg-slate-900 p-5 shadow-pop">
-        <div class="pointer-events-none absolute inset-0 dot-grid opacity-[0.06]" />
-        <div
-          class="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full blur-3xl"
-          :class="toneGlow"
-        />
+      <!-- 分析总结 · 本期经营结论。
+           用普通浅色卡 + 左侧语义色条承载状态，与页面其余卡片保持同一套观感
+           （此前是深色反转卡，在数据型页面里与周围卡片割裂、观感偏重）。 -->
+      <section class="card relative overflow-hidden p-5 pl-6">
+        <div class="absolute inset-y-0 left-0 w-1" :class="toneAccent" />
 
-        <div class="relative flex items-start justify-between gap-4">
+        <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
             <div class="flex items-center gap-2 mb-2">
               <span class="chip border" :class="toneChip">{{ toneText }}</span>
               <span class="text-xs text-slate-400">{{ overview.period }} · {{ overview.orgName }}</span>
             </div>
-            <p class="text-[15px] leading-relaxed font-medium text-slate-100">{{ summary.headline }}</p>
+            <p class="text-[15px] leading-relaxed font-medium text-slate-800">{{ summary.headline }}</p>
           </div>
           <div class="hidden lg:flex gap-2 shrink-0">
             <div
               v-for="c in countCards"
               :key="c.label"
-              class="text-center px-3.5 py-2 rounded-xl bg-white/10 border border-white/10"
+              class="text-center px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200"
             >
               <div class="text-lg stat-value" :class="c.cls">{{ c.value }}</div>
               <div class="text-[11px] text-slate-400">{{ c.label }}</div>
@@ -46,18 +42,18 @@
           </div>
         </div>
 
-        <div v-if="summary.wins.length" class="relative mt-4 grid md:grid-cols-2 gap-x-6 gap-y-1.5">
-          <div v-for="(w, i) in summary.wins" :key="i" class="flex gap-2 text-sm text-slate-300">
-            <span class="text-good-500 font-bold shrink-0">亮点</span><span>{{ w }}</span>
+        <div v-if="summary.wins.length" class="mt-4 grid md:grid-cols-2 gap-x-6 gap-y-1.5">
+          <div v-for="(w, i) in summary.wins" :key="i" class="flex gap-2 text-sm text-slate-600">
+            <span class="text-good-600 font-bold shrink-0">亮点</span><span>{{ w }}</span>
           </div>
         </div>
 
         <div
           v-if="summary.points.length"
-          class="relative mt-4 pt-4 border-t border-white/10 space-y-1.5"
+          class="mt-4 pt-4 border-t border-slate-100 space-y-1.5"
         >
-          <div v-for="(p, i) in summary.points" :key="i" class="flex gap-2 text-sm text-slate-300">
-            <span class="text-brand-400 font-bold shrink-0">建议 {{ i + 1 }}</span><span>{{ p }}</span>
+          <div v-for="(p, i) in summary.points" :key="i" class="flex gap-2 text-sm text-slate-600">
+            <span class="text-brand-600 font-bold shrink-0">建议 {{ i + 1 }}</span><span>{{ p }}</span>
           </div>
         </div>
       </section>
@@ -85,22 +81,22 @@
           >
             <div class="flex items-center justify-between">
               <span class="text-[13px] font-bold text-slate-700">{{ row.name }}</span>
-              <StatusBadge :light="row.light" />
+              <span class="chip border" :class="TONE_CHIP[perfTone(row)]">{{ TONE_LABEL[perfTone(row)] }}</span>
             </div>
             <div class="mt-3 flex items-baseline gap-1.5">
               <span class="text-2xl stat-value text-slate-900">{{ fmt(row.actual) }}</span>
               <span class="text-xs text-slate-400">/ {{ fmt(row.target) }} {{ row.unit }}</span>
             </div>
             <div class="mt-2.5 h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div class="h-full rounded-full transition-all" :class="barClass(row.light)" :style="{ width: barWidth(row) }" />
+              <div class="h-full rounded-full transition-all" :class="TONE_BAR[perfTone(row)]" :style="{ width: barWidth(row) }" />
             </div>
             <div class="mt-2 flex items-center justify-between text-xs">
-              <span class="font-bold" :class="rateClass(row.light)">{{ row.rateText }}</span>
-              <span :class="vsClass(row.vsTime)">vs 时间进度 {{ fmtDelta(row.vsTime) }}</span>
+              <span class="font-bold" :class="TONE_TEXT[perfTone(row)]">{{ row.rateText }}</span>
+              <span class="text-slate-400">vs 时间进度 {{ fmtDelta(row.vsTime) }}</span>
             </div>
             <div v-if="row.hasCollection" class="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
               <span class="text-slate-500">回款率（{{ fmt(row.collActual) }} / {{ fmt(row.actual) }}）</span>
-              <StatusBadge :light="row.collLight" :text="fmtPct(row.collRate)" />
+              <span class="font-bold" :class="COLL_TEXT[lightTone(row.collLight)]">{{ fmtPct(row.collRate) }}</span>
             </div>
           </button>
         </div>
@@ -109,15 +105,15 @@
           <div v-for="row in simpleRows" :key="row.metricId" class="card p-4">
             <div class="flex items-center justify-between">
               <span class="text-[13px] font-bold text-slate-700">{{ row.name }}</span>
-              <StatusBadge :light="row.light" />
+              <span class="chip border" :class="TONE_CHIP[perfTone(row)]">{{ TONE_LABEL[perfTone(row)] }}</span>
             </div>
             <div class="mt-3 flex items-baseline gap-1.5">
               <span class="text-2xl stat-value text-slate-900">{{ fmt(row.actual) }}</span>
               <span class="text-xs text-slate-400">/ {{ fmt(row.target) }} {{ row.unit }}</span>
             </div>
             <div class="mt-2 flex items-center justify-between text-xs">
-              <span class="font-bold" :class="rateClass(row.light)">{{ row.rateText }}</span>
-              <span :class="vsClass(row.vsTime)">vs 时间进度 {{ fmtDelta(row.vsTime) }}</span>
+              <span class="font-bold" :class="TONE_TEXT[perfTone(row)]">{{ row.rateText }}</span>
+              <span class="text-slate-400">vs 时间进度 {{ fmtDelta(row.vsTime) }}</span>
             </div>
           </div>
         </div>
@@ -272,7 +268,7 @@ import MonthPicker from '@/components/MonthPicker.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useViewStore } from '@/stores/view'
-import type { MetricRow, OverviewResult, ProjectCompanyBlock, SummaryResult, TrendResult } from '@/types'
+import type { Light, MetricRow, OverviewResult, ProjectCompanyBlock, SummaryResult, TrendResult } from '@/types'
 import { fmt, fmtDelta, fmtPct } from '@/utils/format'
 
 const view = useViewStore()
@@ -296,25 +292,24 @@ const snapshotHint = computed(() =>
 const toneText = computed(
   () => ({ good: '整体良好', warn: '需要关注', bad: '存在风险', none: '暂无数据' })[summary.value?.tone ?? 'none'],
 )
-// 深色卡片上的语义色要用「半透明底 + 亮色字」：浅底深字（good-50/good-700 那套）
-// 放在 slate-900 上会糊成一片，对比度也不达标。
+/** 总结卡的状态徽章：浅色底 + 深色字，与页面其余卡片同一套配色 */
 const toneChip = computed(
   () =>
     ({
-      good: 'bg-good-500/15 text-good-500 border-good-500/30',
-      warn: 'bg-warn-500/15 text-warn-500 border-warn-500/30',
-      bad: 'bg-bad-500/20 text-bad-500 border-bad-500/30',
-      none: 'bg-white/10 text-slate-300 border-white/20',
+      good: 'bg-good-50 text-good-700 border-good-100',
+      warn: 'bg-warn-50 text-warn-700 border-warn-100',
+      bad: 'bg-bad-50 text-bad-700 border-bad-100',
+      none: 'bg-slate-100 text-slate-600 border-slate-200',
     })[summary.value?.tone ?? 'none'],
 )
-/** 卡片右上角的语义色光晕，替代原先「靠边框颜色暗示状态」的做法 */
-const toneGlow = computed(
+/** 卡片左侧的语义色条，替代深色卡时代的模糊光晕 */
+const toneAccent = computed(
   () =>
     ({
-      good: 'bg-good-500/25',
-      warn: 'bg-warn-500/25',
-      bad: 'bg-bad-500/25',
-      none: 'bg-brand-500/20',
+      good: 'bg-good-500',
+      warn: 'bg-warn-500',
+      bad: 'bg-bad-500',
+      none: 'bg-brand-500',
     })[summary.value?.tone ?? 'none'],
 )
 
@@ -322,26 +317,87 @@ const countCards = computed(() => {
   const c = summary.value?.counts
   if (!c) return []
   return [
-    { label: '达标', value: c.green, cls: 'text-good-500' },
-    { label: '接近', value: c.amber, cls: 'text-warn-500' },
-    { label: '未达标', value: c.red, cls: 'text-bad-500' },
+    { label: '达标', value: c.green, cls: 'text-good-600' },
+    { label: '接近', value: c.amber, cls: 'text-warn-600' },
+    { label: '未达标', value: c.red, cls: 'text-bad-600' },
     { label: '未录入', value: c.none, cls: 'text-slate-400' },
   ]
 })
 
+/* ---------------- 核心指标的表现分级 ----------------
+ * 一张卡只用一种颜色：状态徽章、达成率文字、进度条共用同一个 tone。
+ * （此前三者各按各的判据取色，且「vs 时间进度」还按正负另配一对绿/红，
+ *   同一张卡里能出现两三种色相，整页看着杂。）
+ *
+ * 判据 —— 按「完成率 ÷ 时间进度」的比值判断节奏：
+ *   已完成（达成率 ≥ 100%）  → 绿
+ *   比值 ≥ 1                → 蓝（进度领先时间）
+ *   0.7 ≤ 比值 < 1          → 黄（略慢于时间进度）
+ *   比值 < 0.7              → 红（明显滞后）
+ *   未录入（无达成率）       → 灰
+ */
+type PerfTone = 'done' | 'ahead' | 'near' | 'risk' | 'none'
+
+function perfTone(row: MetricRow): PerfTone {
+  if (row.rate === null) return 'none'
+  if (row.rate >= 1) return 'done'
+  const tp = overview.value?.timeProgress ?? 0
+  if (!(tp > 0)) return 'none'
+  const ratio = row.rate / tp
+  if (ratio >= 1) return 'ahead'
+  if (ratio >= 0.7) return 'near'
+  return 'risk'
+}
+
+/** 回款率沿用后端的红黄绿灯判定，映射到同一套 tone 取色 */
+function lightTone(light: Light): PerfTone {
+  return ({ green: 'done', amber: 'near', red: 'risk', none: 'none' } as Record<string, PerfTone>)[light] ?? 'none'
+}
+
+const TONE_CHIP: Record<PerfTone, string> = {
+  done: 'bg-good-50 text-good-700 border-good-100',
+  ahead: 'bg-brand-50 text-brand-700 border-brand-100',
+  near: 'bg-warn-50 text-warn-700 border-warn-100',
+  risk: 'bg-bad-50 text-bad-700 border-bad-100',
+  none: 'bg-slate-100 text-slate-500 border-slate-200',
+}
+const TONE_LABEL: Record<PerfTone, string> = {
+  done: '已达成',
+  ahead: '领先',
+  near: '偏慢',
+  risk: '滞后',
+  none: '未录入',
+}
+const TONE_BAR: Record<PerfTone, string> = {
+  done: 'bg-good-500',
+  ahead: 'bg-brand-500',
+  near: 'bg-warn-500',
+  risk: 'bg-bad-500',
+  none: 'bg-slate-300',
+}
+const TONE_TEXT: Record<PerfTone, string> = {
+  done: 'text-good-600',
+  ahead: 'text-brand-600',
+  near: 'text-warn-600',
+  risk: 'text-bad-600',
+  none: 'text-slate-400',
+}
+/**
+ * 回款率是卡片里的第二个指标，有自己的目标（默认 95%）。
+ * 它的颜色若一直亮着，同一张卡就会出现两种色相 —— 所以只在未达目标时提示，
+ * 达标时用中性深灰（数字本身已能说明）。卡片的主色只留给「表现分级」。
+ */
+const COLL_TEXT: Record<PerfTone, string> = {
+  done: 'text-slate-600',
+  ahead: 'text-slate-600',
+  near: 'text-warn-600',
+  risk: 'text-bad-600',
+  none: 'text-slate-400',
+}
+
 function barWidth(row: MetricRow) {
   const rate = row.rate ?? 0
   return `${Math.min(100, Math.max(2, (rate === Infinity ? 1 : rate) * 100))}%`
-}
-function barClass(light: string) {
-  return { green: 'bg-good-500', amber: 'bg-warn-500', red: 'bg-bad-500', none: 'bg-slate-300' }[light] ?? 'bg-slate-300'
-}
-function rateClass(light: string) {
-  return { green: 'text-good-600', amber: 'text-warn-600', red: 'text-bad-600', none: 'text-slate-400' }[light] ?? 'text-slate-400'
-}
-function vsClass(v: number | null) {
-  if (v === null) return 'text-slate-400'
-  return v >= 0 ? 'text-good-600' : 'text-bad-600'
 }
 function cellOf(c: ProjectCompanyBlock, metricId: string) {
   return c.cells.find((x) => x.metricId === metricId)
