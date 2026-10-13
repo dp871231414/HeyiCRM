@@ -38,7 +38,7 @@ def client():
         yield c
 
 
-def login(client: TestClient, account: str, password: str = "Demo#2026"):
+def login(client: TestClient, account: str, password: str = "123456"):
     resp = client.post("/api/v1/auth/login", json={"account": account, "password": password})
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -47,7 +47,7 @@ def login(client: TestClient, account: str, password: str = "Demo#2026"):
 
 @pytest.fixture(scope="session")
 def admin_headers(client):
-    headers, _ = login(client, "chenzm")
+    headers, _ = login(client, "admin")
     return headers
 
 

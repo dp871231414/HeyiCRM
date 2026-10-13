@@ -17,8 +17,8 @@ import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:5173'
 const OUT = process.env.SHOT_DIR || '/tmp/fleet_shots'
-const ACCOUNT = process.env.E2E_ACCOUNT || 'chenzm'
-const PASSWORD = process.env.E2E_PASSWORD || 'Demo#2026'
+const ACCOUNT = process.env.E2E_ACCOUNT || 'admin'
+const PASSWORD = process.env.E2E_PASSWORD || '123456'
 const MEMBER = process.env.E2E_MEMBER || 'zhengkai'
 
 mkdirSync(OUT, { recursive: true })

@@ -28,7 +28,7 @@ from app.models import (
     User,
 )
 
-SEED_PASSWORD = os.getenv("SEED_PASSWORD", "Demo#2026")
+SEED_PASSWORD = os.getenv("SEED_PASSWORD", "123456")
 
 ORGS = [
     ("CO", "全公司", "company", None, "陈志明"),
@@ -148,7 +148,7 @@ ROLES = [
 ]
 
 USERS = [
-    ("U001", "陈志明", "chenzm", "CO", "admin", "active"),
+    ("U001", "陈志明", "admin", "CO", "admin", "active"),
     ("U002", "林雪", "linxue", "D01", "dept_head", "active"),
     ("U003", "王建国", "wangjg", "D06", "dept_head", "active"),
     ("U004", "赵国强", "zhaogq", "D02", "dept_head", "active"),

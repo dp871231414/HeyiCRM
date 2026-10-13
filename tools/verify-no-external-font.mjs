@@ -20,10 +20,10 @@ const t0 = Date.now()
 await page.goto(BASE, { waitUntil: 'load' })
 const loadMs = Date.now() - t0
 
-await page.fill('input[type="text"], input:not([type])', 'chenzm').catch(() => {})
+await page.fill('input[type="text"], input:not([type])', 'admin').catch(() => {})
 const pw = page.locator('input[type="password"]')
 if (await pw.count()) {
-  await pw.fill(process.env.DIAG_PWD || 'Demo#2026')
+  await pw.fill(process.env.DIAG_PWD || '123456')
   await page.click('button[type="submit"], button:has-text("登录")')
 }
 await page.waitForTimeout(4000)

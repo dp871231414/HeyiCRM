@@ -39,7 +39,7 @@ services:
       CORS_ORIGINS: ''
       IMPORT_MAX_MB: 5
       IMPORT_MAX_ROWS: 2000
-      SEED_PASSWORD: ${SEED_PASSWORD:-Demo#2026}
+      SEED_PASSWORD: ${SEED_PASSWORD:-123456}
       AUTO_SEED: ${AUTO_SEED:-1}
       TZ: Asia/Shanghai
     # 首次启动：迁移 → （可选）种子数据 → 启动服务

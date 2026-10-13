@@ -11,8 +11,8 @@
 import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
-const LOGIN_USER = process.env.DIAG_USER || 'chenzm'
-const LOGIN_PWD = process.env.DIAG_PWD || 'Demo#2026'
+const LOGIN_USER = process.env.DIAG_USER || 'admin'
+const LOGIN_PWD = process.env.DIAG_PWD || '123456'
 
 const browser = await chromium.launch()
 const page = await browser.newContext({ viewport: { width: 1600, height: 950 } }).then((c) => c.newPage())

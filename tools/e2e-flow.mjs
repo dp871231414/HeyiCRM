@@ -13,7 +13,7 @@ import { mkdirSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:5173'
-const PWD = process.env.E2E_PASSWORD || 'Demo#2026'
+const PWD = process.env.E2E_PASSWORD || '123456'
 const OUT = process.env.SHOT_DIR || '/tmp/fleet_flow'
 mkdirSync(OUT, { recursive: true })
 
@@ -100,7 +100,7 @@ async function waitToast(expect, timeout = 8000) {
  * A. 管理员完整业务闭环
  * ================================================================== */
 await phase('A. 管理员完整业务闭环')
-check('管理员登录', await login('chenzm'))
+check('管理员登录', await login('admin'))
 check('侧边栏 4 个菜单', (await menuLabels()).length === 4, (await menuLabels()).join('/'))
 await page.screenshot({ path: `${OUT}/a1-dashboard.png`, fullPage: true })
 
@@ -319,7 +319,7 @@ check('角色已移除', (await page.locator(`tr:has-text("${ROLE_NAME}")`).coun
 await phase('D. 分角色验证')
 
 const CASES = [
-  { account: 'chenzm', label: '系统管理员', menus: 4, accountMenu: true, scope: '全公司', importMetric: true, delTask: true, viewDash: 'content', orgType: 'company' },
+  { account: 'admin', label: '系统管理员', menus: 4, accountMenu: true, scope: '全公司', importMetric: true, delTask: true, viewDash: 'content', orgType: 'company' },
   { account: 'wangjg', label: '部门负责人', menus: 3, accountMenu: false, scope: '本部门及下属部门', importMetric: true, delTask: false, viewDash: 'deptNotice', orgType: 'dept' },
   { account: 'zhengkai', label: '普通成员', menus: 3, accountMenu: false, scope: '本人', importMetric: false, delTask: false, viewDash: 'selfNotice', orgType: 'none' },
   { account: 'liqiang', label: '项目公司负责人', menus: 3, accountMenu: false, scope: '本部门及下属部门', importMetric: true, delTask: false, viewDash: 'content', orgType: 'project' },

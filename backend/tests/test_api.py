@@ -13,7 +13,7 @@ from tests.conftest import login
 
 
 def test_login_success_and_me(client):
-    headers, data = login(client, "chenzm")
+    headers, data = login(client, "admin")
     assert "account.role" in data["perms"]
     me = client.get("/api/v1/auth/me", headers=headers)
     assert me.status_code == 200
@@ -21,7 +21,7 @@ def test_login_success_and_me(client):
 
 
 def test_login_wrong_password(client):
-    resp = client.post("/api/v1/auth/login", json={"account": "chenzm", "password": "bad"})
+    resp = client.post("/api/v1/auth/login", json={"account": "admin", "password": "bad"})
     assert resp.status_code == 401
     assert resp.json()["detail"] == "账号或密码错误"
 
@@ -33,7 +33,7 @@ def test_login_unknown_account_same_message(client):
 
 
 def test_login_disabled_account(client):
-    resp = client.post("/api/v1/auth/login", json={"account": "liming", "password": "Demo#2026"})
+    resp = client.post("/api/v1/auth/login", json={"account": "liming", "password": "123456"})
     assert resp.status_code == 403
 
 
@@ -414,13 +414,13 @@ def test_templates_downloadable(client, admin_headers):
 # 令牌解析健壮性：反代/网关可能重写 Authorization 头，Cookie 作为兜底
 # ---------------------------------------------------------------------------
 def test_auth_header_works(client):
-    headers, _ = login(client, "chenzm")
+    headers, _ = login(client, "admin")
     assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
 
 
 def test_overwritten_header_falls_back_to_cookie(client):
     """头被网关替换为无效令牌时，登录种下的 Cookie 应能兜底放行。"""
-    login(client, "chenzm")  # 同时种下 HttpOnly Cookie
+    login(client, "admin")  # 同时种下 HttpOnly Cookie
     resp = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer gateway-injected-junk"})
     assert resp.status_code == 200, resp.text
 

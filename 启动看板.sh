@@ -99,7 +99,7 @@ echo
 echo "────────────────────────────────────────────"
 echo "  生产形态（推荐）  http://127.0.0.1:8000"
 echo "  开发形态（热更新） http://127.0.0.1:5173"
-echo "  登录账号          chenzm / Demo#2026"
+echo "  登录账号          admin / 123456"
 echo "────────────────────────────────────────────"
 echo "  日志：$ROOT/.backend.log"
 echo "        $ROOT/.frontend.log"

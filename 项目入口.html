@@ -84,10 +84,8 @@
   th{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
   tr:last-child td{border-bottom:none}
   td.k{color:var(--muted);width:34%}
-  /* 账号表是 4 列，固定 34% 会把第一列撑得过宽，横向改为按内容自适应 */
-  table.acct td.k{width:1%;white-space:nowrap}
-  /* 相邻两行同属一个环境时，环境列留白，避免重复感 */
-  table.acct td.k + td{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600}
+  /* 账号表第一列是账号名，用等宽便于核对 */
+  table.acct td:first-child{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600}
 
   pre{
     background:#0F172A;color:#E2E8F0;border-radius:8px;padding:12px 14px;
@@ -152,27 +150,17 @@
   <div class="grid">
     <div class="card">
       <h2>登录账号</h2>
-      <p class="note">线上与本地密码不同，注意区分</p>
+      <p class="note">线上与本地一致，密码统一为 <code class="inline">123456</code></p>
       <table class="acct">
-        <tr><th>环境</th><th>账号</th><th>密码</th><th>角色</th></tr>
+        <tr><th>账号</th><th>密码</th><th>角色</th></tr>
         <tr>
-          <td class="k">线上</td><td>chenzm</td>
+          <td>admin</td>
           <td><code class="inline">123456</code></td>
           <td>陈志明 · 系统管理员 · 全公司</td>
         </tr>
         <tr>
-          <td class="k">线上</td><td>huguohai</td>
+          <td>huguohai</td>
           <td><code class="inline">123456</code></td>
-          <td>胡国海 · 部门负责人 · 运营部</td>
-        </tr>
-        <tr>
-          <td class="k">本地</td><td>chenzm</td>
-          <td><code class="inline">Demo#2026</code></td>
-          <td>陈志明 · 系统管理员 · 全公司</td>
-        </tr>
-        <tr>
-          <td class="k">本地</td><td>huguohai</td>
-          <td><code class="inline">Demo#2026</code></td>
           <td>胡国海 · 部门负责人 · 运营部</td>
         </tr>
       </table>

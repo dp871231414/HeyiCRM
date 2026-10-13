@@ -9,7 +9,7 @@
 import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
-const PWD = process.env.DIAG_PWD || 'Demo#2026'
+const PWD = process.env.DIAG_PWD || '123456'
 const PANEL = '[role="dialog"][aria-label="选择统计周期"]'
 const TRIGGER = 'main button[aria-haspopup="dialog"]'
 
@@ -72,7 +72,7 @@ const panelCount = () => page.locator(PANEL).count()
 
 // ---------------- 登录 ----------------
 await page.goto(BASE, { waitUntil: 'domcontentloaded' })
-await page.fill('input[type="text"], input:not([type])', 'chenzm').catch(() => {})
+await page.fill('input[type="text"], input:not([type])', 'admin').catch(() => {})
 const pw = page.locator('input[type="password"]')
 if (await pw.count()) {
   await pw.fill(PWD)

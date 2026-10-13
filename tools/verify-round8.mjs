@@ -11,8 +11,8 @@
 import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
-const ADMIN_USER = process.env.DIAG_USER || 'chenzm'
-const ADMIN_PWD = process.env.DIAG_PWD || 'Demo#2026'
+const ADMIN_USER = process.env.DIAG_USER || 'admin'
+const ADMIN_PWD = process.env.DIAG_PWD || '123456'
 const SHOT_DIR = process.env.SHOT_DIR || '/tmp/ui-shots'
 
 const R = []

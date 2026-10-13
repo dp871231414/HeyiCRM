@@ -673,9 +673,9 @@
 
 ```bash
 # 预演（只打印将删除的内容）
-.venv/bin/python -m app.maintenance purge --keep chenzm,huguohai --dry-run
+.venv/bin/python -m app.maintenance purge --keep admin,huguohai --dry-run
 # 执行
-.venv/bin/python -m app.maintenance purge --keep chenzm,huguohai
+.venv/bin/python -m app.maintenance purge --keep admin,huguohai
 ```
 
 **安全护栏**（都会在违反时直接拒绝执行）：

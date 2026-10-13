@@ -439,7 +439,7 @@ def test_project_manage_configurable_via_custom_role(client, admin_headers):
         json={
             "name": f"项目管理员{suffix}",
             "account": account,
-            "password": "Demo#2026",
+            "password": "123456",
             "dept_id": "CO",
             "role_id": rid,
             "status": "active",
@@ -600,7 +600,7 @@ def _role_user(client, admin_headers, perms, tag):
         json={
             "name": f"指标权限{suffix}",
             "account": f"mp{suffix}",
-            "password": "Demo#2026",
+            "password": "123456",
             "dept_id": "CO",
             "role_id": rid,
             "status": "active",

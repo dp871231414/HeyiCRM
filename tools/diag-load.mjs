@@ -15,8 +15,8 @@ import { chromium } from 'playwright'
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
 // 凭据用脚本专用变量：不要拿 shell 内置的 USER / PWD 兜底，
 // 它们分别已是「当前用户名」与「当前工作目录」，`||` 默认值永远不会生效。
-const LOGIN_USER = process.env.DIAG_USER || 'chenzm'
-const LOGIN_PWD = process.env.DIAG_PWD || 'Demo#2026'
+const LOGIN_USER = process.env.DIAG_USER || 'admin'
+const LOGIN_PWD = process.env.DIAG_PWD || '123456'
 const browser = await chromium.launch()
 // 全新 context = 无缓存，等价于首次访问
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })

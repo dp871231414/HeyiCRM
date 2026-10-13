@@ -8,7 +8,7 @@
 import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
-const PWD = process.env.DIAG_PWD || 'Demo#2026'
+const PWD = process.env.DIAG_PWD || '123456'
 
 const browser = await chromium.launch()
 const page = await browser.newContext({ viewport: { width: 1760, height: 1000 } }).then((c) => c.newPage())
@@ -84,7 +84,7 @@ async function waitForTaskTable() {
 }
 
 await page.goto(BASE, { waitUntil: 'domcontentloaded' })
-await page.fill('input[type="text"], input:not([type])', 'chenzm').catch(() => {})
+await page.fill('input[type="text"], input:not([type])', 'admin').catch(() => {})
 const pw = page.locator('input[type="password"]')
 if (await pw.count()) {
   await pw.fill(PWD)

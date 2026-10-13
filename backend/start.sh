@@ -27,13 +27,27 @@ else
 fi
 
 # 一次性数据清理（可选，默认不执行）。
-#   用法：PURGE_KEEP="chenzm,huguohai" sh start.sh
+#   用法：PURGE_KEEP="admin,huguohai" sh start.sh
 #   执行一次后改回 `sh start.sh` 正常启动即可，不必每次带着它。
-# 注意：必须走本脚本，才能复用下面这份 DATABASE_URL；直接在外面跑
+# 注意：必须走本脚本，才能复用上面那份 DATABASE_URL；直接在外面跑
 #       `python -m app.maintenance` 会拿到代码里的默认值，连到的不是这里在用的库。
 if [ -n "${PURGE_KEEP}" ]; then
   echo "[start] PURGE_KEEP=${PURGE_KEEP} → 执行数据清理（保留这些账号）"
   python -m app.maintenance purge --keep "${PURGE_KEEP}" || echo "[start] purge failed (non-fatal)"
+fi
+
+# 一次性账号改名（可选，默认不执行）。同样必须走本脚本才能用对连接串。
+#   用法：RENAME_FROM="旧账号名" RENAME_TO="新账号名" RENAME_PASSWORD="新密码" sh start.sh
+#   RENAME_PASSWORD 不传则密码不变。
+if [ -n "${RENAME_FROM}" ] && [ -n "${RENAME_TO}" ]; then
+  echo "[start] RENAME_FROM=${RENAME_FROM} RENAME_TO=${RENAME_TO} → 执行账号改名"
+  if [ -n "${RENAME_PASSWORD}" ]; then
+    python -m app.maintenance rename --account "${RENAME_FROM}" --to "${RENAME_TO}" --password "${RENAME_PASSWORD}" \
+      || echo "[start] rename failed (non-fatal)"
+  else
+    python -m app.maintenance rename --account "${RENAME_FROM}" --to "${RENAME_TO}" \
+      || echo "[start] rename failed (non-fatal)"
+  fi
 fi
 
 # 用 python -m 调用，避免 uvicorn 可执行文件不在 PATH 上

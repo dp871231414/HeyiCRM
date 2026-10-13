@@ -27,10 +27,10 @@ import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
 // 凭据用脚本专用变量：shell 自带的 USER / PWD 分别已是当前用户名与工作目录
-const ADMIN_USER = process.env.DIAG_USER || 'chenzm'
-const ADMIN_PWD = process.env.DIAG_PWD || 'Demo#2026'
+const ADMIN_USER = process.env.DIAG_USER || 'admin'
+const ADMIN_PWD = process.env.DIAG_PWD || '123456'
 const HEAD_ACCOUNT = process.env.HEAD_USER || 'huguohai'
-const HEAD_PWD = process.env.HEAD_PWD || 'Demo#2026'
+const HEAD_PWD = process.env.HEAD_PWD || '123456'
 
 const R = []
 const ok = (name, pass, detail = '') => {

@@ -8,8 +8,8 @@ import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
 // 凭据用脚本专用变量（shell 自带的 USER / PWD 已是当前用户名与工作目录）
-const LOGIN_USER = process.env.DIAG_USER || 'chenzm'
-const LOGIN_PWD = process.env.DIAG_PWD || 'Demo#2026'
+const LOGIN_USER = process.env.DIAG_USER || 'admin'
+const LOGIN_PWD = process.env.DIAG_PWD || '123456'
 
 const browser = await chromium.launch()
 const page = await browser.newContext({ viewport: { width: 1600, height: 950 } }).then((c) => c.newPage())
