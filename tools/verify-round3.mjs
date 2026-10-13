@@ -9,7 +9,7 @@
 import { chromium } from 'playwright'
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
-const PWD = 'Demo#2026'
+const PWD = process.env.DIAG_PWD || 'Demo#2026'
 const PANEL = '[role="dialog"][aria-label="选择统计周期"]'
 const TRIGGER = 'main button[aria-haspopup="dialog"]'
 

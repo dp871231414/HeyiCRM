@@ -1039,3 +1039,27 @@ README、交接说明、proposal、design、layouts。
 > **有意保留**：`tests/test_changes.py` 中的一条负向断言
 > （`assert "一级任务" not in TASK_COLUMNS ...`）—— 它是防止旧叫法回归的守卫，
 > 字面量本身即是检查目标，不能一并替换掉。
+
+#### 验收脚本的环境差异（本轮踩到并修正）
+
+`verify-round7.mjs` 需要以管理员身份造数与改账号，最初的实现用 `fetch` + `Authorization: Bearer`。
+本地通过、**线上全部 401**：
+
+```
+GET /users  → 401 {"detail":"未登录或登录已过期"}   （token 是刚登录拿到的，有效）
+```
+
+原因是**线上网关会注入/覆盖 `Authorization` 头**，后端收到的是网关的 token
+（项目测试里 `...gateway-injected-junk...` 那条用例即为此现象）。Cookie 认证不受影响，
+这正是浏览器脚本一直能在线上跑通的原因。
+
+修正：管理端调用改用**独立的浏览器上下文**（`browser.newContext()` 的 `context.request`）：
+
+| 方案 | 本地 | 线上 | 结论 |
+|---|---|---|---|
+| 页面上下文 + request | ❌ 会以页面账号发请求，清理步骤 403 | ❌ 同左 | 不可用 |
+| `fetch` + Bearer | ✅ | ❌ 网关覆盖 Authorization | 不可用 |
+| **独立上下文的 request（Cookie）** | ✅ | ✅ | **采用** |
+
+同时把所有验收脚本的凭据统一改为环境变量（`DIAG_USER` / `DIAG_PWD` / `HEAD_USER` / `HEAD_PWD`），
+避免线上密码变更后脚本失效。

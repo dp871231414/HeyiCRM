@@ -7,18 +7,21 @@
  *
  * 做法：
  *   1. 造 3 条任务（1 条属 D03、2 条属 D01）用于对比两种口径；
- *   2. 用现成账号 huguohai（部门负责人 · D03）验证；
+ *   2. 用现成账号（默认 huguohai，部门负责人 · D03）验证；
  *      —— 后端没有删除账号的 HTTP 接口（删除能力刻意做成命令行工具），
  *         所以这里不新建账号，而是**可逆地**临时把它的可见范围切到「本部门及下属」，
  *         结束时还原为原值；
  *   3. 清理造的数据。
  *
- * 实现注意：
- *   · 管理端调用走独立的 fetch（不带页面 cookie）—— 页面的登录态会写入同一 cookie jar，
- *     若复用会以当前页面账号的身份发请求，导致清理步骤 403；
- *   · 登录接口返回的字段是 access_token（不是 token）。
+ * 实现注意（两处环境差异，都实际踩过）：
+ *   · 管理端调用必须走**独立的浏览器上下文**（自带 cookie jar）。
+ *     不能用「页面上下文的 request」—— 它会以页面登录的账号发请求，清理步骤会 403；
+ *   · 也不能用「fetch + Authorization: Bearer」—— 线上网关会注入/覆盖 Authorization 头，
+ *     后端收到的是网关的 token 而返回 401（本地无网关所以能过）。Cookie 认证两边都可靠。
  *
- * 用法：BASE_URL=http://127.0.0.1:8000 node verify-round7.mjs
+ * 用法：
+ *   BASE_URL=http://127.0.0.1:8000 node verify-round7.mjs
+ *   BASE_URL=https://... DIAG_PWD=xxx HEAD_PWD=xxx node verify-round7.mjs
  */
 import { chromium } from 'playwright'
 
@@ -39,37 +42,44 @@ const skip = (name, why) => {
   console.log(`SKIP | ${name} — ${why}`)
 }
 
-let adminToken = ''
-/** 管理端请求：独立于浏览器上下文，只用 Bearer token 认证 */
-async function adminApi(method, path, body) {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+const browser = await chromium.launch()
+
+/**
+ * 管理端上下文：独立的 cookie jar。
+ * 与页面上下文隔离（不会串账号），也天然绕开线上网关对 Authorization 头的覆盖。
+ */
+const adminCtx = await browser.newContext()
+const adminApi = adminCtx.request
+async function adminCall(method, path, body) {
+  const res = await adminApi.fetch(`${BASE}${path}`, { method, data: body })
   const data = await res.json().catch(() => null)
-  return { ok: res.ok, status: res.status, data }
+  return { ok: res.ok(), status: res.status(), data }
 }
 
 // ---------- 准备：管理员登录 / 造数 / 准备部门账号 ----------
-const loginRes = await fetch(`${BASE}/api/v1/auth/login`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ account: ADMIN_USER, password: ADMIN_PWD }),
-})
-adminToken = (await loginRes.json().catch(() => ({}))).access_token || ''
-ok('准备：管理员登录', !!adminToken, `HTTP ${loginRes.status}`)
+const loginRes = await adminCall('POST', '/api/v1/auth/login', { account: ADMIN_USER, password: ADMIN_PWD })
+ok(
+  '准备：管理员登录',
+  loginRes.ok,
+  `HTTP ${loginRes.status}${loginRes.ok ? '' : ' ' + JSON.stringify(loginRes.data).slice(0, 80)}`,
+)
 
-const usersRes = await adminApi('GET', '/api/v1/users')
+const usersRes = await adminCall('GET', '/api/v1/users')
 const userList = Array.isArray(usersRes.data) ? usersRes.data : usersRes.data?.items || []
 const headUser = userList.find((u) => u.account === HEAD_ACCOUNT)
-ok('准备：找到部门负责人账号', !!headUser, headUser ? `${headUser.name} · ${headUser.deptName}` : `未找到 ${HEAD_ACCOUNT}`)
+ok(
+  '准备：找到部门负责人账号',
+  !!headUser,
+  headUser
+    ? `${headUser.name} · ${headUser.deptName}`
+    : `未找到 ${HEAD_ACCOUNT}（HTTP ${usersRes.status}，共 ${userList.length} 个账号）`,
+)
 
 // 记录原始可见范围，结束时还原
 const originalScope = headUser?.scope ?? ''
 let scopeSwitched = false
 if (headUser && headUser.scope !== 'dept_sub') {
-  const patched = await adminApi('PATCH', `/api/v1/users/${headUser.id}`, {
+  const patched = await adminCall('PATCH', `/api/v1/users/${headUser.id}`, {
     name: headUser.name,
     dept_id: headUser.deptId,
     role_id: headUser.roleId,
@@ -83,7 +93,7 @@ if (headUser && headUser.scope !== 'dept_sub') {
 // 造 3 条任务（1 条 D03、2 条 D01），用于对比「全量口径」与「任务按范围收窄」
 const madeTaskIds = []
 for (const [i, dept] of ['D03', 'D01', 'D01'].entries()) {
-  const r = await adminApi('POST', '/api/v1/tasks', {
+  const r = await adminCall('POST', '/api/v1/tasks', {
     parent: `权限边界验证任务 ${i + 1}`,
     title: '',
     description: '',
@@ -101,8 +111,7 @@ for (const [i, dept] of ['D03', 'D01', 'D01'].entries()) {
 }
 ok('准备：造 3 条对比用任务', madeTaskIds.length === 3, `已建 ${madeTaskIds.length} 条`)
 
-// ---------- 浏览器部分 ----------
-const browser = await chromium.launch()
+// ---------- 页面上下文（与管理端上下文隔离） ----------
 const ctx = await browser.newContext({ viewport: { width: 1560, height: 950 } })
 const page = await ctx.newPage()
 const errs = []
@@ -213,7 +222,7 @@ if (!headLoggedIn) {
 
 // ---------- 清理：还原可见范围、删除造的数据 ----------
 if (scopeSwitched && headUser) {
-  const restored = await adminApi('PATCH', `/api/v1/users/${headUser.id}`, {
+  const restored = await adminCall('PATCH', `/api/v1/users/${headUser.id}`, {
     name: headUser.name,
     dept_id: headUser.deptId,
     role_id: headUser.roleId,
@@ -224,7 +233,7 @@ if (scopeSwitched && headUser) {
 }
 let removed = 0
 for (const id of madeTaskIds) {
-  if ((await adminApi('DELETE', `/api/v1/tasks/${id}`)).ok) removed++
+  if ((await adminCall('DELETE', `/api/v1/tasks/${id}`)).ok) removed++
 }
 ok('清理：对比用任务已删除', removed === madeTaskIds.length, `${removed}/${madeTaskIds.length}`)
 

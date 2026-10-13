@@ -611,3 +611,26 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round8.mjs
 # 零外部字体硬约束
 cd tools && BASE_URL=http://127.0.0.1:8000 node verify-no-external-font.mjs
 ```
+
+### 16.5 线上验证（2026-10-13）
+
+| 脚本 | 结果 |
+|---|---|
+| `verify-round8.mjs`（视觉专项） | ✅ 17/17 |
+| `verify-round7.mjs`（数据权限边界） | ✅ 16/16（修正认证方式后） |
+| `verify-changes.mjs` | ✅ 31/31 |
+| `verify-round3.mjs` | ✅ 23/23 |
+| `verify-round4.mjs` | ✅ 9/9（4 项跳过） |
+| `verify-round5.mjs` | ✅ 8/8 |
+| `verify-round6.mjs` | ✅ 12/12 |
+| `verify-no-external-font.mjs` | ✅ 通过 |
+
+线上核对：产物 hash 与本地一致；CSS 含新主色 `#0052FF`/`#4D7CFF`，**旧靛蓝/紫色 0 残留**；
+数据无污染（验收脚本造的 3 条任务已删除、临时切换的可见范围已还原）。
+
+> 线上同时也验证了第八批的数据权限口径 —— 部门范围账号在驾驶舱与指标维护可见全公司数据，
+> 而在任务管理仍只见范围内数据（管理员 4 条 → 部门负责人 1 条）。
+>
+> **过程记录**：`verify-round7` 首次在线上跑时 3 项失败，根因是脚本用 `fetch + Bearer` 做管理端调用，
+> 而线上网关会覆盖 `Authorization` 头（本地无网关所以没暴露）。改用独立浏览器上下文的 Cookie 后通过。
+> 这条已写入 `交接说明.md` 的坑列表。
