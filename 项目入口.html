@@ -6,11 +6,14 @@
 <title>合一重卡生态经营看板 · 启动台</title>
 <style>
   :root{
-    --bg:#F8FAFC; --surface:#FFFFFF; --brand:#4F46E5; --brand-2:#7C3AED;
+    /* 与系统设计代币保持一致（Electric Blue 单色相）：
+       brand = brand-600 #0052FF，brand-2 = brand-400 #4D7CFF，两点即系统渐变的起止色 */
+    --bg:#F8FAFC; --surface:#FFFFFF; --brand:#0052FF; --brand-2:#4D7CFF;
     --text:#0F172A; --muted:#64748B; --border:#E2E8F0;
+    --brand-50:#EFF5FF; --brand-100:#DBE8FF;
     --good:#10B981; --good-bg:#ECFDF5;
-    --shadow:0 4px 20px -2px rgba(79,70,229,.12);
-    --shadow-hover:0 10px 25px -5px rgba(79,70,229,.18), 0 8px 10px -6px rgba(79,70,229,.1);
+    --shadow:0 4px 20px -2px rgba(0,82,255,.12);
+    --shadow-hover:0 10px 25px -5px rgba(0,82,255,.18), 0 8px 10px -6px rgba(0,82,255,.1);
   }
   *{box-sizing:border-box}
   body{
@@ -42,7 +45,7 @@
     display:flex;align-items:center;justify-content:space-between;gap:10px;
     text-decoration:none;background:linear-gradient(90deg,var(--brand),var(--brand-2));
     color:#fff;font-size:14px;font-weight:600;padding:11px 16px;border-radius:8px;
-    box-shadow:0 4px 14px 0 rgba(79,70,229,.3);transition:transform .2s;
+    box-shadow:0 4px 14px 0 rgba(0,82,255,.3);transition:transform .2s;
   }
   a.entry:hover{transform:translateY(-1px)}
   a.entry .url{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;opacity:.9;font-weight:400}
@@ -54,7 +57,7 @@
 
   .tag{
     display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;
-    background:#EEF2FF;color:var(--brand);border:1px solid #E0E7FF;margin-left:8px;vertical-align:2px;
+    background:var(--brand-50);color:var(--brand);border:1px solid var(--brand-100);margin-left:8px;vertical-align:2px;
   }
   .tag.on{background:var(--good-bg);color:#047857;border-color:#A7F3D0}
   .tag.live{background:#ECFDF5;color:#047857;border-color:#A7F3D0}
@@ -71,16 +74,20 @@
   }
   .btn-copy{
     flex:none;font:inherit;font-size:12px;font-weight:600;color:var(--brand);cursor:pointer;
-    background:#EEF2FF;border:1px solid #E0E7FF;border-radius:6px;padding:6px 10px;transition:background .2s;
+    background:var(--brand-50);border:1px solid var(--brand-100);border-radius:6px;padding:6px 10px;transition:background .2s;
   }
-  .btn-copy:hover{background:#E0E7FF}
+  .btn-copy:hover{background:var(--brand-100)}
   .btn-copy.done{color:#047857;background:var(--good-bg);border-color:#A7F3D0}
 
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
-  th{font-size:12px;color:var(--muted);font-weight:600}
+  th{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
   tr:last-child td{border-bottom:none}
   td.k{color:var(--muted);width:34%}
+  /* 账号表是 4 列，固定 34% 会把第一列撑得过宽，横向改为按内容自适应 */
+  table.acct td.k{width:1%;white-space:nowrap}
+  /* 相邻两行同属一个环境时，环境列留白，避免重复感 */
+  table.acct td.k + td{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600}
 
   pre{
     background:#0F172A;color:#E2E8F0;border-radius:8px;padding:12px 14px;
@@ -144,15 +151,36 @@
 
   <div class="grid">
     <div class="card">
-      <h2>演示账号</h2>
-      <p class="note">初始密码统一为 <code class="inline">Demo#2026</code></p>
-      <table>
-        <tr><td class="k">chenzm</td><td>陈志明 · 系统管理员 · 全公司</td></tr>
-        <tr><td class="k">linxue</td><td>林雪 · 部门负责人 · 市场部</td></tr>
-        <tr><td class="k">wangjg</td><td>王建国 · 部门负责人 · 财务部</td></tr>
-        <tr><td class="k">zhengkai</td><td>郑凯 · 成员 · 市场部</td></tr>
-        <tr><td class="k">liqiang</td><td>李强 · 部门负责人 · 合一重卡运营公司</td></tr>
+      <h2>登录账号</h2>
+      <p class="note">线上与本地密码不同，注意区分</p>
+      <table class="acct">
+        <tr><th>环境</th><th>账号</th><th>密码</th><th>角色</th></tr>
+        <tr>
+          <td class="k">线上</td><td>chenzm</td>
+          <td><code class="inline">123456</code></td>
+          <td>陈志明 · 系统管理员 · 全公司</td>
+        </tr>
+        <tr>
+          <td class="k">线上</td><td>huguohai</td>
+          <td><code class="inline">123456</code></td>
+          <td>胡国海 · 部门负责人 · 运营部</td>
+        </tr>
+        <tr>
+          <td class="k">本地</td><td>chenzm</td>
+          <td><code class="inline">Demo#2026</code></td>
+          <td>陈志明 · 系统管理员 · 全公司</td>
+        </tr>
+        <tr>
+          <td class="k">本地</td><td>huguohai</td>
+          <td><code class="inline">Demo#2026</code></td>
+          <td>胡国海 · 部门负责人 · 运营部</td>
+        </tr>
       </table>
+      <p class="note" style="margin:12px 0 0">
+        演示库已按业务要求精简为这 2 个账号（任务数据也已清空）。
+        需要完整的 14 账号 / 14 任务演示数据时，用
+        <code class="inline">SEED_RESET=1 sh start.sh</code> 重置。
+      </p>
     </div>
 
     <div class="card">
@@ -182,7 +210,7 @@ cd frontend &amp;&amp; npm run build
 rm -rf ../backend/static/assets &amp;&amp; cp -R dist/assets ../backend/static/assets
 cp dist/index.html ../backend/static/index.html
 
-<span class="c"># 后端测试（应为 81 passed）</span>
+<span class="c"># 后端测试（应为 92 passed）</span>
 cd backend &amp;&amp; .venv/bin/python -m pytest -q
 
 <span class="c"># 发布到线上（也可在 WorkBuddy 的「设置—数据管理—应用」里管理）</span>
