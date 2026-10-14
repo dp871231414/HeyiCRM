@@ -8,6 +8,11 @@
 from __future__ import annotations
 
 import io
+import time
+from datetime import datetime
+
+from app.db.session import SessionLocal
+from app.models import Task
 
 from tests.conftest import login
 
@@ -822,10 +827,13 @@ def test_dashboard_open_by_perm_not_scope(client, head_headers):
 
 def test_dashboard_task_stats_are_global(client, admin_headers, head_headers):
     """驾驶舱里的任务统计按全量口径（与管理员一致），不随可见范围收窄。"""
-    admin = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=admin_headers).json()
-    head = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=head_headers).json()
-    assert head["deptTaskStats"] == admin["deptTaskStats"], "驾驶舱任务统计应为全量口径"
-    assert head["counts"] == admin["counts"]
+    admin = client.get("/api/v1/dashboard/dept-task-stats", headers=admin_headers).json()
+    head = client.get("/api/v1/dashboard/dept-task-stats", headers=head_headers).json()
+    assert head == admin, "驾驶舱任务统计应为全量口径"
+
+    overview_admin = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=admin_headers).json()
+    overview_head = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=head_headers).json()
+    assert overview_head["counts"] == overview_admin["counts"]
 
 
 def test_task_module_still_isolates_by_scope(client, admin_headers, head_headers):
@@ -951,3 +959,115 @@ def test_summary_verdict_uses_the_same_rule_as_metrics(client, admin_headers):
 
     # 措辞与时间进度挂钩，不再有与事实相反的「低于时间轴」
     assert "时间进度" in s["headline"]
+
+
+# ------------------------------ 部门任务完成度：展示口径筛选
+
+
+def _dept_stats(client, headers, period: str, filter: str) -> list[dict]:
+    return client.get(
+        "/api/v1/dashboard/dept-task-stats",
+        params={"period": period, "filter": filter},
+        headers=headers,
+    ).json()
+
+
+def _stat_of(stats: list[dict], dept_id: str) -> dict | None:
+    return next((s for s in stats if s["deptId"] == dept_id), None)
+
+
+class _TempDept:
+    """临时部门 + 指定创建时间的任务，用完即删（避免污染其他用例的统计口径）。"""
+
+    def __init__(self, client, headers, specs: list[tuple[datetime, float]]):
+        self.client = client
+        self.headers = headers
+        self.task_ids: list[str] = []
+        self.dept_id = ""
+        self._build(specs)
+
+    def _build(self, specs):
+        # 挂在「全公司」下才是部门（挂部门下会成为班组，统计会归集到上级部门）
+        dept = self.client.post(
+            "/api/v1/orgs",
+            json={
+                "name": f"临时口径部门{str(int(time.time() * 1000))[-6:]}",
+                "parent_id": "CO",
+                "head": "临时",
+            },
+            headers=self.headers,
+        ).json()
+        self.dept_id = dept["id"]
+
+        for when, done in specs:
+            body = _task_body(dept_id=self.dept_id)
+            body["done"] = done
+            r = self.client.post("/api/v1/tasks", json=body, headers=self.headers)
+            assert r.status_code == 201, r.text
+            task_id = r.json()["id"]
+            self.task_ids.append(task_id)
+            # created_at 由数据库默认写入，测试里显式回填以构造确定的创建时间
+            with SessionLocal() as db:
+                db.get(Task, task_id).created_at = when
+                db.commit()
+
+    def cleanup(self):
+        for tid in self.task_ids:
+            self.client.delete(f"/api/v1/tasks/{tid}", headers=self.headers)
+        self.client.delete(f"/api/v1/orgs/{self.dept_id}", headers=self.headers)
+
+
+def test_dept_task_stats_filters(client, admin_headers):
+    """部门任务完成度支持 全部 / 本年新增 / 当月新增 / 未结束。
+
+    口径：year / month 取「所选时间范围内创建的任务」，open 取未完成（done < target）。
+    """
+    now = datetime.now()
+    month_start = datetime(now.year, now.month, 1)
+    next_month = datetime(now.year + 1, 1, 1) if now.month == 12 else datetime(now.year, now.month + 1, 1)
+    this_month = now
+    this_year = datetime(now.year, 1, 15)
+    last_year = datetime(now.year - 1, 6, 15)
+
+    specs = [(this_month, 0), (this_year, 30), (last_year, 100)]
+    temp = _TempDept(client, admin_headers, specs)
+    try:
+        period = now.strftime("%Y-%m")
+        expect_month = sum(1 for when, _ in specs if month_start <= when < next_month)
+        expect_open = sum(1 for _, done in specs if done < 100)
+
+        all_stats = _dept_stats(client, admin_headers, period, "all")
+        month_stats = _dept_stats(client, admin_headers, period, "month")
+        year_stats = _dept_stats(client, admin_headers, period, "year")
+        open_stats = _dept_stats(client, admin_headers, period, "open")
+
+        assert _stat_of(all_stats, temp.dept_id)["total"] == 3, "全部口径应含 3 条"
+        assert _stat_of(all_stats, temp.dept_id)["done"] == 1, "全部口径已完成的只有往年那条"
+        assert _stat_of(month_stats, temp.dept_id)["total"] == expect_month, "当月新增只统计本月创建的任务"
+        assert _stat_of(year_stats, temp.dept_id)["total"] == 2, "本年新增应排除往年创建的那条"
+        assert _stat_of(open_stats, temp.dept_id)["total"] == expect_open, "未结束只统计未完成的任务"
+        assert _stat_of(open_stats, temp.dept_id)["done"] == 0, "未结束口径下不应出现已完成"
+        # 未识别的筛选值按「全部」处理，避免前端传错就白屏
+        assert _dept_stats(client, admin_headers, period, "unknown") == all_stats
+    finally:
+        temp.cleanup()
+
+
+def test_dept_task_stats_follows_selected_period(client, admin_headers):
+    """年/月的取数跟着页面顶部周期走，而不是服务器当天。"""
+    now = datetime.now()
+    specs = [(now, 0), (datetime(now.year - 1, 6, 15), 100)]
+    temp = _TempDept(client, admin_headers, specs)
+    try:
+        old_period = f"{now.year - 1}-06"
+        year_stats = _dept_stats(client, admin_headers, old_period, "year")
+        month_stats = _dept_stats(client, admin_headers, old_period, "month")
+
+        assert _stat_of(year_stats, temp.dept_id)["total"] == 1, "切到往年周期后，本年新增只剩往年那条"
+        assert _stat_of(month_stats, temp.dept_id)["total"] == 1, "当月新增应按所选月份取数"
+
+        # 切到没有任务的月份 → 该部门不出现在结果里
+        empty_month = f"{now.year - 1}-07"
+        assert _stat_of(_dept_stats(client, admin_headers, empty_month, "month"), temp.dept_id) is None
+    finally:
+        temp.cleanup()

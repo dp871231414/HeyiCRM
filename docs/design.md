@@ -297,8 +297,11 @@
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/dashboard/summary?period=&org_id=` | `{headline, tone, weighted, timeProgress, vsTime, counts, wins[], risks[], points[]}` |
-| GET | `/dashboard/overview?period=&org_id=` | `{annual[], project[], monitor[], projectCompare[], deptTaskStats[]}` |
+| GET | `/dashboard/overview?period=&org_id=` | `{annual[], project[], monitor[], projectCompare[]}` |
+| GET | `/dashboard/dept-task-stats?period=&filter=` | 部门任务完成度，支持口径筛选（独立于 overview 取数） |
 | GET | `/dashboard/metrics/{id}/trend?org_id=` | 该指标历史各期实际值（用于下钻趋势） |
+
+`dept-task-stats` 的 `filter` 口径：`all` 全部（默认）/ `year` 本年新增 / `month` 当月新增 / `open` 未结束（done < target，含进行中与逾期）。年与月均取 `period`（页面顶部统计周期）所在年月，未识别取值按「全部」处理；年/月口径筛选的是**创建时间**落在所选时间范围内的任务。
 
 **错误码约定**：`UNAUTHORIZED` `FORBIDDEN` `NOT_FOUND` `NAME_CONFLICT` `DELETE_BLOCKED` `IMPORT_INVALID` `PERIOD_MISMATCH`。
 

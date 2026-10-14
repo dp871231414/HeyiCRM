@@ -311,7 +311,13 @@ def test_dashboard_overview(client, admin_headers):
     data = client.get("/api/v1/dashboard/overview", params={"org_id": "CO"}, headers=admin_headers).json()
     assert data["annual"] and data["monitor"] and data["projectCompare"]
     assert data["counts"]["total"] == len(data["annual"])
-    assert data["deptTaskStats"]
+
+
+def test_dashboard_dept_task_stats(client, admin_headers):
+    """部门任务完成度独立于总览取数，默认口径为全部。"""
+    all_stats = client.get("/api/v1/dashboard/dept-task-stats", headers=admin_headers).json()
+    assert all_stats and all("completion" in s for s in all_stats)
+    assert sum(s["total"] for s in all_stats) == client.get("/api/v1/tasks", headers=admin_headers).json()["total"]
 
 
 def test_metric_trend(client, admin_headers):

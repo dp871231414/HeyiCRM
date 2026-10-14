@@ -243,8 +243,10 @@ export interface OverviewResult {
   projectCompare: ProjectCompanyBlock[]
   projectMetrics: { id: string; name: string; unit: string; snapshot: boolean }[]
   counts: ToneCounts
-  deptTaskStats: DeptTaskStat[]
 }
+
+/** 部门任务完成度的展示口径筛选：全部 / 本年新增 / 当月新增（取页面顶部月份）/ 未结束 */
+export type DeptTaskFilter = 'all' | 'year' | 'month' | 'open'
 
 export interface ImportError {
   row: number

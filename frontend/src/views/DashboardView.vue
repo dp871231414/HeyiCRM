@@ -171,12 +171,40 @@
         </div>
       </section>
 
-      <!-- 部门任务完成度 -->
-      <section v-if="overview.deptTaskStats.length">
-        <h2 class="section-title mb-3">部门任务完成度</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <!-- 部门任务完成度 · 展示口径可切换（默认全部），任务数/已完成数随筛选同步 -->
+      <section v-if="deptStats.length || deptFilter !== 'all'">
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-3">
+          <div class="flex items-baseline gap-2">
+            <h2 class="section-title">部门任务完成度</h2>
+            <span class="text-xs text-slate-400">{{ deptFilterHint }}</span>
+          </div>
+          <div class="inline-flex gap-0.5 p-0.5 rounded-lg bg-slate-100">
+            <button
+              v-for="f in DEPT_FILTERS"
+              :key="f.value"
+              class="px-2.5 py-1 rounded-md text-xs font-semibold transition-all duration-200 ease-out"
+              :class="
+                deptFilter === f.value
+                  ? 'bg-white text-brand-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              "
+              @click="deptFilter = f.value"
+            >
+              {{ f.label }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="!deptStats.length" class="card p-8 text-center text-xs text-slate-500">
+          当前筛选条件下暂无任务。
+        </div>
+        <div
+          v-else
+          class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 transition-opacity duration-200"
+          :class="deptStatsLoading ? 'opacity-50' : ''"
+        >
           <div
-            v-for="d in overview.deptTaskStats"
+            v-for="d in deptStats"
             :key="d.deptId"
             class="card p-4"
             :class="d.overdue + d.risk > 0 ? 'border-bad-100' : ''"
@@ -267,7 +295,17 @@ import ModalDialog from '@/components/ModalDialog.vue'
 import MonthPicker from '@/components/MonthPicker.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import { useViewStore } from '@/stores/view'
-import type { Light, MetricRow, OverviewResult, PerfTone, ProjectCompanyBlock, SummaryResult, TrendResult } from '@/types'
+import type {
+  DeptTaskFilter,
+  DeptTaskStat,
+  Light,
+  MetricRow,
+  OverviewResult,
+  PerfTone,
+  ProjectCompanyBlock,
+  SummaryResult,
+  TrendResult,
+} from '@/types'
 import { fmt, fmtDelta, fmtPct } from '@/utils/format'
 import { COLL_TEXT, TONE_BAR, TONE_CHIP, TONE_LABEL, TONE_TEXT, toneOf } from '@/utils/tone'
 
@@ -282,6 +320,26 @@ const overview = ref<OverviewResult | null>(null)
 const drill = ref<MetricRow | null>(null)
 const trend = ref<TrendResult | null>(null)
 const trendLoading = ref(false)
+
+/** 部门任务完成度的展示口径：全部（默认）/ 本年新增 / 当月新增 / 未结束 */
+const DEPT_FILTERS: { value: DeptTaskFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'year', label: '本年新增' },
+  { value: 'month', label: '当月新增' },
+  { value: 'open', label: '未结束' },
+]
+const deptFilter = ref<DeptTaskFilter>('all')
+const deptStats = ref<DeptTaskStat[]>([])
+const deptStatsLoading = ref(false)
+const deptFilterHint = computed(
+  () =>
+    ({
+      all: '全量任务，不按时间筛选',
+      year: `${(view.period || '').slice(0, 4) || '本年'} 年内创建的任务`,
+      month: '所选月份内创建的任务',
+      open: '未完成的任务（含进行中与逾期）',
+    })[deptFilter.value],
+)
 
 const revenueRows = computed(() => (overview.value?.annual ?? []).filter((r) => r.family === 'revenue'))
 const simpleRows = computed(() => (overview.value?.annual ?? []).filter((r) => r.family !== 'revenue'))
@@ -391,23 +449,45 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [s, o] = await Promise.all([
+    // 三个请求并发：部门任务完成度与总览同源、同权限，一起取不增加往返
+    const [s, o, d] = await Promise.all([
       dashboardApi.summary(view.period, view.orgId),
       dashboardApi.overview(view.period, view.orgId),
+      dashboardApi.deptTaskStats(view.period, deptFilter.value),
     ])
     // 并发加载时丢弃过期响应，避免先到的 403 覆盖后到的成功结果
     if (seq !== loadSeq) return
     summary.value = s
     overview.value = o
+    deptStats.value = d
   } catch (e) {
     if (seq !== loadSeq) return
     error.value = (e as Error).message
     summary.value = null
     overview.value = null
+    deptStats.value = []
   } finally {
     if (seq === loadSeq) loading.value = false
   }
 }
 
+/** 只重取部门任务完成度：切换筛选不必重建整套指标看板 */
+let deptSeq = 0
+async function loadDeptStats() {
+  if (!view.period) return
+  const seq = ++deptSeq
+  deptStatsLoading.value = true
+  try {
+    const d = await dashboardApi.deptTaskStats(view.period, deptFilter.value)
+    if (seq !== deptSeq) return
+    deptStats.value = d
+  } catch {
+    if (seq === deptSeq) deptStats.value = []
+  } finally {
+    if (seq === deptSeq) deptStatsLoading.value = false
+  }
+}
+
 watch([() => view.period, () => view.orgId, () => view.contextReady], load, { immediate: true })
+watch(deptFilter, loadDeptStats)
 </script>

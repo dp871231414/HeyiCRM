@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
@@ -119,12 +119,61 @@ def _enrich(db: Session, items: list[dict]) -> list[dict]:
     return items
 
 
-def dept_stats_all(db: Session, cond: ColumnElement[bool] | None = None) -> list[dict]:
+def created_range_of(period: str, scope: str) -> tuple[datetime, datetime] | None:
+    """按「页面顶部统计周期」推导创建时间的 [起, 止) 区间（止为开区间）。
+
+    scope：`month` 当月 / `year` 本年 —— 年份同样取周期所在年，
+    保证「当月新增」与「本年新增」和页面当前月份同源，不跟随服务器当天。
+    """
+    try:
+        year, month = (int(x) for x in str(period).split("-")[:2])
+    except (ValueError, TypeError):
+        return None
+    try:
+        if scope == "year":
+            start, end = date(year, 1, 1), date(year + 1, 1, 1)
+        else:
+            start = date(year, month, 1)
+            end = date(year + 1 if month == 12 else year, 1 if month == 12 else month + 1, 1)
+    except ValueError:  # 月份越界等非法周期：不筛，退回全部
+        return None
+    return datetime.combine(start, time.min), datetime.combine(end, time.min)
+
+
+def dept_task_filter(period: str, filter: str) -> ColumnElement[bool] | None:
+    """「部门任务完成度」的筛选条件。
+
+    all   全部 —— 不加条件（默认）；
+    year  本年新增 / month 当月新增 —— 取所选时间范围内创建的任务；
+    open  未结束 —— 未完成（done < target），含进行中与逾期。
+
+    创建时间由数据库默认写入（UTC），跨月边界时与北京时间可能差 8 小时，
+    属已知且可接受的口径误差（任务量级下不影响判断）。
+    """
+    if filter in ("year", "month"):
+        bounds = created_range_of(period, filter)
+        if bounds is None:
+            return None
+        start, end = bounds
+        return and_(Task.created_at >= start, Task.created_at < end)
+    if filter == "open":
+        return Task.done < Task.target
+    return None
+
+
+def dept_stats_all(
+    db: Session,
+    cond: ColumnElement[bool] | None = None,
+    task_filter: ColumnElement[bool] | None = None,
+) -> list[dict]:
     """部门任务完成度 · 在 SQL 层聚合（GROUP BY），班组归集到其上级部门。
 
     `cond` 为可见性条件：
     - 任务模块传入 `visible_task_filter(...)` —— 按数据范围隔离；
     - 经营驾驶舱不传 —— 该模块只按角色权限开放，任务统计同样按全量口径参与经营分析。
+
+    `task_filter` 为展示口径筛选（全部 / 本年新增 / 当月新增 / 未结束），
+    由 `dept_task_filter(...)` 生成，与 `cond` 是「与」关系。
     """
     today: date = reference_date()
     not_done = Task.done < Task.target
@@ -139,6 +188,8 @@ def dept_stats_all(db: Session, cond: ColumnElement[bool] | None = None) -> list
     ).group_by(Task.dept_id)
     if cond is not None:
         q = q.where(cond)
+    if task_filter is not None:
+        q = q.where(task_filter)
 
     orgs = {o.id: o for o in db.scalars(select(Organization)).all()}
     buckets: dict[str, dict] = {}

@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import require_perm
 from app.db.session import get_db
-from app.models import MetricActual, MetricDef, Organization, Task, User
+from app.models import MetricActual, MetricDef, Organization, User
+from app.schemas.task import DeptTaskStat
 from app.services.achievement import current_period, group_metric_stats, load_index
 from app.services.summary import build_summary
 
@@ -38,11 +39,9 @@ def overview(period: str = "", org_id: str = "CO", db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="组织不存在")
 
     from app.api.v1.metrics import build_board
-    from app.api.v1.tasks import dept_stats_all
 
     # 不传可见组织：驾驶舱按全公司口径取数（数据范围不影响本模块）
     board = build_board(db, period, org_id)
-    stats = dept_stats_all(db)
 
     return {
         "period": period,
@@ -55,8 +54,29 @@ def overview(period: str = "", org_id: str = "CO", db: Session = Depends(get_db)
         "projectCompare": board["project"]["companies"] if org.type in ("company", "project") else [],
         "projectMetrics": board["project"]["metrics"],
         "counts": board["counts"],
-        "deptTaskStats": stats,
     }
+
+
+@router.get("/dept-task-stats", response_model=list[DeptTaskStat])
+def dept_task_stats(
+    period: str = "",
+    filter: str = "all",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("dashboard.view")),
+):
+    """部门任务完成度（驾驶舱）· 支持按创建时间筛选，独立于总览单独取数。
+
+    之所以不挂在 `/overview` 上：切换筛选只要重算一次 GROUP BY，
+    没必要连带重建整套指标看板；而首屏是与 summary / overview 并发取的，不增加往返。
+
+    `filter`：`all` 全部（默认）/ `year` 本年新增 / `month` 当月新增 / `open` 未结束；
+    年月均取 `period`（页面顶部统计周期）所在年月，未识别的取值按「全部」处理。
+    """
+    from app.api.v1.tasks import dept_stats_all, dept_task_filter
+
+    if filter not in ("all", "year", "month", "open"):
+        filter = "all"
+    return dept_stats_all(db, task_filter=dept_task_filter(period or current_period(), filter))
 
 
 @router.get("/metrics/{metric_id}/trend")
