@@ -443,9 +443,13 @@ async function openDrilldown(row: MetricRow) {
 const deptView = computed(() => ['dept', 'team'].includes(overview.value?.orgType ?? ''))
 
 let loadSeq = 0
+// 与 loadDeptStats 共用的序号：两边都会写 deptStats，谁发起得晚谁生效，
+// 避免「切周期触发的整页刷新」其响应晚于「切筛选触发的局部刷新」时把新数据盖回旧口径
+let deptSeq = 0
 async function load() {
   if (!view.period || !view.contextReady) return
   const seq = ++loadSeq
+  const dseq = ++deptSeq
   loading.value = true
   error.value = ''
   try {
@@ -459,20 +463,19 @@ async function load() {
     if (seq !== loadSeq) return
     summary.value = s
     overview.value = o
-    deptStats.value = d
+    if (dseq === deptSeq) deptStats.value = d
   } catch (e) {
     if (seq !== loadSeq) return
     error.value = (e as Error).message
     summary.value = null
     overview.value = null
-    deptStats.value = []
+    if (dseq === deptSeq) deptStats.value = []
   } finally {
     if (seq === loadSeq) loading.value = false
   }
 }
 
 /** 只重取部门任务完成度：切换筛选不必重建整套指标看板 */
-let deptSeq = 0
 async function loadDeptStats() {
   if (!view.period) return
   const seq = ++deptSeq

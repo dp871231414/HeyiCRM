@@ -97,7 +97,19 @@ const clickFilter = async (label) => {
     const btn = [...sec.querySelectorAll('button')].find((b) => b.innerText.trim() === l)
     btn?.click()
   }, label)
-  await page.waitForTimeout(900)
+  // 等目标按钮成为选中态再读数，避免与周期切换的在途请求竞态
+  await page
+    .waitForFunction(
+      (l) => {
+        const sec = [...document.querySelectorAll('main section')].find((s) => /部门任务完成度/.test(s.innerText))
+        const btn = sec && [...sec.querySelectorAll('button')].find((b) => b.innerText.trim() === l)
+        return !!btn && btn.className.includes('bg-white')
+      },
+      label,
+      { timeout: 10000 },
+    )
+    .catch(() => {})
+  await page.waitForTimeout(700)
   return readSection()
 }
 
@@ -141,9 +153,9 @@ ok(
   `全部 ${snapshot.all.uiSum.total} ≥ 本年 ${snapshot.year.uiSum.total} ≥ 当月 ${snapshot.month.uiSum.total}`,
 )
 ok(
-  '筛选真的生效：当月新增的任务数少于全部',
-  snapshot.month.uiSum.total < snapshot.all.uiSum.total,
-  `当月 ${snapshot.month.uiSum.total} < 全部 ${snapshot.all.uiSum.total}`,
+  '筛选真的生效：当月新增 ⊆ 全部，且上个月份的当月新增为空',
+  snapshot.month.uiSum.total <= snapshot.all.uiSum.total && (await apiStats('month', '2026-09')).length === 0,
+  `当月 ${snapshot.month.uiSum.total} ≤ 全部 ${snapshot.all.uiSum.total}｜2026-09 当月新增为空（数据跨月时应更少）`,
 )
 ok(
   '「未结束」口径下已完成数为 0',
@@ -190,7 +202,7 @@ const periodText = () =>
     return btn?.innerText.trim() ?? ''
   })
 
-const pickMonth = async (monthText) => {
+const pickMonth = async (monthText, expectLabel) => {
   await page.evaluate(() => {
     ;[...document.querySelectorAll('button')].find((b) => /^\d{4}年\d{1,2}月$/.test(b.innerText.trim()))?.click()
   }) // 打开周期面板
@@ -198,10 +210,21 @@ const pickMonth = async (monthText) => {
   await page.evaluate((m) => {
     ;[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === m)?.click()
   }, monthText)
-  await page.waitForTimeout(1500)
+  // 等触发器显示为目标周期（整页刷新完成）再继续，避免后续读数撞上在途请求
+  await page
+    .waitForFunction(
+      (e) => {
+        const btn = [...document.querySelectorAll('button')].find((b) => /^\d{4}年\d{1,2}月$/.test(b.innerText.trim()))
+        return btn?.innerText.trim() === e
+      },
+      expectLabel,
+      { timeout: 10000 },
+    )
+    .catch(() => {})
+  await page.waitForTimeout(800)
 }
 
-await pickMonth('9月') // 2026-09：造数里没有 9 月创建的任务
+await pickMonth('9月', '2026年9月') // 2026-09：造数里没有 9 月创建的任务
 const periodLabel = await periodText()
 ok('页面顶部周期已切到 2026 年 9 月', periodLabel === '2026年9月', `周期显示 ${periodLabel || '—'}`)
 
@@ -224,7 +247,7 @@ ok(
 ok('本年新增不随月份变化（只随年份）', sum(septYear.cards).total === snapshot.year.uiSum.total, `2026-09 与 2026-10 均为 ${snapshot.year.uiSum.total} 项`)
 
 // 还原到当前月
-await pickMonth('本月').catch(() => {})
+await pickMonth('本月', '2026年10月').catch(() => {})
 
 console.log(`\n控制台错误：${errs.length ? errs.join(' / ') : '0 个 ✅'}`)
 const pass = R.filter((r) => r.pass).length
