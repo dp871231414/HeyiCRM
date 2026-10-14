@@ -141,7 +141,7 @@ TASKS = [
 
 ROLES = [
     dict(id="admin", name="系统管理员", description="全部菜单与操作权限，可管理账号与角色", scope="all", is_system=True,
-         permissions=["dashboard.view", "dashboard.config", "task.view", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.edit", "market.delete", "account.view", "account.edit", "account.role"]),
+         permissions=["dashboard.view", "dashboard.config", "task.view", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.edit", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete"]),
     dict(id="dept_head", name="部门负责人", description="本部门及下属部门的任务与指标全权", scope="dept_sub", is_system=True,
          permissions=["dashboard.view", "task.view", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import", "market.view", "market.edit"]),
     dict(id="member", name="普通成员", description="仅维护本人任务与指标", scope="self", is_system=True,

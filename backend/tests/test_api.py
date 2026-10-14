@@ -191,13 +191,31 @@ def test_user_crud_and_scope_override(client, admin_headers):
         headers=admin_headers,
     ).status_code == 409
 
-    # 覆盖范围清空 → 跟随角色默认
-    updated = client.patch(
+    # 新建时也必须显式选择范围：不传 scope → 422
+    assert (
+        client.post(
+            "/api/v1/users",
+            json={"name": "测试员3", "account": "testuser3", "password": "Pass#2026", "dept_id": "D03", "role_id": "member"},
+            headers=admin_headers,
+        ).status_code
+        == 422
+    )
+
+    # 覆盖范围清空 → 同样拒绝（不再回退到角色默认）
+    cleared = client.patch(
         f"/api/v1/users/{uid}",
         json={"name": "测试员", "dept_id": "D03", "role_id": "member", "scope": "", "status": "active"},
         headers=admin_headers,
     )
-    assert updated.status_code == 200 and updated.json()["effectiveScope"] == "self"
+    assert cleared.status_code == 422
+
+    # 显式改成另一档仍然生效
+    updated = client.patch(
+        f"/api/v1/users/{uid}",
+        json={"name": "测试员", "dept_id": "D03", "role_id": "member", "scope": "dept_sub", "status": "active"},
+        headers=admin_headers,
+    )
+    assert updated.status_code == 200 and updated.json()["effectiveScope"] == "dept_sub"
 
     # 停用
     st = client.post(f"/api/v1/users/{uid}/status", json={"status": "disabled"}, headers=admin_headers)

@@ -447,6 +447,7 @@ def test_project_manage_configurable_via_custom_role(client, admin_headers):
             "password": "123456",
             "dept_id": "CO",
             "role_id": rid,
+            "scope": "all",
             "status": "active",
         },
         headers=admin_headers,
@@ -608,6 +609,7 @@ def _role_user(client, admin_headers, perms, tag):
             "password": "123456",
             "dept_id": "CO",
             "role_id": rid,
+            "scope": "all",
             "status": "active",
         },
         headers=admin_headers,
@@ -1176,7 +1178,7 @@ def test_market_menu_permission_required(client, admin_headers):
     r = client.post(
         "/api/v1/users",
         json={"name": "漏斗观察员", "account": f"funnel{str(int(time.time() * 1000))[-6:]}", "password": "123456",
-              "dept_id": "D01", "role_id": role_id},
+              "dept_id": "D01", "role_id": role_id, "scope": "all"},
         headers=admin_headers,
     )
     assert r.status_code in (200, 201), r.text

@@ -76,6 +76,8 @@ PERM_GROUPS: list[dict] = [
             {"key": "account.view", "label": "查看账号与组织", "type": "menu"},
             {"key": "account.edit", "label": "新建 / 编辑账号与组织", "type": "action"},
             {"key": "account.role", "label": "角色与权限配置", "type": "action"},
+            {"key": "account.import", "label": "批量导入账号", "type": "action", "group": "批量操作"},
+            {"key": "account.delete", "label": "删除账号", "type": "action", "group": "批量操作"},
         ],
     },
 ]

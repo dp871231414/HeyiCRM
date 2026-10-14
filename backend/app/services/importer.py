@@ -20,8 +20,8 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.constants import TASK_ID_PREFIX
-from app.models import MetricActual, MetricDef, Organization, Task, User
+from app.constants import SCOPES, TASK_ID_PREFIX
+from app.models import MetricActual, MetricDef, Organization, Role, Task, User
 
 # ------------------------------------------------------------------ 模板列定义
 #
@@ -628,3 +628,186 @@ def export_tasks(db: Session, rows: list[Task]) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ------------------------------------------------------------------ 账号导入
+#
+# 必填字段约定（与「账号管理」表单同一套叫法）：
+#   姓名 / 账号 / 初始密码 / 所属部门 / 角色 / 数据可见范围
+# 选填：状态（留空按「启用」）
+
+
+ACCOUNT_COLUMNS = ["姓名", "账号", "初始密码", "所属部门", "角色", "数据可见范围", "状态"]
+ACCOUNT_OPTIONAL_COLUMNS = {"状态"}
+
+# 中文标签 → scope key（允许两种写法，与 constants.SCOPES 同源）
+SCOPE_LABEL_TO_KEY: dict[str, str] = {label: key for key, label in SCOPES.items()}
+
+# 状态中文 → 取值（留空默认启用）
+STATUS_LABEL_TO_KEY: dict[str, str] = {"启用": "active", "停用": "disabled"}
+
+ACCOUNT_TEMPLATE_NOTES = [
+    ["填写项", "说明"],
+    ["姓名", "必填。系统内显示名，也是任务 / 项目「责任人 / 负责人」下拉的可选项"],
+    ["账号", "必填。登录账号，至少 2 个字符；库内与本次文件内均不可重复"],
+    ["初始密码", "必填。至少 6 个字符"],
+    ["所属部门", "必填。部门名称或编码，需存在于「部门清单」页"],
+    ["角色", "必填。角色名称或编码，需存在于「角色清单」页"],
+    ["数据可见范围", "必填。四选一：本人 / 本部门 / 本部门及下属部门 / 全公司"],
+    ["状态", "选填。启用 / 停用，留空按「启用」处理"],
+]
+
+
+def build_account_template(db: Session) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "账号数据"
+
+    _write_banner(
+        ws,
+        len(ACCOUNT_COLUMNS),
+        "账号批量导入标准模板",
+        ["请勿修改第 4 行字段名称", "从第 5 行开始逐行填写", "灰色示例行可直接覆盖或删除"],
+    )
+    _style_header(ws, HEADER_ROW, ACCOUNT_COLUMNS)
+    ws.append(["郑凯", "zhengkai", "123456", "市场部", "普通成员", "本部门及下属部门", "启用"])
+    _style_data_rows(ws, HEADER_ROW + 1, ws.max_row, len(ACCOUNT_COLUMNS), sample_rows=1)
+
+    _notes_sheet(wb, "填写说明", ACCOUNT_TEMPLATE_NOTES)
+
+    # 部门清单（供「所属部门」下拉）
+    orgs = _notes_sheet(wb, "部门清单", [["编码", "名称"]])
+    for o in db.scalars(select(Organization).order_by(Organization.sort_order, Organization.id)).all():
+        orgs.append([o.id, o.name])
+    for r in range(2, orgs.max_row + 1):
+        for c in range(1, 3):
+            orgs.cell(row=r, column=c).border = _BORDER
+
+    # 角色清单（供「角色」下拉，附各角色默认可见范围）
+    roles = _notes_sheet(wb, "角色清单", [["编码", "名称", "默认可见范围"]], widths=(18, 24))
+    for ro in db.scalars(select(Role).order_by(Role.id)).all():
+        roles.append([ro.id, ro.name, SCOPES.get(ro.scope, ro.scope)])
+    for r in range(2, roles.max_row + 1):
+        for c in range(1, 4):
+            roles.cell(row=r, column=c).border = _BORDER
+
+    dv_dept = DataValidation(type="list", formula1="=部门清单!$B$2:$B$200", allow_blank=True)
+    dv_dept.error = "所属部门需存在于部门清单"
+    ws.add_data_validation(dv_dept)
+    col_dept = get_column_letter(ACCOUNT_COLUMNS.index("所属部门") + 1)
+    dv_dept.add(f"{col_dept}{HEADER_ROW + 1}:{col_dept}{HEADER_ROW + 2000}")
+
+    dv_role = DataValidation(type="list", formula1="=角色清单!$B$2:$B$200", allow_blank=True)
+    dv_role.error = "角色需存在于角色清单"
+    ws.add_data_validation(dv_role)
+    col_role = get_column_letter(ACCOUNT_COLUMNS.index("角色") + 1)
+    dv_role.add(f"{col_role}{HEADER_ROW + 1}:{col_role}{HEADER_ROW + 2000}")
+
+    dv_scope = DataValidation(
+        type="list", formula1='"' + ",".join(SCOPES.values()) + '"', allow_blank=True
+    )
+    dv_scope.error = "数据可见范围只能填：本人 / 本部门 / 本部门及下属部门 / 全公司"
+    ws.add_data_validation(dv_scope)
+    col_scope = get_column_letter(ACCOUNT_COLUMNS.index("数据可见范围") + 1)
+    dv_scope.add(f"{col_scope}{HEADER_ROW + 1}:{col_scope}{HEADER_ROW + 2000}")
+
+    dv_status = DataValidation(type="list", formula1='"启用,停用"', allow_blank=True)
+    dv_status.error = "状态只能填「启用」或「停用」"
+    ws.add_data_validation(dv_status)
+    col_status = get_column_letter(ACCOUNT_COLUMNS.index("状态") + 1)
+    dv_status.add(f"{col_status}{HEADER_ROW + 1}:{col_status}{HEADER_ROW + 2000}")
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def validate_account_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """逐行校验账号导入数据。
+
+    返回 (valid, errors)。errors 元素为 {row, errors:[{field,msg}]}，
+    与任务导入的回执结构保持一致，前端可直接复用同一套展示。
+    """
+    errors: list[dict] = []
+    valid: list[dict] = []
+
+    org_by_name = {o.name: o.id for o in db.scalars(select(Organization)).all()}
+    org_by_id = {o.id: o.id for o in db.scalars(select(Organization)).all()}
+    role_by_name = {r.name: r.id for r in db.scalars(select(Role)).all()}
+    role_by_id = {r.id: r.id for r in db.scalars(select(Role)).all()}
+    taken_accounts = set(db.scalars(select(User.account)).all())
+
+    for i, r in enumerate(rows):
+        row_no = i + 2
+        row_errors: list[dict] = []
+
+        name = (r.get("姓名") or "").strip()
+        account = (r.get("账号") or "").strip()
+        password = (r.get("密码") or r.get("初始密码") or "").strip()
+        dept = (r.get("所属部门") or "").strip()
+        role = (r.get("角色") or "").strip()
+        scope_raw = (r.get("数据可见范围") or "").strip()
+        status_raw = (r.get("状态") or "").strip()
+
+        if not name:
+            row_errors.append({"field": "姓名", "msg": "不能为空"})
+        elif len(name) > 32:
+            row_errors.append({"field": "姓名", "msg": "不能超过 32 个字符"})
+
+        if not account:
+            row_errors.append({"field": "账号", "msg": "不能为空"})
+        elif len(account) < 2:
+            row_errors.append({"field": "账号", "msg": "至少 2 个字符"})
+        elif len(account) > 32:
+            row_errors.append({"field": "账号", "msg": "不能超过 32 个字符"})
+        elif account in taken_accounts:
+            row_errors.append({"field": "账号", "msg": "账号已存在"})
+        else:
+            taken_accounts.add(account)
+
+        if not password:
+            row_errors.append({"field": "初始密码", "msg": "不能为空"})
+        elif len(password) < 6:
+            row_errors.append({"field": "初始密码", "msg": "至少 6 个字符"})
+        elif len(password) > 128:
+            row_errors.append({"field": "初始密码", "msg": "不能超过 128 个字符"})
+
+        dept_id = org_by_name.get(dept) or org_by_id.get(dept)
+        if not dept:
+            row_errors.append({"field": "所属部门", "msg": "不能为空"})
+        elif not dept_id:
+            row_errors.append({"field": "所属部门", "msg": "部门不存在，请参照「部门清单」页填写"})
+
+        role_id = role_by_name.get(role) or role_by_id.get(role)
+        if not role:
+            row_errors.append({"field": "角色", "msg": "不能为空"})
+        elif not role_id:
+            row_errors.append({"field": "角色", "msg": "角色不存在，请参照「角色清单」页填写"})
+
+        scope = SCOPE_LABEL_TO_KEY.get(scope_raw) or (scope_raw if scope_raw in SCOPES else None)
+        if not scope_raw:
+            row_errors.append({"field": "数据可见范围", "msg": "不能为空"})
+        elif not scope:
+            row_errors.append({"field": "数据可见范围", "msg": "只能填：本人 / 本部门 / 本部门及下属部门 / 全公司"})
+
+        status = STATUS_LABEL_TO_KEY.get(status_raw, "active")
+        if status_raw and not STATUS_LABEL_TO_KEY.get(status_raw):
+            row_errors.append({"field": "状态", "msg": "只能填「启用」或「停用」"})
+
+        if row_errors:
+            # 与任务导入回执保持一致：每条错误一行，带行号 / 字段 / 原因
+            for e in row_errors:
+                errors.append({"row": row_no, **e})
+        else:
+            valid.append(
+                {
+                    "name": name,
+                    "account": account,
+                    "password": password,
+                    "deptId": dept_id,
+                    "roleId": role_id,
+                    "scope": scope,
+                    "status": status,
+                }
+            )
+    return valid, errors
