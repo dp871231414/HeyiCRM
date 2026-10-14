@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{ open: boolean; title: string; width?: 'sm' | 'md' | 'lg' | 'xl'; closeOnMask?: boolean }>(),
@@ -33,4 +33,18 @@ const emit = defineEmits<{ close: [] }>()
 const widthClass = computed(
   () => ({ sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' })[props.width],
 )
+
+/** Esc 关闭：仅在弹窗打开期间监听，关闭后即时摘除，避免多个弹窗互相干扰 */
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') emit('close')
+}
+watch(
+  () => props.open,
+  (v) => {
+    if (v) window.addEventListener('keydown', onKeydown)
+    else window.removeEventListener('keydown', onKeydown)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>

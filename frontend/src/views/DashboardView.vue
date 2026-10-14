@@ -306,6 +306,8 @@
             max="100"
             step="1"
             class="input !w-28 text-right"
+            placeholder="0-100"
+            title="填写 0 到 100 之间的整数，代表该阶段的转化概率"
           />
           <span class="text-sm text-slate-400">%</span>
         </div>

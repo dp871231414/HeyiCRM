@@ -102,6 +102,17 @@ export interface UserItem {
   lastLoginIp: string | null
 }
 
+/** 账号被引用的情况 · 用于删除前预检（任一计数 > 0 即不允许删除） */
+export interface AccountRefs {
+  taskCreated: number
+  projectCreated: number
+  metricCreated: number
+  taskOwner: number
+  projectOwner: number
+  orgHead: number
+  self: boolean
+}
+
 export interface PermItem {
   key: string
   label: string

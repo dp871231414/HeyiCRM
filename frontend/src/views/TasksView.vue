@@ -166,13 +166,13 @@
           <input v-model.trim="form.title" class="input" placeholder="如：华东大区营收达成（可留空）" />
         </div>
         <div>
-          <label class="label">责任人</label>
+          <label class="label">责任人<span class="req">*</span></label>
           <select v-model="form.owner" class="input">
             <option v-for="o in owners" :key="o.id" :value="o.name">{{ o.name }}</option>
           </select>
         </div>
         <div>
-          <label class="label">责任部门</label>
+          <label class="label">责任部门<span class="req">*</span></label>
           <select v-model="form.deptId" class="input">
             <option v-for="o in orgs" :key="o.id" :value="o.id">{{ '　'.repeat(o.depth) }}{{ o.name }}</option>
           </select>
@@ -185,12 +185,12 @@
           </select>
         </div>
         <div>
-          <label class="label">目标（数字，非量化任务填 1）</label>
-          <input v-model.number="form.target" type="number" class="input" />
+          <label class="label">目标（数字，非量化任务填 1）<span class="req">*</span></label>
+          <input v-model.number="form.target" type="number" class="input" placeholder="如：46000" />
         </div>
         <div>
           <label class="label">已完成（非量化任务未完成 0 / 完成 1）</label>
-          <input v-model.number="form.done" type="number" class="input" />
+          <input v-model.number="form.done" type="number" class="input" placeholder="如：31800" />
         </div>
         <div>
           <label class="label">数量单位</label>
@@ -201,19 +201,19 @@
           <input class="input" :value="previewProgress + '%'" disabled />
         </div>
         <div>
-          <label class="label">计划开始日期</label>
+          <label class="label">计划开始日期<span class="req">*</span></label>
           <input v-model="form.startDate" type="date" class="input" />
         </div>
         <div>
-          <label class="label">计划结束日期</label>
+          <label class="label">计划结束日期<span class="req">*</span></label>
           <input v-model="form.endDate" type="date" class="input" />
         </div>
         <div class="md:col-span-2">
-          <label class="label">任务描述</label>
+          <label class="label">任务描述<span class="text-slate-400 font-normal">（选填）</span></label>
           <textarea v-model="form.description" rows="2" class="input" />
         </div>
         <div class="md:col-span-2">
-          <label class="label">进展描述</label>
+          <label class="label">进展描述<span class="text-slate-400 font-normal">（选填）</span></label>
           <textarea v-model="form.note" rows="2" class="input" />
         </div>
       </div>

@@ -27,7 +27,10 @@
           <option value="disabled">停用</option>
         </select>
         <button class="btn-ghost" @click="loadUsers">查询</button>
-        <button v-if="auth.hasPerm('account.edit')" class="btn-primary ml-auto" @click="openUserForm()">新增账号</button>
+        <div class="ml-auto flex items-center gap-2">
+          <button v-if="auth.hasPerm('account.import')" class="btn-ghost" @click="openImport">批量导入</button>
+          <button v-if="auth.hasPerm('account.edit')" class="btn-primary" @click="openUserForm()">新增账号</button>
+        </div>
       </div>
 
       <div class="card overflow-x-auto">
@@ -54,7 +57,6 @@
               <td class="td">{{ u.roleName }}</td>
               <td class="td">
                 <span class="chip bg-slate-100 text-slate-600">{{ scopeLabel(u.effectiveScope) }}</span>
-                <span v-if="u.scope" class="text-[11px] text-brand-600 ml-1">（账号覆盖）</span>
               </td>
               <td class="td">
                 <span class="chip border" :class="u.status === 'active' ? 'bg-good-50 text-good-700 border-good-100' : 'bg-slate-100 text-slate-500 border-slate-200'">
@@ -72,7 +74,12 @@
                     {{ u.status === 'active' ? '停用' : '启用' }}
                   </button>
                 </template>
-                <span v-else class="text-xs text-slate-300">—</span>
+                <button
+                  v-if="auth.hasPerm('account.delete')"
+                  class="btn-ghost btn-sm ml-1.5 text-bad-600 hover:bg-bad-50"
+                  @click="confirmDeleteUser(u)"
+                >删除</button>
+                <span v-if="!auth.hasPerm('account.edit') && !auth.hasPerm('account.delete')" class="text-xs text-slate-300">—</span>
               </td>
             </tr>
           </tbody>
@@ -180,16 +187,29 @@
     <ModalDialog :open="userFormOpen" :title="userForm.id ? '编辑账号' : '新增账号'" @close="userFormOpen = false">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label class="label">姓名</label>
-          <input v-model.trim="userForm.name" class="input" />
+          <label class="label">姓名<span class="req">*</span></label>
+          <input v-model.trim="userForm.name" class="input" placeholder="请输入姓名，如：郑凯" />
         </div>
         <div>
-          <label class="label">账号</label>
-          <input v-model.trim="userForm.account" class="input" :disabled="!!userForm.id" />
+          <label class="label">账号<span class="req">*</span></label>
+          <input
+            v-model.trim="userForm.account"
+            class="input"
+            placeholder="登录账号，至少 2 个字符"
+            :disabled="!!userForm.id"
+          />
         </div>
         <div>
-          <label class="label">{{ userForm.id ? '重置密码（留空不改）' : '初始密码' }}</label>
-          <input v-model="userForm.password" type="password" class="input" autocomplete="new-password" />
+          <label class="label">
+            {{ userForm.id ? '重置密码（留空不改）' : '初始密码' }}<span v-if="!userForm.id" class="req">*</span>
+          </label>
+          <input
+            v-model="userForm.password"
+            type="password"
+            class="input"
+            autocomplete="new-password"
+            placeholder="至少 6 个字符"
+          />
         </div>
         <div>
           <label class="label">状态</label>
@@ -199,21 +219,21 @@
           </select>
         </div>
         <div>
-          <label class="label">所属部门</label>
+          <label class="label">所属部门<span class="req">*</span></label>
           <select v-model="userForm.deptId" class="input">
             <option v-for="o in orgs" :key="o.id" :value="o.id">{{ '　'.repeat(o.depth) }}{{ o.name }}</option>
           </select>
         </div>
         <div>
-          <label class="label">角色</label>
+          <label class="label">角色<span class="req">*</span></label>
           <select v-model="userForm.roleId" class="input">
             <option v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</option>
           </select>
         </div>
         <div class="md:col-span-2">
-          <label class="label">数据可见范围</label>
-          <select v-model="userForm.scope" class="input">
-            <option value="">跟随角色默认（{{ scopeLabel(roleDefaultScope) }}）</option>
+          <label class="label">数据可见范围<span class="req">*</span></label>
+          <select v-model="userForm.scope" class="input" required>
+            <option value="" disabled>请选择数据可见范围</option>
             <option v-for="s in scopes" :key="s.value" :value="s.value">{{ s.label }}</option>
           </select>
         </div>
@@ -225,12 +245,82 @@
       </template>
     </ModalDialog>
 
+    <!-- 批量导入账号 -->
+    <ModalDialog :open="importOpen" title="批量导入账号" width="lg" @close="importOpen = false">
+      <div class="space-y-4">
+        <div class="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs leading-relaxed text-slate-600">
+          <div class="mb-1 font-semibold text-slate-700">必填字段约定</div>
+          <div>姓名 · 账号（≥2 字符）· 初始密码（≥6 字符）· 所属部门 · 角色 · 数据可见范围</div>
+          <div class="mt-1 text-slate-400">
+            选填：状态（启用 / 停用，留空按启用）。数据可见范围四选一：本人 / 本部门 / 本部门及下属部门 / 全公司。
+            账号不可与库内或本次文件内重复；部门与角色需与「部门清单 / 角色清单」页一致。
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="btn-ghost" @click="download(userApi.templateUrl(), '账号批量导入标准模板.xlsx')">下载模板</button>
+          <input
+            ref="importInput"
+            type="file"
+            accept=".xlsx,.xls"
+            class="block min-w-0 flex-1 text-xs text-slate-500 file:mr-2 file:rounded file:border-0 file:bg-brand-50 file:px-2.5 file:py-1.5 file:text-xs file:text-brand-700"
+            @change="onImportPick"
+          />
+        </div>
+
+        <div
+          v-if="importResult"
+          class="rounded-lg border"
+          :class="importResult.imported ? 'border-good-100 bg-good-50/50' : 'border-bad-100 bg-bad-50/50'"
+        >
+          <p
+            class="px-3.5 py-2.5 text-sm font-semibold"
+            :class="importResult.imported ? 'text-good-700' : 'text-bad-700'"
+          >
+            {{ importResult.imported ? `成功导入 ${importResult.imported} 个账号` : '存在错误行，本次未写入任何数据' }}
+          </p>
+          <div
+            v-if="importResult.errors.length"
+            class="max-h-64 overflow-y-auto border-t"
+            :class="importResult.imported ? 'border-good-100' : 'border-bad-100'"
+          >
+            <table class="w-full">
+              <thead class="sticky top-0">
+                <tr>
+                  <th class="th w-20">行号</th>
+                  <th class="th w-40">字段</th>
+                  <th class="th">错误说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(e, i) in importResult.errors"
+                  :key="i"
+                  class="border-b border-slate-100"
+                >
+                  <td class="td">{{ e.row }}</td>
+                  <td class="td font-semibold text-bad-700">{{ e.field }}</td>
+                  <td class="td whitespace-normal">{{ e.msg }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <button class="btn-ghost" @click="importOpen = false">关闭</button>
+        <button class="btn-primary" :disabled="!importFile || importUploading" @click="submitImport">
+          {{ importUploading ? '导入中…' : '开始导入' }}
+        </button>
+      </template>
+    </ModalDialog>
+
     <!-- 部门表单 -->
     <ModalDialog :open="orgFormOpen" :title="orgForm.id ? '编辑部门' : '新增部门'" width="sm" @close="orgFormOpen = false">
       <div class="space-y-4">
         <div>
-          <label class="label">部门名称</label>
-          <input v-model.trim="orgForm.name" class="input" />
+          <label class="label">部门名称<span class="req">*</span></label>
+          <input v-model.trim="orgForm.name" class="input" placeholder="请输入部门名称" />
         </div>
         <div>
           <label class="label">负责人</label>
@@ -252,8 +342,8 @@
       <div class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="label">角色名称</label>
-            <input v-model.trim="roleForm.name" class="input" />
+            <label class="label">角色名称<span class="req">*</span></label>
+            <input v-model.trim="roleForm.name" class="input" placeholder="请输入角色名称，如：部门经理" />
           </div>
           <div>
             <label class="label">数据可见范围</label>
@@ -263,7 +353,11 @@
           </div>
           <div class="md:col-span-2">
             <label class="label">说明</label>
-            <input v-model.trim="roleForm.description" class="input" />
+            <input
+              v-model.trim="roleForm.description"
+              class="input"
+              placeholder="选填，一句话说明该角色的职责范围"
+            />
           </div>
           <div class="md:col-span-2">
             <label class="flex items-center gap-2 cursor-pointer select-none">
@@ -320,11 +414,11 @@
     </ModalDialog>
 
     <!-- 删除确认 -->
-    <ModalDialog :open="!!deleteMsg" title="确认删除" width="sm" @close="deleteMsg = ''">
-      <p class="text-sm text-slate-600">{{ deleteMsg }}</p>
+    <ModalDialog :open="!!deleteMsg" title="确认删除" width="sm" @close="closeDelete">
+      <p class="text-sm" :class="deleteBlocked ? 'text-bad-700' : 'text-slate-600'">{{ deleteMsg }}</p>
       <template #footer>
-        <button class="btn-ghost" @click="deleteMsg = ''">取消</button>
-        <button class="btn-danger" @click="confirmDeleteAction">确认删除</button>
+        <button class="btn-ghost" @click="closeDelete">{{ deleteBlocked ? '知道了' : '取消' }}</button>
+        <button v-if="!deleteBlocked" class="btn-danger" @click="confirmDeleteAction">确认删除</button>
       </template>
     </ModalDialog>
   </div>
@@ -333,11 +427,23 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 
-import { orgApi, roleApi, userApi } from '@/api'
+import { downloadFile, orgApi, roleApi, userApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import type { OrgNode, PermCatalog, PermGroup, PermItem, RoleItem, ScopeKey, UserItem } from '@/types'
+import type {
+  AccountRefs,
+  ImportResult,
+  OrgNode,
+  PermCatalog,
+  PermGroup,
+  PermItem,
+  RoleItem,
+  ScopeKey,
+  UserItem,
+} from '@/types'
+
+const download = downloadFile
 
 const auth = useAuthStore()
 const app = useAppStore()
@@ -399,7 +505,10 @@ const roleError = ref('')
 const roleForm = reactive<{ id: string; name: string; description: string; scope: ScopeKey; permissions: string[]; isSystem: boolean }>({ id: '', name: '', description: '', scope: 'self', permissions: [], isSystem: false })
 
 const deleteMsg = ref('')
+const deleteBlocked = ref(false)
 let deleteAction: (() => Promise<void>) | null = null
+
+const importOpen = ref(false)
 
 const SCOPE_TEXT: Record<string, string> = {
   self: '本人',
@@ -409,7 +518,6 @@ const SCOPE_TEXT: Record<string, string> = {
 }
 const scopeLabel = (s: string) => SCOPE_TEXT[s] ?? s
 const parentName = computed(() => orgs.value.find((o) => o.id === orgForm.parentId)?.name ?? orgForm.parentId)
-const roleDefaultScope = computed(() => roles.value.find((r) => r.id === userForm.roleId)?.scope ?? 'self')
 
 function deleteReason(o: OrgNode) {
   if (o.userCount > 0) return `该部门下有 ${o.userCount} 个账号，不允许删除，仅可修改`
@@ -502,6 +610,11 @@ async function saveUser() {
   }
   if (!userForm.id && userForm.password.length < 6) {
     userError.value = '初始密码至少 6 位'
+    return
+  }
+  // 数据可见范围必选：不再支持「跟随角色默认」
+  if (!userForm.scope) {
+    userError.value = '请选择数据可见范围'
     return
   }
   saving.value = 'user'
@@ -664,13 +777,88 @@ function askDeleteRole(r: RoleItem) {
   }
 }
 
+function closeDelete() {
+  deleteMsg.value = ''
+  deleteBlocked.value = false
+  deleteAction = null
+}
+
 async function confirmDeleteAction() {
   try {
     await deleteAction?.()
-    deleteMsg.value = ''
   } catch (e) {
     app.toast((e as Error).message, 'error')
-    deleteMsg.value = ''
+  } finally {
+    closeDelete()
+  }
+}
+
+/* ---------------- 账号删除与批量导入 ---------------- */
+
+/** 把引用计数翻译成一句人话，用于确认弹窗 */
+function refSentence(refs: AccountRefs): string {
+  const parts: string[] = []
+  if (refs.taskCreated) parts.push(`创建了 ${refs.taskCreated} 条任务`)
+  if (refs.projectCreated) parts.push(`创建了 ${refs.projectCreated} 个市场项目`)
+  if (refs.metricCreated) parts.push(`创建了 ${refs.metricCreated} 个指标`)
+  if (refs.taskOwner) parts.push(`被 ${refs.taskOwner} 条任务选为责任人`)
+  if (refs.projectOwner) parts.push(`被 ${refs.projectOwner} 个市场项目选为负责人`)
+  if (refs.orgHead) parts.push(`被 ${refs.orgHead} 个部门选为负责人`)
+  if (refs.self) parts.push('这是当前登录账号')
+  return parts.join('；')
+}
+
+async function confirmDeleteUser(u: UserItem) {
+  try {
+    const refs = await userApi.impact(u.id)
+    const reason = refSentence(refs)
+    if (reason) {
+      deleteBlocked.value = true
+      deleteMsg.value = `账号「${u.name}（${u.account}）」不允许删除 —— ${reason}。`
+      return
+    }
+    deleteBlocked.value = false
+    deleteMsg.value = `将删除账号「${u.name}（${u.account}）」。该账号未作为任何数据的创建人，也未被任何填写项引用，删除后不可恢复。`
+    deleteAction = async () => {
+      await userApi.remove(u.id)
+      app.toast('已删除')
+      await loadUsers()
+    }
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  }
+}
+
+const importFile = ref<File | null>(null)
+const importUploading = ref(false)
+const importResult = ref<ImportResult | null>(null)
+const importInput = ref<HTMLInputElement | null>(null)
+
+function openImport() {
+  importResult.value = null
+  importFile.value = null
+  importOpen.value = true
+}
+
+function onImportPick(e: Event) {
+  importFile.value = (e.target as HTMLInputElement).files?.[0] ?? null
+}
+
+async function submitImport() {
+  if (!importFile.value) return
+  importUploading.value = true
+  try {
+    importResult.value = await userApi.importFile(importFile.value)
+    if (importResult.value.imported) {
+      app.toast(`成功导入 ${importResult.value.imported} 个账号`)
+      await loadUsers()
+    }
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  } finally {
+    importUploading.value = false
+    importFile.value = null
+    if (importInput.value) importInput.value.value = ''
   }
 }
 

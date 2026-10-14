@@ -1,5 +1,6 @@
 import { http } from './http'
 import type {
+  AccountRefs,
   DeptTaskFilter,
   DeptTaskStat,
   FunnelProbItem,
@@ -74,6 +75,14 @@ export const userApi = {
   create: (payload: Record<string, unknown>) => http.post<UserItem>('/users', payload).then((r) => r.data),
   update: (id: string, payload: Record<string, unknown>) => http.patch<UserItem>(`/users/${id}`, payload).then((r) => r.data),
   setStatus: (id: string, status: string) => http.post<UserItem>(`/users/${id}/status`, { status }).then((r) => r.data),
+  remove: (id: string) => http.delete(`/users/${id}`).then((r) => r.data),
+  impact: (id: string) => http.get<AccountRefs>(`/users/${id}/impact`).then((r) => r.data),
+  importFile: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return http.post<ImportResult>('/users/import', fd).then((r) => r.data)
+  },
+  templateUrl: () => '/api/v1/users/import/template',
 }
 
 /* ---------------- 指标 ---------------- */

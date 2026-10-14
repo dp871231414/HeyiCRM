@@ -60,6 +60,8 @@
                     class="input !py-1.5 text-right font-mono"
                     :disabled="!canEditAnnual()"
                     inputmode="decimal"
+                    :title="`${row.name} · 年度目标（${row.unit}）`"
+                    :aria-label="`${row.name} 年度目标，单位 ${row.unit}`"
                   />
                 </td>
                 <td class="td">
@@ -68,6 +70,8 @@
                     class="input !py-1.5 text-right font-mono"
                     :disabled="!canEditAnnual()"
                     inputmode="decimal"
+                    :title="`${row.name} · 累计完成值（${row.unit}），截止当月累计`"
+                    :aria-label="`${row.name} 累计完成值，单位 ${row.unit}`"
                   />
                 </td>
                 <td class="td">
@@ -83,6 +87,8 @@
                     class="input !py-1.5 text-right font-mono"
                     :disabled="!canEditAnnual()"
                     inputmode="decimal"
+                    :title="`${row.name} · 回款金额（${row.unit}）`"
+                    :aria-label="`${row.name} 回款，单位 ${row.unit}`"
                   />
                   <span v-else class="text-slate-300">—</span>
                 </td>
@@ -130,6 +136,8 @@
               class="input !py-1.5 mt-1.5 text-lg font-bold font-mono"
               :disabled="!canEditMonitor()"
               inputmode="decimal"
+              :title="`${row.name} · 当期快照（${row.unit}），无目标值不判红黄绿灯`"
+              :aria-label="`${row.name} 当期完成值，单位 ${row.unit}`"
             />
             <div class="mt-2 flex items-center justify-between">
               <span class="text-[11px] text-slate-400">{{ row.unit }} · 上期 {{ fmt(prevMap[row.metricId]) }}</span>
@@ -197,6 +205,8 @@
                       class="input !py-1 text-right font-mono !w-[92px]"
                       :disabled="!canEdit(c.orgId)"
                       inputmode="decimal"
+                      :title="`${c.name} · ${m.name} 目标值`"
+                      :aria-label="`${c.name} ${m.name} 目标值`"
                     />
                   </td>
                   <td class="td">
@@ -205,6 +215,8 @@
                       class="input !py-1 text-right font-mono !w-[92px]"
                       :disabled="!canEdit(c.orgId)"
                       inputmode="decimal"
+                      :title="`${c.name} · ${m.name} 实际值`"
+                      :aria-label="`${c.name} ${m.name} 实际值`"
                     />
                   </td>
                   <td class="td">
@@ -221,6 +233,8 @@
                         class="input !py-1 text-right font-mono !w-[92px]"
                         :disabled="!canEdit(c.orgId)"
                         inputmode="decimal"
+                        :title="`${c.name} · ${m.name} 回款金额`"
+                        :aria-label="`${c.name} ${m.name} 回款`"
                       />
                     </td>
                   </template>
@@ -256,7 +270,7 @@
     <ModalDialog :open="projectFormOpen" :title="projectForm.id ? '编辑项目公司' : '新增项目公司'" @close="projectFormOpen = false">
       <div class="space-y-4">
         <div>
-          <label class="label">公司名称</label>
+          <label class="label">公司名称<span class="req">*</span></label>
           <input v-model.trim="projectForm.name" class="input" placeholder="如：合一重卡运营公司" />
         </div>
         <div>

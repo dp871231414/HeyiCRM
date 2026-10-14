@@ -91,27 +91,27 @@
           <input v-model.trim="form.name" class="input" placeholder="如：华东物流园运力替换项目" />
         </div>
         <div>
-          <label class="label">项目阶段</label>
+          <label class="label">项目阶段<span class="req">*</span></label>
           <select v-model.number="form.stage" class="input">
             <option v-for="s in STAGES" :key="s" :value="s">{{ s }}% {{ MARKET_STAGE_LABELS[s] }}</option>
           </select>
         </div>
         <div>
-          <label class="label">负责人</label>
+          <label class="label">负责人<span class="req">*</span></label>
           <select v-model="form.owner" class="input">
             <option v-for="o in owners" :key="o.id" :value="o.name">{{ o.name }}</option>
           </select>
         </div>
         <div>
           <label class="label">牵引车需求数（辆）</label>
-          <input v-model.number="form.tractorDemand" type="number" min="0" class="input" />
+          <input v-model.number="form.tractorDemand" type="number" min="0" class="input" placeholder="如：30" />
         </div>
         <div>
           <label class="label">挂车需求数（辆）</label>
-          <input v-model.number="form.trailerDemand" type="number" min="0" class="input" />
+          <input v-model.number="form.trailerDemand" type="number" min="0" class="input" placeholder="如：15" />
         </div>
         <div class="md:col-span-2">
-          <label class="label">项目描述</label>
+          <label class="label">项目描述<span class="text-slate-400 font-normal">（选填）</span></label>
           <textarea v-model="form.description" rows="3" class="input" />
         </div>
       </div>
