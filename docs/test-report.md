@@ -1000,8 +1000,14 @@ verify-round12 断言同步适配：`svg polygon` → `div.funnel-bar`（6 个�
 |---|---|
 | 后端 pytest | **116 passed**（`tests/test_accounts.py` 新增 10 项，覆盖必选校验、模板下载、导入成功/整批回滚、scope 两种写法、状态默认值、五类删除拦截） |
 | 前端 `npm run build` | 通过（含 `vue-tsc --noEmit`） |
-| `tools/verify-round13.mjs` | **16 通过 / 0 失败**，非预期 HTTP 错误 0 |
-| `tools/verify-round12.mjs` 回归 | **26 通过 / 0 失败** |
+| `tools/verify-round13.mjs` 本地 | **17 通过 / 0 失败**，连跑两次一致，残留账号 0 |
+| `tools/verify-round13.mjs` 线上 | **17 通过 / 0 失败**，非预期 HTTP 错误 0 |
+| `tools/verify-round12.mjs` 回归（本地 / 线上） | **26 通过 / 0 失败** |
+
+**发布记录（2026-10-14）**：发布目录 `backend/`、启动命令 `sh start.sh`，
+线上地址不变 —— https://heyi-fleet-dashboard.app.workbuddy.host/ 。
+线上库与本地库的部门名称不同（线上「市场1部」、本地「市场部」），
+演示数据各自保持原状，验收造数已全部还原。
 
 **本轮排查记录**
 
@@ -1012,3 +1018,5 @@ verify-round12 断言同步适配：`svg polygon` → `div.funnel-bar`（6 个�
 | D-36 | 验收脚本「批量导入」按钮 30s 超时 | `main.py` 不跑 `seed`，本地库 admin 仍是旧权限清单，缺 `account.import`/`account.delete` | 执行 `python -m app.seed` 同步内置角色权限 |
 | D-37 | 验收里 PATCH 任务责任人返回 422 | `TaskUpdate` 全量必填且为 snake_case，直接展开 camelCase 的 `TaskOut` 回传导致缺字段 | 显式逐字段构造 payload |
 | D-38 | 脚本按「全公司」文本定位可见范围下拉误匹配 | 组织清单里也有名为「全公司」的公司节点 | 改用 `select:has(option[value="all"])` 唯一定位 |
+| D-39 | 导入文件硬编码「市场部 / 普通成员」，本地跑通、线上整批校验失败 | 本地 `dev.db` 与线上库部门名称不一致（本地「市场部」vs 线上「市场1部」） | 新增 `tools/gen_account_import.py`，以接口下载的真实模板为底稿，套用模板自带清单取值 |
+| D-40 | 验收结束线上残留一个删不掉的「导入乙」账号 | 脚本先删账号、后还原引用，顺序颠倒导致被引用账号删不掉 | 改为先 PATCH 还原任务责任人再删账号；新增「无残留账号」断言 |
