@@ -173,6 +173,26 @@ const listApi = await api('/api/v1/market-projects?size=50')
 ok('列表行数与接口一致', new RegExp(`共 ${listApi.total} 个项目`).test(marketText.replace(/\s+/g, ' ')), `共 ${listApi.total} 个`)
 ok('表头字段齐全', ['项目名称', '项目描述', '牵引车需求', '挂车需求', '项目阶段', '负责人', '创建人', '创建时间', '更新时间'].every((t) => marketText.includes(t)))
 
+/** 轮询等待条件成立（线上环境较慢，固定 sleep 不可靠） */
+const waitFor = async (fn, timeout = 10000, interval = 300) => {
+  const t0 = Date.now()
+  while (Date.now() - t0 < timeout) {
+    if (await fn()) return true
+    await new Promise((r) => setTimeout(r, interval))
+  }
+  return false
+}
+
+// 幂等：先清掉上次运行可能残留的同名项目（避免 keyword 查出 total=2 干断言）
+const stale = await api('/api/v1/market-projects?keyword=验收测试项目-临时&size=50')
+for (const it of stale.items ?? []) {
+  await page.evaluate(async (id) => {
+    await fetch(`/api/v1/market-projects/${id}`, { method: 'DELETE', credentials: 'include' })
+  }, it.id)
+}
+// 漏斗基线：清理残留之后、新建之前现取
+const funnelBeforeCreate = await api('/api/v1/dashboard/project-funnel')
+
 // 新建项目
 await page.evaluate(() => {
   ;[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === '新建项目')?.click()
@@ -201,15 +221,15 @@ await page.waitForTimeout(200)
 await page.evaluate(() => {
   ;[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === '保存')?.click()
 })
-await page.waitForTimeout(1500)
+await waitFor(async () => (await api('/api/v1/market-projects?keyword=验收测试项目-临时')).total === 1)
 const afterCreate = await api('/api/v1/market-projects?keyword=验收测试项目-临时')
-ok('新建项目成功（接口可查）', afterCreate.total === 1 && afterCreate.items[0].tractorDemand === 12, afterCreate.items[0]?.id)
+ok('新建项目成功（接口可查）', afterCreate.total === 1 && afterCreate.items[0]?.tractorDemand === 12, afterCreate.items[0]?.id)
 const newId = afterCreate.items[0]?.id
 ok('创建人自动记录', afterCreate.items[0]?.createdByName?.length > 0, afterCreate.items[0]?.createdByName)
 
-// 新建后漏斗项目数 +1
+// 新建后漏斗项目数 +1（与上方基线对比）
 const funnelAfterCreate = await api('/api/v1/dashboard/project-funnel')
-ok('新建后漏斗首层项目数 +1', funnelAfterCreate.stages[0].count === funnel.stages[0].count + 1, `${funnel.stages[0].count} → ${funnelAfterCreate.stages[0].count}`)
+ok('新建后漏斗首层项目数 +1', funnelAfterCreate.stages[0].count === funnelBeforeCreate.stages[0].count + 1, `${funnelBeforeCreate.stages[0].count} → ${funnelAfterCreate.stages[0].count}`)
 
 // 编辑该项目（改阶段为 90）
 const editResp = await page.evaluate(async ([base, id]) => {
@@ -223,27 +243,32 @@ const editResp = await page.evaluate(async ([base, id]) => {
 }, [BASE, newId])
 ok('编辑项目成功（阶段→90）', editResp === 200)
 
-// 删除该项目（走页面按钮）
+// 删除该项目（走页面按钮；线上较慢，各步改为轮询等待而非固定 sleep）
 await page.goto(`${BASE}/market`, { waitUntil: 'networkidle' })
-await page.waitForTimeout(1500)
-await page.evaluate(() => {
-  const kw = [...document.querySelectorAll('main input')].find((i) => /搜索/.test(i.placeholder))
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-  setter.call(kw, '验收测试项目-临时')
-  kw.dispatchEvent(new Event('input', { bubbles: true }))
-  ;[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === '查询')?.click()
-})
-await page.waitForTimeout(1200)
-await page.evaluate(() => {
-  ;[...document.querySelectorAll('main td button')].find((b) => b.innerText.trim() === '删除')?.click()
-})
-await page.waitForTimeout(400)
+const rowFound = await waitFor(() =>
+  page.evaluate(() => {
+    const kw = [...document.querySelectorAll('main input')].find((i) => /搜索/.test(i.placeholder))
+    if (!kw) return false
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(kw, '验收测试项目-临时')
+    kw.dispatchEvent(new Event('input', { bubbles: true }))
+    ;[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === '查询')?.click()
+    return [...document.querySelectorAll('main td button')].some((b) => b.innerText.trim() === '删除')
+  }),
+)
+ok('搜索到待删除项目', rowFound)
+const confirmShown = await waitFor(() =>
+  page.evaluate(() => {
+    ;[...document.querySelectorAll('main td button')].find((b) => b.innerText.trim() === '删除')?.click()
+    return [...document.querySelectorAll('button')].some((b) => b.innerText.trim() === '确认删除')
+  }),
+)
+ok('删除确认弹窗出现', confirmShown)
 await page.evaluate(() => {
   ;[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === '确认删除')?.click()
 })
-await page.waitForTimeout(1500)
-const afterDelete = await api('/api/v1/market-projects?keyword=验收测试项目-临时')
-ok('删除后接口查不到该项目', afterDelete.total === 0)
+const deleted = await waitFor(async () => (await api('/api/v1/market-projects?keyword=验收测试项目-临时')).total === 0)
+ok('删除后接口查不到该项目', deleted)
 
 console.log(`\n控制台错误：${errs.length ? errs.join(' / ') : '0 个 ✅'}`)
 console.log(`\n结果：${passed} 通过，${failed} 失败`)
