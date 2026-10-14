@@ -12,14 +12,15 @@
           v-for="(s, i) in stages"
           :key="'bar' + i"
           class="funnel-bar rounded-sm transition-all duration-300 hover:brightness-110"
+          role="img"
+          :title="`${s.label}：${fmt(valueOf(s))} ${unit}`"
+          :aria-label="`${s.label}：${fmt(valueOf(s))} ${unit}`"
           :style="{
             height: BAR_H + 'px',
             width: barW(s) + '%',
             background: COLORS[i] ?? COLORS[COLORS.length - 1],
           }"
-        >
-          <title>{{ s.label }}：{{ fmt(valueOf(s)) }} {{ unit }}</title>
-        </div>
+        />
       </div>
       <!-- 右：阶段标题 + 当前数量 + 占比，按层级排列，与左条形逐层对齐 -->
       <div class="flex min-w-0 flex-1 flex-col" :style="{ gap: GAP + 'px' }">
