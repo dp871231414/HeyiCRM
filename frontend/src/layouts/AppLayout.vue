@@ -134,6 +134,8 @@ const ICONS: Record<string, string> = {
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
   tasks:
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11" stroke-linecap="round"/><circle cx="4.5" cy="6" r="1.5"/><circle cx="4.5" cy="12" r="1.5"/><circle cx="4.5" cy="18" r="1.5"/></svg>',
+  market:
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z" stroke-linejoin="round"/><path d="M3 7v10l9 4 9-4V7" stroke-linejoin="round"/><path d="M12 11v10"/></svg>',
   metrics:
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20h18" stroke-linecap="round"/><path d="M6 16l4-6 3 4 5-8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   accounts:
@@ -143,6 +145,7 @@ const ICONS: Record<string, string> = {
 const ALL_MENUS = [
   { name: 'dashboard', label: '经营驾驶舱', perm: 'dashboard.view', icon: ICONS.dashboard },
   { name: 'tasks', label: '任务管理', perm: 'task.view', icon: ICONS.tasks },
+  { name: 'market', label: '项目管理', perm: 'market.view', icon: ICONS.market },
   { name: 'metrics', label: '指标维护', perm: 'metric.view', icon: ICONS.metrics },
   { name: 'accounts', label: '账号管理', perm: 'account.view', icon: ICONS.accounts },
 ]

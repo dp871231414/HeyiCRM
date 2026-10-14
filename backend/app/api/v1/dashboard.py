@@ -9,15 +9,18 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.constants import MARKET_STAGE_VALUES
 from app.core.deps import require_perm
 from app.db.session import get_db
 from app.models import MetricActual, MetricDef, Organization, User
+from app.schemas.project import FunnelConfigIn
 from app.schemas.task import DeptTaskStat
 from app.services.achievement import current_period, group_metric_stats, load_index
+from app.services.audit import write_log
 from app.services.summary import build_summary
 
 router = APIRouter(prefix="/dashboard", tags=["经营驾驶舱"])
@@ -77,6 +80,47 @@ def dept_task_stats(
     if filter not in ("all", "year", "month", "open"):
         filter = "all"
     return dept_stats_all(db, task_filter=dept_task_filter(period or current_period(), filter))
+
+
+@router.get("/project-funnel")
+def project_funnel(db: Session = Depends(get_db), user: User = Depends(require_perm("dashboard.view"))):
+    """市场项目概览：三漏斗（项目数 / 牵引车需求 / 挂车需求）+ 加权销量预测。
+
+    只按角色权限开放，不做数据范围裁剪（与驾驶舱其他模块同一口径）。
+    漏斗为累计口径（stage ≥ 该层即计入），预测按项目各自阶段的转化概率加权。
+    """
+    from app.services.funnel import build_funnel
+
+    return build_funnel(db)
+
+
+@router.get("/funnel-config")
+def funnel_config(db: Session = Depends(get_db), user: User = Depends(require_perm("dashboard.view"))):
+    """各阶段转化概率（默认值 = 阶段百分比）。"""
+    from app.services.funnel import load_probs
+
+    probs = load_probs(db)
+    return {"probs": [{"stage": s, "prob": p} for s, p in sorted(probs.items())]}
+
+
+@router.put("/funnel-config")
+def save_funnel_config(
+    payload: FunnelConfigIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("dashboard.config")),
+):
+    """整份保存六个阶段的转化概率（全系统共用一份，立即影响销量预测）。"""
+    from app.services.funnel import load_probs, save_probs
+
+    incoming = {item.stage: item.prob for item in payload.probs}
+    expected = set(MARKET_STAGE_VALUES)
+    if set(incoming) != expected:
+        raise HTTPException(status_code=422, detail="需完整提供六个阶段的转化概率")
+    probs = save_probs(db, incoming)
+    write_log(db, user, "update", "funnel_config", "global", {"probs": probs}, request)
+    db.commit()
+    return {"probs": [{"stage": s, "prob": p} for s, p in sorted(load_probs(db).items())]}
 
 
 @router.get("/metrics/{metric_id}/trend")

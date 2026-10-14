@@ -17,7 +17,19 @@ PERM_GROUPS: list[dict] = [
     {
         "menu": "dashboard",
         "label": "经营驾驶舱",
-        "items": [{"key": "dashboard.view", "label": "查看经营驾驶舱", "type": "menu"}],
+        "items": [
+            {"key": "dashboard.view", "label": "查看经营驾驶舱", "type": "menu"},
+            {"key": "dashboard.config", "label": "配置市场项目转化概率", "type": "action"},
+        ],
+    },
+    {
+        "menu": "market",
+        "label": "项目管理",
+        "items": [
+            {"key": "market.view", "label": "查看项目列表与详情", "type": "menu"},
+            {"key": "market.edit", "label": "新建 / 编辑项目", "type": "action"},
+            {"key": "market.delete", "label": "删除项目", "type": "action"},
+        ],
     },
     {
         "menu": "task",
@@ -84,7 +96,21 @@ PAGE_PERM: dict[str, str] = {
     "tasks": "task.view",
     "metrics": "metric.view",
     "accounts": "account.view",
+    "market": "market.view",
 }
+
+# 市场项目阶段（漏斗层级）· stage 即标题中的百分比
+MARKET_STAGES: list[dict] = [
+    {"stage": 10, "label": "项目导入"},
+    {"stage": 25, "label": "市场尽调"},
+    {"stage": 50, "label": "初审通过"},
+    {"stage": 75, "label": "联合评审通过"},
+    {"stage": 90, "label": "签约落地"},
+    {"stage": 100, "label": "交车/投运"},
+]
+MARKET_STAGE_VALUES: list[int] = [s["stage"] for s in MARKET_STAGES]
+
+MARKET_PROJECT_ID_PREFIX = "MP"
 
 # 指标分组元数据
 METRIC_GROUP_META: dict[str, dict] = {

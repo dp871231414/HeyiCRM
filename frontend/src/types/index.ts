@@ -248,6 +248,58 @@ export interface OverviewResult {
 /** 部门任务完成度的展示口径筛选：全部 / 本年新增 / 当月新增（取页面顶部月份）/ 未结束 */
 export type DeptTaskFilter = 'all' | 'year' | 'month' | 'open'
 
+/* ---------------- 项目管理（市场项目） ---------------- */
+
+/** 项目阶段即漏斗层级：10 项目导入 / 25 市场尽调 / 50 初审通过 / 75 联合评审通过 / 90 签约落地 / 100 交车投运 */
+export type MarketStage = 10 | 25 | 50 | 75 | 90 | 100
+
+export interface MarketProjectItem {
+  id: string
+  name: string
+  description: string
+  tractorDemand: number
+  trailerDemand: number
+  stage: MarketStage
+  stageLabel: string
+  owner: string
+  createdById: string
+  createdByName: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FunnelStageStat {
+  stage: MarketStage
+  label: string
+  /** 该阶段的转化概率（0~1），默认与阶段百分比一致 */
+  prob: number
+  /** 累计口径：stage ≥ 该层的项目数 */
+  count: number
+  /** 累计口径：stage ≥ 该层的牵引车需求数 */
+  tractor: number
+  /** 累计口径：stage ≥ 该层的挂车需求数 */
+  trailer: number
+}
+
+export interface ProjectFunnelResult {
+  stages: FunnelStageStat[]
+  forecast: { tractor: number; trailer: number }
+}
+
+export interface FunnelProbItem {
+  stage: MarketStage
+  prob: number
+}
+
+export const MARKET_STAGE_LABELS: Record<number, string> = {
+  10: '项目导入',
+  25: '市场尽调',
+  50: '初审通过',
+  75: '联合评审通过',
+  90: '签约落地',
+  100: '交车/投运',
+}
+
 export interface ImportError {
   row: number
   field: string

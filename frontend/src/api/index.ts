@@ -2,13 +2,16 @@ import { http } from './http'
 import type {
   DeptTaskFilter,
   DeptTaskStat,
+  FunnelProbItem,
   ImportResult,
   LoginResult,
+  MarketProjectItem,
   MeResult,
   MetricBoard,
   OrgNode,
   OverviewResult,
   PermCatalog,
+  ProjectFunnelResult,
   ProjectItem,
   RoleItem,
   SummaryResult,
@@ -111,6 +114,22 @@ export const taskApi = {
   exportUrl: () => '/api/v1/tasks/export',
 }
 
+/* ---------------- 项目管理（市场项目/商机） ---------------- */
+export const marketApi = {
+  list: (params: { keyword?: string; stage?: number | ''; page?: number; size?: number } = {}) =>
+    http
+      .get<{ items: MarketProjectItem[]; total: number; page: number; size: number }>('/market-projects', {
+        // stage 为空串时必须丢掉：后端是 int 参数，空串会被 422 拒绝
+        params: { ...params, stage: params.stage === '' ? undefined : params.stage },
+      })
+      .then((r) => r.data),
+  create: (payload: Record<string, unknown>) =>
+    http.post<MarketProjectItem>('/market-projects', payload).then((r) => r.data),
+  update: (id: string, payload: Record<string, unknown>) =>
+    http.patch<MarketProjectItem>(`/market-projects/${id}`, payload).then((r) => r.data),
+  remove: (id: string) => http.delete(`/market-projects/${id}`).then((r) => r.data),
+}
+
 /* ---------------- 驾驶舱 ---------------- */
 export const dashboardApi = {
   summary: (period: string, orgId: string) =>
@@ -129,6 +148,12 @@ export const dashboardApi = {
         params: { ids: metricIds.join(','), org_id: orgId },
       })
       .then((r) => r.data),
+  /** 市场项目概览：三漏斗 + 加权销量预测（只按角色权限，不看数据范围） */
+  projectFunnel: () => http.get<ProjectFunnelResult>('/dashboard/project-funnel').then((r) => r.data),
+  funnelConfig: () =>
+    http.get<{ probs: FunnelProbItem[] }>('/dashboard/funnel-config').then((r) => r.data),
+  saveFunnelConfig: (probs: FunnelProbItem[]) =>
+    http.put<{ probs: FunnelProbItem[] }>('/dashboard/funnel-config', { probs }).then((r) => r.data),
 }
 
 /** 带令牌下载文件（模板/导出） */

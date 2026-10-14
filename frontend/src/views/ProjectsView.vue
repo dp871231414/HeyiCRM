@@ -1,0 +1,307 @@
+<template>
+  <div class="space-y-4">
+    <!-- 工具条 -->
+    <div class="card p-3.5 flex flex-wrap items-center gap-2.5">
+      <input v-model.trim="keyword" class="input !w-56" placeholder="搜索项目ID / 名称 / 负责人" @keyup.enter="applyFilters" />
+      <select v-model="stageFilter" class="input !w-44" @change="applyFilters">
+        <option value="">全部阶段</option>
+        <option v-for="s in STAGES" :key="s" :value="s">{{ s }}% {{ MARKET_STAGE_LABELS[s] }}</option>
+      </select>
+      <button class="btn-ghost" @click="applyFilters">查询</button>
+
+      <div class="ml-auto">
+        <button v-if="auth.hasPerm('market.edit')" class="btn-primary" @click="openForm()">新建项目</button>
+      </div>
+    </div>
+
+    <!-- 汇总 -->
+    <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500 px-1">
+      <span>共 <b class="text-slate-800">{{ total }}</b> 个项目</span>
+      <span>牵引车需求 <b class="text-brand-600">{{ sumOf('tractorDemand') }}</b> 辆</span>
+      <span>挂车需求 <b class="text-brand-600">{{ sumOf('trailerDemand') }}</b> 辆</span>
+      <span class="text-slate-400">列表按数据可见范围展示（创建人归属部门匹配）</span>
+    </div>
+
+    <!-- 表格 -->
+    <div class="card overflow-hidden">
+      <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
+      <div v-else-if="!projects.length" class="p-10 text-center text-slate-400 text-sm">暂无项目</div>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-[1240px]">
+          <thead>
+            <tr class="border-b border-slate-200">
+              <th class="th w-[90px]">项目ID</th>
+              <th class="th w-[220px]">项目名称</th>
+              <th class="th">项目描述</th>
+              <th class="th w-[110px] text-right">牵引车需求</th>
+              <th class="th w-[100px] text-right">挂车需求</th>
+              <th class="th w-[150px]">项目阶段</th>
+              <th class="th w-[90px]">负责人</th>
+              <th class="th w-[90px]">创建人</th>
+              <th class="th w-[140px]">创建时间</th>
+              <th class="th w-[140px]">更新时间</th>
+              <th class="th w-[120px] text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in projects" :key="p.id" class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+              <td class="td font-mono text-xs text-slate-500">{{ p.id }}</td>
+              <td class="td">
+                <div class="font-semibold text-slate-800 truncate" :title="p.name">{{ p.name }}</div>
+              </td>
+              <td class="td text-slate-500">
+                <div class="max-w-[260px] truncate" :title="p.description">{{ p.description || '—' }}</div>
+              </td>
+              <td class="td text-right font-mono">{{ p.tractorDemand }}<span class="text-[11px] text-slate-400 ml-0.5">辆</span></td>
+              <td class="td text-right font-mono">{{ p.trailerDemand }}<span class="text-[11px] text-slate-400 ml-0.5">辆</span></td>
+              <td class="td">
+                <span class="chip border" :class="STAGE_CHIP[p.stage]">{{ p.stage }}% {{ p.stageLabel }}</span>
+              </td>
+              <td class="td">{{ p.owner }}</td>
+              <td class="td text-slate-500">{{ p.createdByName || '—' }}</td>
+              <td class="td text-xs text-slate-500">{{ fmtTime(p.createdAt) }}</td>
+              <td class="td text-xs text-slate-500">{{ fmtTime(p.updatedAt) }}</td>
+              <td class="td text-right">
+                <button v-if="auth.hasPerm('market.edit')" class="btn-ghost btn-sm" @click="openForm(p)">编辑</button>
+                <button
+                  v-if="auth.hasPerm('market.delete')"
+                  class="btn-danger btn-sm ml-1.5"
+                  @click="deleteTarget = p"
+                >
+                  删除
+                </button>
+                <span v-if="!auth.hasAnyPerm(['market.edit', 'market.delete'])" class="text-xs text-slate-300">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- 分页器：始终显示（与任务管理一致） -->
+      <div class="flex items-center justify-between border-t border-slate-100 px-3.5 py-2.5">
+        <span class="text-xs text-slate-400">每页最多 {{ PAGE_SIZE }} 条</span>
+        <PaginationBar :page="page" :page-count="pageCount" :total="total" @update:page="goPage" />
+      </div>
+    </div>
+
+    <!-- 新建 / 编辑 -->
+    <ModalDialog :open="formOpen" :title="form.id ? '编辑项目' : '新建项目'" width="lg" @close="formOpen = false">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="label">项目名称</label>
+          <input v-model.trim="form.name" class="input" placeholder="如：华东物流园运力替换项目" />
+        </div>
+        <div>
+          <label class="label">项目阶段</label>
+          <select v-model.number="form.stage" class="input">
+            <option v-for="s in STAGES" :key="s" :value="s">{{ s }}% {{ MARKET_STAGE_LABELS[s] }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">负责人</label>
+          <select v-model="form.owner" class="input">
+            <option v-for="o in owners" :key="o.id" :value="o.name">{{ o.name }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">牵引车需求数（辆）</label>
+          <input v-model.number="form.tractorDemand" type="number" min="0" class="input" />
+        </div>
+        <div>
+          <label class="label">挂车需求数（辆）</label>
+          <input v-model.number="form.trailerDemand" type="number" min="0" class="input" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="label">项目描述</label>
+          <textarea v-model="form.description" rows="3" class="input" />
+        </div>
+      </div>
+      <p class="mt-3 text-[11px] text-slate-400">创建人、创建时间、更新时间由系统自动记录，无需填写。</p>
+      <p v-if="formError" class="mt-2 text-sm text-bad-600">{{ formError }}</p>
+      <template #footer>
+        <button class="btn-ghost" @click="formOpen = false">取消</button>
+        <button class="btn-primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
+      </template>
+    </ModalDialog>
+
+    <!-- 删除确认 -->
+    <ModalDialog :open="!!deleteTarget" title="确认删除项目" width="sm" @close="deleteTarget = null">
+      <p class="text-sm text-slate-600">
+        将删除项目「{{ deleteTarget?.name }}」（{{ deleteTarget?.id }}）。该操作不可撤销，驾驶舱漏斗会同步减少。
+      </p>
+      <template #footer>
+        <button class="btn-ghost" @click="deleteTarget = null">取消</button>
+        <button class="btn-danger" @click="doDelete">确认删除</button>
+      </template>
+    </ModalDialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+
+import { marketApi, metaApi } from '@/api'
+import ModalDialog from '@/components/ModalDialog.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
+import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
+import { MARKET_STAGE_LABELS, type MarketProjectItem, type MarketStage } from '@/types'
+
+const auth = useAuthStore()
+const app = useAppStore()
+
+const STAGES: MarketStage[] = [10, 25, 50, 75, 90, 100]
+
+/** 阶段徽章配色：由浅入深，与驾驶舱漏斗色阶一致 */
+const STAGE_CHIP: Record<number, string> = {
+  10: 'bg-slate-100 text-slate-600 border-slate-200',
+  25: 'bg-brand-50 text-brand-700 border-brand-100',
+  50: 'bg-brand-50 text-brand-700 border-brand-100',
+  75: 'bg-brand-100 text-brand-700 border-brand-200',
+  90: 'bg-brand-100 text-brand-800 border-brand-200',
+  100: 'bg-good-50 text-good-700 border-good-100',
+}
+
+const projects = ref<MarketProjectItem[]>([])
+const total = ref(0)
+const loading = ref(false)
+const keyword = ref('')
+const stageFilter = ref<number | ''>('')
+const owners = ref<{ id: string; name: string }[]>([])
+
+const PAGE_SIZE = 50
+const page = ref(1)
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
+
+function sumOf(field: 'tractorDemand' | 'trailerDemand') {
+  return projects.value.reduce((acc, p) => acc + (p[field] || 0), 0)
+}
+
+/** ISO 时间 → 本地可读格式（与任务管理同一套） */
+function fmtTime(iso: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+const formOpen = ref(false)
+const saving = ref(false)
+const formError = ref('')
+const form = reactive({
+  id: '',
+  name: '',
+  description: '',
+  stage: 10 as MarketStage,
+  owner: '',
+  tractorDemand: 0,
+  trailerDemand: 0,
+})
+const deleteTarget = ref<MarketProjectItem | null>(null)
+
+async function load() {
+  loading.value = true
+  try {
+    const res = await marketApi.list({
+      keyword: keyword.value,
+      stage: stageFilter.value,
+      page: page.value,
+      size: PAGE_SIZE,
+    })
+    projects.value = res.items
+    total.value = res.total
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
+function applyFilters() {
+  page.value = 1
+  load()
+}
+
+function goPage(n: number) {
+  const next = Math.min(Math.max(1, n), pageCount.value)
+  if (next === page.value) return
+  page.value = next
+  load()
+}
+
+function openForm(p?: MarketProjectItem) {
+  formError.value = ''
+  if (p) {
+    Object.assign(form, {
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      stage: p.stage,
+      owner: p.owner,
+      tractorDemand: p.tractorDemand,
+      trailerDemand: p.trailerDemand,
+    })
+  } else {
+    Object.assign(form, {
+      id: '',
+      name: '',
+      description: '',
+      stage: 10,
+      owner: owners.value[0]?.name ?? auth.user?.name ?? '',
+      tractorDemand: 0,
+      trailerDemand: 0,
+    })
+  }
+  formOpen.value = true
+}
+
+async function save() {
+  formError.value = ''
+  if (!form.name) return (formError.value = '项目名称不能为空')
+  if (!(form.tractorDemand >= 0) || !(form.trailerDemand >= 0)) return (formError.value = '需求数不能为负')
+  if (!form.owner) return (formError.value = '请选择负责人')
+
+  saving.value = true
+  // 请求体使用后端约定的 snake_case 字段
+  const payload = {
+    name: form.name,
+    description: form.description,
+    tractor_demand: form.tractorDemand,
+    trailer_demand: form.trailerDemand,
+    stage: form.stage,
+    owner: form.owner,
+  }
+  try {
+    if (form.id) await marketApi.update(form.id, payload)
+    else await marketApi.create(payload)
+    app.toast('保存成功')
+    formOpen.value = false
+    await load()
+  } catch (e) {
+    formError.value = (e as Error).message
+  } finally {
+    saving.value = false
+  }
+}
+
+async function doDelete() {
+  if (!deleteTarget.value) return
+  try {
+    await marketApi.remove(deleteTarget.value.id)
+    app.toast('已删除')
+    deleteTarget.value = null
+    await load()
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  }
+}
+
+onMounted(async () => {
+  try {
+    owners.value = await metaApi.owners()
+  } catch {
+    /* 忽略字典加载失败 */
+  }
+  await load()
+})
+</script>

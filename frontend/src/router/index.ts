@@ -11,6 +11,7 @@ export const PAGE_PERM: Record<string, string> = {
   tasks: 'task.view',
   metrics: 'metric.view',
   accounts: 'account.view',
+  market: 'market.view',
 }
 
 const router = createRouter({
@@ -38,6 +39,12 @@ const router = createRouter({
           name: 'tasks',
           component: () => import('@/views/TasksView.vue'),
           meta: { title: '任务管理', perm: 'task.view' },
+        },
+        {
+          path: 'market',
+          name: 'market',
+          component: () => import('@/views/ProjectsView.vue'),
+          meta: { title: '项目管理', perm: 'market.view' },
         },
         {
           path: 'metrics',

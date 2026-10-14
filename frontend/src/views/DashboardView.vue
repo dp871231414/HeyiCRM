@@ -119,6 +119,48 @@
         </div>
       </section>
 
+      <!-- 市场项目概览：项目/车辆/挂车三漏斗（累计口径）+ 按阶段转化概率加权的销量预测 -->
+      <section v-if="funnel">
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-3">
+          <div class="flex items-baseline gap-2">
+            <h2 class="section-title">市场项目概览</h2>
+            <span class="text-xs text-slate-400">各层为累计口径（到达该阶段及以上的项目）</span>
+          </div>
+          <button v-if="auth.hasPerm('dashboard.config')" class="btn-ghost btn-sm" @click="openFunnelConfig">
+            配置转化概率
+          </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <FunnelChart title="市场项目转化漏斗" :stages="funnel.stages" field="count" unit="项" />
+          <FunnelChart title="车辆需求漏斗（牵引车）" :stages="funnel.stages" field="tractor" unit="辆" />
+          <FunnelChart title="挂车需求漏斗" :stages="funnel.stages" field="trailer" unit="辆" />
+          <div class="card p-4 flex flex-col">
+            <div class="flex items-center justify-between">
+              <h3 class="text-[13px] font-bold text-slate-700">销量预测</h3>
+              <span class="text-[11px] text-slate-400">按阶段转化概率加权</span>
+            </div>
+            <div class="mt-4 flex-1 flex flex-col justify-center gap-4">
+              <div>
+                <div class="text-xs text-slate-500">预测牵引车销量</div>
+                <div class="mt-1 text-3xl stat-value text-brand-700">
+                  {{ fmt(funnel.forecast.tractor) }}<span class="text-sm font-medium text-slate-400 ml-1">辆</span>
+                </div>
+              </div>
+              <div class="border-t border-slate-100 pt-4">
+                <div class="text-xs text-slate-500">预测挂车销量</div>
+                <div class="mt-1 text-3xl stat-value text-brand-700">
+                  {{ fmt(funnel.forecast.trailer) }}<span class="text-sm font-medium text-slate-400 ml-1">辆</span>
+                </div>
+              </div>
+            </div>
+            <div class="mt-3 text-[11px] text-slate-400 leading-relaxed">
+              Σ（各项目需求 × 所在阶段转化概率）<br />
+              当前概率 {{ probSummary }}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 项目公司对比 -->
       <section v-if="overview.projectCompare.length">
         <h2 class="section-title mb-3">项目公司经营对比</h2>
@@ -249,6 +291,35 @@
       </section>
     </template>
 
+    <!-- 转化概率配置 -->
+    <ModalDialog :open="funnelCfgOpen" title="配置各阶段转化概率" width="sm" @close="funnelCfgOpen = false">
+      <p class="text-xs text-slate-500 mb-3 leading-relaxed">
+        销量预测 = Σ（项目需求 × 所在阶段转化概率）。默认值与阶段百分比一致，保存后全系统共用、立即生效。
+      </p>
+      <div class="space-y-2.5">
+        <div v-for="(item, i) in funnelCfgForm" :key="item.stage" class="flex items-center gap-3">
+          <span class="w-40 text-sm text-slate-600">{{ item.stage }}% {{ MARKET_STAGE_LABELS[item.stage] }}</span>
+          <input
+            v-model.number="funnelCfgForm[i].probPct"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+            class="input !w-28 text-right"
+          />
+          <span class="text-sm text-slate-400">%</span>
+        </div>
+      </div>
+      <p v-if="funnelCfgError" class="mt-3 text-sm text-bad-600">{{ funnelCfgError }}</p>
+      <template #footer>
+        <button class="btn-ghost" @click="resetFunnelCfg">恢复默认</button>
+        <button class="btn-ghost" @click="funnelCfgOpen = false">取消</button>
+        <button class="btn-primary" :disabled="funnelCfgSaving" @click="saveFunnelCfg">
+          {{ funnelCfgSaving ? '保存中…' : '保存' }}
+        </button>
+      </template>
+    </ModalDialog>
+
     <!-- 指标下钻 -->
     <ModalDialog :open="!!drill" :title="drill ? `${drill.name} · 趋势` : ''" @close="drill = null">
       <div v-if="drill">
@@ -291,26 +362,31 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { dashboardApi } from '@/api'
+import FunnelChart from '@/components/FunnelChart.vue'
 import ModalDialog from '@/components/ModalDialog.vue'
 import MonthPicker from '@/components/MonthPicker.vue'
 import Sparkline from '@/components/Sparkline.vue'
+import { useAuthStore } from '@/stores/auth'
 import { useViewStore } from '@/stores/view'
-import type {
-  DeptTaskFilter,
-  DeptTaskStat,
-  Light,
-  MetricRow,
-  OverviewResult,
-  PerfTone,
-  ProjectCompanyBlock,
-  SummaryResult,
-  TrendResult,
+import {
+  MARKET_STAGE_LABELS,
+  type DeptTaskFilter,
+  type DeptTaskStat,
+  type Light,
+  type MetricRow,
+  type OverviewResult,
+  type PerfTone,
+  type ProjectCompanyBlock,
+  type ProjectFunnelResult,
+  type SummaryResult,
+  type TrendResult,
 } from '@/types'
 import { fmt, fmtDelta, fmtPct } from '@/utils/format'
 import { COLL_TEXT, TONE_BAR, TONE_CHIP, TONE_LABEL, TONE_TEXT, toneOf } from '@/utils/tone'
 
 const view = useViewStore()
 const router = useRouter()
+const auth = useAuthStore()
 
 const loading = ref(false)
 const error = ref('')
@@ -439,6 +515,58 @@ async function openDrilldown(row: MetricRow) {
   }
 }
 
+/** 市场项目概览：三漏斗 + 销量预测（与周期无关，随主加载并发取） */
+const funnel = ref<ProjectFunnelResult | null>(null)
+const probSummary = computed(
+  () => (funnel.value?.stages ?? []).map((s) => `${Math.round(s.prob * 100)}%`).join(' / '),
+)
+
+/** 转化概率配置弹窗 */
+const funnelCfgOpen = ref(false)
+const funnelCfgSaving = ref(false)
+const funnelCfgError = ref('')
+const funnelCfgForm = ref<{ stage: number; probPct: number }[]>([])
+
+function openFunnelConfig() {
+  funnelCfgError.value = ''
+  funnelCfgForm.value = (funnel.value?.stages ?? []).map((s) => ({
+    stage: s.stage,
+    probPct: Math.round(s.prob * 100),
+  }))
+  funnelCfgOpen.value = true
+}
+
+/** 恢复默认 = 概率与阶段百分比一致 */
+function resetFunnelCfg() {
+  funnelCfgForm.value = funnelCfgForm.value.map((item) => ({ ...item, probPct: item.stage }))
+}
+
+async function loadFunnel() {
+  funnel.value = await dashboardApi.projectFunnel()
+}
+
+async function saveFunnelCfg() {
+  funnelCfgError.value = ''
+  for (const item of funnelCfgForm.value) {
+    if (!Number.isFinite(item.probPct) || item.probPct < 0 || item.probPct > 100) {
+      funnelCfgError.value = '转化概率应为 0 ~ 100 之间的数字'
+      return
+    }
+  }
+  funnelCfgSaving.value = true
+  try {
+    await dashboardApi.saveFunnelConfig(
+      funnelCfgForm.value.map((item) => ({ stage: item.stage as ProjectFunnelResult['stages'][number]['stage'], prob: item.probPct / 100 })),
+    )
+    await loadFunnel()
+    funnelCfgOpen.value = false
+  } catch (e) {
+    funnelCfgError.value = (e as Error).message
+  } finally {
+    funnelCfgSaving.value = false
+  }
+}
+
 /** 部门/班组视角：指标目标只下达在公司与项目公司层级，故无核心指标卡 */
 const deptView = computed(() => ['dept', 'team'].includes(overview.value?.orgType ?? ''))
 
@@ -453,17 +581,19 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    // 三个请求并发：部门任务完成度与总览同源、同权限，一起取不增加往返
-    const [s, o, d] = await Promise.all([
+    // 四个请求并发：部门任务完成度 / 市场项目漏斗与总览同源、同权限，一起取不增加往返
+    const [s, o, d, f] = await Promise.all([
       dashboardApi.summary(view.period, view.orgId),
       dashboardApi.overview(view.period, view.orgId),
       dashboardApi.deptTaskStats(view.period, deptFilter.value),
+      dashboardApi.projectFunnel(),
     ])
     // 并发加载时丢弃过期响应，避免先到的 403 覆盖后到的成功结果
     if (seq !== loadSeq) return
     summary.value = s
     overview.value = o
     if (dseq === deptSeq) deptStats.value = d
+    funnel.value = f
   } catch (e) {
     if (seq !== loadSeq) return
     error.value = (e as Error).message

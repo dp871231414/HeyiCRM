@@ -169,7 +169,8 @@ def test_role_delete_blocked_when_in_use(client, admin_headers):
 
 def test_permissions_catalog(client, admin_headers):
     data = client.get("/api/v1/permissions", headers=admin_headers).json()
-    assert len(data["groups"]) == 4
+    assert len(data["groups"]) == 5
+    assert {g["menu"] for g in data["groups"]} == {"dashboard", "task", "metric", "market", "account"}
     assert {s["value"] for s in data["scopes"]} == {"self", "dept", "dept_sub", "all"}
 
 

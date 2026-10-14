@@ -18,6 +18,7 @@ from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.models import (
+    MarketProject,
     MetricActual,
     MetricDef,
     MetricTarget,
@@ -140,11 +141,23 @@ TASKS = [
 
 ROLES = [
     dict(id="admin", name="系统管理员", description="全部菜单与操作权限，可管理账号与角色", scope="all", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "account.view", "account.edit", "account.role"]),
+         permissions=["dashboard.view", "dashboard.config", "task.view", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.edit", "market.delete", "account.view", "account.edit", "account.role"]),
     dict(id="dept_head", name="部门负责人", description="本部门及下属部门的任务与指标全权", scope="dept_sub", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import"]),
+         permissions=["dashboard.view", "task.view", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import", "market.view", "market.edit"]),
     dict(id="member", name="普通成员", description="仅维护本人任务与指标", scope="self", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.edit", "metric.view", "metric.edit"]),
+         permissions=["dashboard.view", "task.view", "task.edit", "metric.view", "metric.edit", "market.view", "market.edit"]),
+]
+
+# 市场项目（商机）演示数据 · 覆盖全部六个阶段，让漏斗每一层都有数
+MARKET_PROJECTS = [
+    dict(name="华东物流园运力替换项目", description="物流园 200 辆燃油重卡替换为新能源", tractor=200, trailer=120, stage=25, owner="郑凯"),
+    dict(name="港口集疏运车队项目", description="港区短倒运输车队组建", tractor=80, trailer=80, stage=50, owner="林雪"),
+    dict(name="钢铁厂大宗原料运输项目", description="原料进厂专线运力", tractor=60, trailer=60, stage=75, owner="郑凯"),
+    dict(name="快递干线甩挂运输项目", description="干线甩挂，挂车配比 1:2", tractor=40, trailer=80, stage=90, owner="何欣"),
+    dict(name="矿区短驳车队投运项目", description="矿区内部短驳，已签约", tractor=30, trailer=15, stage=100, owner="林雪"),
+    dict(name="城配新能源示范项目", description="城市配送试点导入", tractor=25, trailer=0, stage=10, owner="周涛"),
+    dict(name="冷链干线车队扩充项目", description="冷链干线增补运力", tractor=45, trailer=45, stage=25, owner="郑凯"),
+    dict(name="煤炭运输长协项目", description="年度长协运力框架", tractor=100, trailer=100, stage=50, owner="王建国"),
 ]
 
 USERS = [
@@ -171,11 +184,11 @@ def _d(s: str) -> date:
 
 def seed(db: Session, reset: bool = False) -> dict:
     if reset:
-        for model in (OperationLog, MetricActual, MetricTarget, Task, User, Role, MetricDef, Organization):
+        for model in (OperationLog, MetricActual, MetricTarget, Task, MarketProject, User, Role, MetricDef, Organization):
             db.execute(delete(model))
         db.commit()
 
-    created = {"orgs": 0, "metrics": 0, "targets": 0, "actuals": 0, "tasks": 0, "roles": 0, "users": 0, "roles_synced": 0}
+    created = {"orgs": 0, "metrics": 0, "targets": 0, "actuals": 0, "tasks": 0, "marketProjects": 0, "roles": 0, "users": 0, "roles_synced": 0}
 
     if not db.scalar(select(Organization).limit(1)):
         for i, (oid, name, otype, parent, head) in enumerate(ORGS):
@@ -237,6 +250,18 @@ def seed(db: Session, reset: bool = False) -> dict:
                 )
             )
             created["tasks"] += 1
+
+    # 市场项目同理：只在首次初始化时灌入演示数据
+    if first_init and not db.scalar(select(MarketProject).limit(1)):
+        for i, mp in enumerate(MARKET_PROJECTS, start=1):
+            db.add(
+                MarketProject(
+                    id=f"MP{i:04d}", name=mp["name"], description=mp["description"],
+                    tractor_demand=mp["tractor"], trailer_demand=mp["trailer"],
+                    stage=mp["stage"], owner=mp["owner"], created_by="U001",
+                )
+            )
+            created["marketProjects"] += 1
 
     db.commit()
     return created

@@ -1071,3 +1071,167 @@ def test_dept_task_stats_follows_selected_period(client, admin_headers):
         assert _stat_of(_dept_stats(client, admin_headers, empty_month, "month"), temp.dept_id) is None
     finally:
         temp.cleanup()
+
+
+# ------------------------------ 项目管理（市场项目）与驾驶舱漏斗
+
+
+def _mp_body(**over) -> dict:
+    body = {
+        "name": "变更测试项目",
+        "description": "回归测试用",
+        "tractor_demand": 10,
+        "trailer_demand": 5,
+        "stage": 25,
+        "owner": "郑凯",
+    }
+    body.update(over)
+    return body
+
+
+def test_market_project_crud_and_auto_fields(client, admin_headers):
+    """新建自动生成 ID/创建人/时间戳；编辑更新字段；删除生效。"""
+    r = client.post("/api/v1/market-projects", json=_mp_body(), headers=admin_headers)
+    assert r.status_code == 201, r.text
+    p = r.json()
+    assert p["id"].startswith("MP")
+    assert p["createdByName"] == "陈志明", "创建人应自动记录为当前登录人"
+    assert p["createdAt"] and p["updatedAt"]
+    assert p["stageLabel"] == "市场尽调"
+
+    r = client.patch(
+        f"/api/v1/market-projects/{p['id']}",
+        json=_mp_body(name="变更测试项目-改", stage=90, tractor_demand=66, trailer_demand=33),
+        headers=admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    q = r.json()
+    assert q["name"] == "变更测试项目-改" and q["stage"] == 90
+    assert q["tractorDemand"] == 66 and q["trailerDemand"] == 33
+    assert q["stageLabel"] == "签约落地"
+
+    r = client.delete(f"/api/v1/market-projects/{p['id']}", headers=admin_headers)
+    assert r.status_code == 200
+    assert client.get(f"/api/v1/market-projects/{p['id']}", headers=admin_headers).status_code == 404
+
+
+def test_market_project_stage_validation(client, admin_headers):
+    """阶段必须是 10/25/50/75/90/100 之一；需求数不能为负。"""
+    r = client.post("/api/v1/market-projects", json=_mp_body(stage=33), headers=admin_headers)
+    assert r.status_code == 422
+    r = client.post("/api/v1/market-projects", json=_mp_body(tractor_demand=-1), headers=admin_headers)
+    assert r.status_code == 422
+
+
+def test_market_project_scope_isolation(client, admin_headers, member_headers, head_headers):
+    """数据范围按「创建人归属部门」匹配：self 只看本人创建；dept_sub 看本部门及下属创建；all 全量。"""
+    # member（zhengkai, D01, self）创建一个项目
+    r = client.post("/api/v1/market-projects", json=_mp_body(name="成员自建项目"), headers=member_headers)
+    assert r.status_code == 201, r.text
+    member_pid = r.json()["id"]
+    # head（wangjg, D06, dept_sub）创建一个项目
+    r = client.post("/api/v1/market-projects", json=_mp_body(name="负责人自建项目"), headers=head_headers)
+    assert r.status_code == 201, r.text
+    head_pid = r.json()["id"]
+    # admin 创建一个（创建人属 CO 全公司）
+    r = client.post("/api/v1/market-projects", json=_mp_body(name="管理员项目"), headers=admin_headers)
+    assert r.status_code == 201, r.text
+    admin_pid = r.json()["id"]
+
+    try:
+        member_ids = {p["id"] for p in client.get("/api/v1/market-projects", headers=member_headers).json()["items"]}
+        assert member_pid in member_ids
+        assert head_pid not in member_ids, "self 范围看不到别的部门创建的项目"
+        assert admin_pid not in member_ids, "self 范围看不到全公司账号创建的项目"
+
+        head_ids = {p["id"] for p in client.get("/api/v1/market-projects", headers=head_headers).json()["items"]}
+        assert head_pid in head_ids
+        assert member_pid not in head_ids, "dept_sub(D06) 看不到 D01 创建的项目"
+        assert admin_pid not in head_ids, "dept_sub(D06) 看不到 CO 创建的项目"
+
+        admin_ids = {p["id"] for p in client.get("/api/v1/market-projects", params={"size": 500}, headers=admin_headers).json()["items"]}
+        assert {member_pid, head_pid, admin_pid} <= admin_ids, "all 范围应全量可见"
+
+        # 范围外编辑/详情 → 403
+        assert client.get(f"/api/v1/market-projects/{admin_pid}", headers=member_headers).status_code == 403
+        r = client.patch(f"/api/v1/market-projects/{admin_pid}", json=_mp_body(), headers=member_headers)
+        assert r.status_code == 403
+        r = client.delete(f"/api/v1/market-projects/{member_pid}", headers=head_headers)
+        assert r.status_code in (403, 404), "范围外删除同样被拒绝"
+    finally:
+        for pid, hdrs in ((member_pid, admin_headers), (head_pid, admin_headers), (admin_pid, admin_headers)):
+            client.delete(f"/api/v1/market-projects/{pid}", headers=hdrs)
+
+
+def test_market_menu_permission_required(client, admin_headers):
+    """没有 market.view 的角色访问项目管理 → 403；但只要有 dashboard.view 就能看漏斗。"""
+    r = client.post(
+        "/api/v1/roles",
+        json={"name": f"仅驾驶舱角色{str(int(time.time() * 1000))[-6:]}", "description": "测试", "scope": "all",
+              "permissions": ["dashboard.view"]},
+        headers=admin_headers,
+    )
+    assert r.status_code in (200, 201), r.text
+    role_id = r.json()["id"]
+    r = client.post(
+        "/api/v1/users",
+        json={"name": "漏斗观察员", "account": f"funnel{str(int(time.time() * 1000))[-6:]}", "password": "123456",
+              "dept_id": "D01", "role_id": role_id},
+        headers=admin_headers,
+    )
+    assert r.status_code in (200, 201), r.text
+    uid = r.json()["id"]
+
+    headers, _ = login(client, r.json()["account"])
+    assert client.get("/api/v1/market-projects", headers=headers).status_code == 403
+    assert client.get("/api/v1/dashboard/project-funnel", headers=headers).status_code == 200, "驾驶舱漏斗只看功能权限"
+    assert client.get("/api/v1/dashboard/funnel-config", headers=headers).status_code == 200
+    assert client.put("/api/v1/dashboard/funnel-config", json={"probs": []}, headers=headers).status_code == 403, \
+        "没有 dashboard.config 不能改转化概率"
+
+    client.delete(f"/api/v1/users/{uid}", headers=admin_headers) if client.get(f"/api/v1/users/{uid}", headers=admin_headers).status_code == 200 else None
+    client.delete(f"/api/v1/roles/{role_id}", headers=admin_headers)
+
+
+def test_project_funnel_cumulative_and_forecast(client, admin_headers):
+    """漏斗为累计口径（stage ≥ 该层计入）且单调收窄；预测 = Σ 需求 × 各阶段概率。"""
+    items = client.get("/api/v1/market-projects", params={"size": 500}, headers=admin_headers).json()["items"]
+    funnel = client.get("/api/v1/dashboard/project-funnel", headers=admin_headers).json()
+    probs = {p["stage"]: p["prob"] for p in client.get("/api/v1/dashboard/funnel-config", headers=admin_headers).json()["probs"]}
+
+    assert [s["stage"] for s in funnel["stages"]] == [10, 25, 50, 75, 90, 100]
+    for s in funnel["stages"]:
+        v = s["stage"]
+        assert s["count"] == sum(1 for p in items if p["stage"] >= v), f"{v}% 层应为累计口径"
+        assert s["tractor"] == sum(p["tractorDemand"] for p in items if p["stage"] >= v)
+        assert s["trailer"] == sum(p["trailerDemand"] for p in items if p["stage"] >= v)
+    counts = [s["count"] for s in funnel["stages"]]
+    assert counts == sorted(counts, reverse=True), "漏斗层数应单调不增"
+
+    exp_trac = round(sum(p["tractorDemand"] * probs[p["stage"]] for p in items))
+    exp_trai = round(sum(p["trailerDemand"] * probs[p["stage"]] for p in items))
+    assert funnel["forecast"]["tractor"] == exp_trac
+    assert funnel["forecast"]["trailer"] == exp_trai
+
+
+def test_funnel_config_affects_forecast(client, admin_headers):
+    """转化概率整份保存、立即影响预测；非法配置被拒绝；测完还原。"""
+    cfg = client.get("/api/v1/dashboard/funnel-config", headers=admin_headers).json()["probs"]
+    original = [{"stage": c["stage"], "prob": c["prob"]} for c in cfg]
+    try:
+        all_one = [{"stage": c["stage"], "prob": 1.0} for c in cfg]
+        r = client.put("/api/v1/dashboard/funnel-config", json={"probs": all_one}, headers=admin_headers)
+        assert r.status_code == 200, r.text
+
+        items = client.get("/api/v1/market-projects", params={"size": 500}, headers=admin_headers).json()["items"]
+        funnel = client.get("/api/v1/dashboard/project-funnel", headers=admin_headers).json()
+        assert funnel["forecast"]["tractor"] == sum(p["tractorDemand"] for p in items), "概率全 1 时预测 = 全部需求"
+        assert funnel["forecast"]["trailer"] == sum(p["trailerDemand"] for p in items)
+
+        # 缺阶段 / 概率越界 → 422
+        assert client.put("/api/v1/dashboard/funnel-config", json={"probs": all_one[:-1]}, headers=admin_headers).status_code == 422
+        bad = [dict(p) for p in all_one]
+        bad[0]["prob"] = 1.5
+        assert client.put("/api/v1/dashboard/funnel-config", json={"probs": bad}, headers=admin_headers).status_code == 422
+    finally:
+        client.put("/api/v1/dashboard/funnel-config", json={"probs": original}, headers=admin_headers)

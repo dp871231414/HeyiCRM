@@ -69,3 +69,23 @@ def visible_task_filter(db: Session, user: User) -> ColumnElement[bool] | None:
     if not orgs:
         return Task.owner == user.name
     return or_(Task.dept_id.in_(orgs), Task.owner == user.name)
+
+
+def visible_market_project_filter(db: Session, user: User) -> ColumnElement[bool] | None:
+    """市场项目的可见性条件 · 按「创建人归属部门」匹配数据范围（scope=all 返回 None）。
+
+    与任务模块同一套逻辑，只是归属维度不同：任务看「责任部门 / 责任人」，
+    项目没有部门字段，看「创建人所属部门 ∈ 可见组织」；本人创建的项目始终可见。
+    """
+    from app.models import MarketProject
+
+    scope = effective_scope(db, user)
+    if scope == "all":
+        return None
+    if scope == "self":
+        return MarketProject.created_by == user.id
+    orgs = visible_org_ids(db, user)
+    if not orgs:
+        return MarketProject.created_by == user.id
+    creator_ids = select(User.id).where(User.dept_id.in_(orgs))
+    return or_(MarketProject.created_by.in_(creator_ids), MarketProject.created_by == user.id)
