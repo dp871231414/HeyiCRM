@@ -1,9 +1,9 @@
 """市场项目漏斗：阶段统计与销量预测。
 
 口径说明：
-- **漏斗是累计口径** —— 处于某阶段的项目必然经过了前面的阶段，
-  故第 N 层统计「stage ≥ 该层」的项目数 / 需求车辆数 / 需求挂车数，
-  保证漏斗自上而下单调收窄，与「转化漏斗」的通行读法一致。
+- **漏斗按「各阶段当前数量」统计** —— 每一层只统计当前阶段
+  （stage == 该层）的项目数 / 需求车辆数 / 需求挂车数，不向上累计。
+  这样每层标题下显示的就是「停在这个阶段」的实有数量，而非到本层为止的累计。
 - **销量预测按项目各自阶段的转化概率加权** ——
   预测销量 = Σ（项目需求数 × 该项目所在阶段的转化概率）。
   转化概率默认与阶段百分比一致（10%→0.10 … 100%→1.00），
@@ -52,18 +52,16 @@ def build_funnel(db: Session) -> dict:
     stages = []
     for meta in MARKET_STAGES:
         v = meta["stage"]
-        # 累计：到达本层 = 当前阶段不低于本层的所有项目
-        count = sum(c for s, (c, _, _) in per_stage.items() if s >= v)
-        tractor = sum(t for s, (_, t, _) in per_stage.items() if s >= v)
-        trailer = sum(t for s, (_, _, t) in per_stage.items() if s >= v)
+        # 各阶段当前数量：仅统计 stage == 该层的项目（不向上累计）
+        cnt, trac, trai = per_stage.get(v, (0, 0, 0))
         stages.append(
             {
                 "stage": v,
                 "label": meta["label"],
                 "prob": probs[v],
-                "count": count,
-                "tractor": tractor,
-                "trailer": trailer,
+                "count": cnt,
+                "tractor": trac,
+                "trailer": trai,
             }
         )
 

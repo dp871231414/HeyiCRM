@@ -75,7 +75,7 @@ ok(
   ),
 )
 
-// 页面漏斗数字与接口一致（项目数漏斗：右侧加粗数值逐层读取）
+// 页面漏斗数字与接口一致（项目数漏斗：右侧加粗数值逐层读取 = 各阶段当前数量）
 const countCard = await page.evaluate(() => {
   const sec = [...document.querySelectorAll('main section')].find((s) => /市场项目概览/.test(s.innerText))
   if (!sec) return null
@@ -83,15 +83,26 @@ const countCard = await page.evaluate(() => {
   if (!card) return null
   return {
     counts: [...card.querySelectorAll('b')].map((b) => parseInt(b.innerText)).filter((n) => !Number.isNaN(n)),
-    convs: [...card.querySelectorAll('span.w-9')].map((s) => s.innerText.trim()),
+    pcts: [...card.querySelectorAll('span.pct')].map((s) => s.innerText.trim()),
     polygons: card.querySelectorAll('svg polygon').length,
+    // 阶段标题是否绘制在漏斗层级上（叠加在 SVG 上的 HTML 标签）
+    layerLabels: [...card.querySelectorAll('span.funnel-label')].map((t) => t.textContent.trim()),
   }
 })
 const apiCounts = funnel.stages.map((s) => s.count)
-ok('项目数漏斗与接口逐层一致', JSON.stringify(countCard?.counts) === JSON.stringify(apiCounts), `UI ${countCard?.counts} / API ${apiCounts}`)
+ok('项目数漏斗与接口逐层一致（各阶段当前数量）', JSON.stringify(countCard?.counts) === JSON.stringify(apiCounts), `UI ${countCard?.counts} / API ${apiCounts}`)
 ok('漏斗造型为 6 个梯形层（SVG）', countCard?.polygons === 6, `${countCard?.polygons} 个`)
-const expConvs = apiCounts.map((v, i) => (i === 0 ? '100%' : apiCounts[i - 1] > 0 ? `${parseFloat(((v / apiCounts[i - 1]) * 100).toFixed(1))}%` : '—'))
-ok('每层显示相对上一层的转化率', JSON.stringify(countCard?.convs) === JSON.stringify(expConvs), `UI ${countCard?.convs} / 期望 ${expConvs}`)
+// 标题绘制在漏斗对应层上（项目数漏斗 6 个 <text>，且覆盖六个阶段）
+ok(
+  '阶段标题绘制在漏斗对应层级上',
+  (countCard?.layerLabels?.length ?? 0) === 6 &&
+    ['项目导入', '市场尽调', '初审通过', '联合评审通过', '签约落地', '交车/投运'].every((t) => countCard.layerLabels.includes(t)),
+  countCard?.layerLabels?.join(' / '),
+)
+// 右侧百分比 = 各阶段当前数量 / 总量
+const totalCount = apiCounts.reduce((a, b) => a + b, 0)
+const expPcts = apiCounts.map((v) => (totalCount > 0 ? `${Math.round((v / totalCount) * 1000) / 10}%` : '0%'))
+ok('右侧百分比为各阶段当前数量占比', JSON.stringify(countCard?.pcts) === JSON.stringify(expPcts), `UI ${countCard?.pcts} / 期望 ${expPcts}`)
 ok(
   '销量预测与接口一致',
   funnelSec.includes(`预测牵引车销量`) &&

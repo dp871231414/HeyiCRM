@@ -119,12 +119,12 @@
         </div>
       </section>
 
-      <!-- 市场项目概览：项目/车辆/挂车三漏斗（累计口径）+ 按阶段转化概率加权的销量预测 -->
+      <!-- 市场项目概览：项目/车辆/挂车三漏斗（各阶段当前数量）+ 按阶段转化概率加权的销量预测 -->
       <section v-if="funnel">
         <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-3">
           <div class="flex items-baseline gap-2">
             <h2 class="section-title">市场项目概览</h2>
-            <span class="text-xs text-slate-400">各层为累计口径（到达该阶段及以上的项目）</span>
+            <span class="text-xs text-slate-400">每层为对应阶段当前实有的数量（非累计）</span>
           </div>
           <button v-if="auth.hasPerm('dashboard.config')" class="btn-ghost btn-sm" @click="openFunnelConfig">
             配置转化概率

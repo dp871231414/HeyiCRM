@@ -1193,8 +1193,8 @@ def test_market_menu_permission_required(client, admin_headers):
     client.delete(f"/api/v1/roles/{role_id}", headers=admin_headers)
 
 
-def test_project_funnel_cumulative_and_forecast(client, admin_headers):
-    """漏斗为累计口径（stage ≥ 该层计入）且单调收窄；预测 = Σ 需求 × 各阶段概率。"""
+def test_project_funnel_per_stage_and_forecast(client, admin_headers):
+    """漏斗按各阶段当前数量统计（stage == 该层），不向上累计；预测 = Σ 需求 × 各阶段概率。"""
     items = client.get("/api/v1/market-projects", params={"size": 500}, headers=admin_headers).json()["items"]
     funnel = client.get("/api/v1/dashboard/project-funnel", headers=admin_headers).json()
     probs = {p["stage"]: p["prob"] for p in client.get("/api/v1/dashboard/funnel-config", headers=admin_headers).json()["probs"]}
@@ -1202,11 +1202,11 @@ def test_project_funnel_cumulative_and_forecast(client, admin_headers):
     assert [s["stage"] for s in funnel["stages"]] == [10, 25, 50, 75, 90, 100]
     for s in funnel["stages"]:
         v = s["stage"]
-        assert s["count"] == sum(1 for p in items if p["stage"] >= v), f"{v}% 层应为累计口径"
-        assert s["tractor"] == sum(p["tractorDemand"] for p in items if p["stage"] >= v)
-        assert s["trailer"] == sum(p["trailerDemand"] for p in items if p["stage"] >= v)
-    counts = [s["count"] for s in funnel["stages"]]
-    assert counts == sorted(counts, reverse=True), "漏斗层数应单调不增"
+        assert s["count"] == sum(1 for p in items if p["stage"] == v), f"{v}% 层应为「停在该阶段」的当前数量，不累计"
+        assert s["tractor"] == sum(p["tractorDemand"] for p in items if p["stage"] == v)
+        assert s["trailer"] == sum(p["trailerDemand"] for p in items if p["stage"] == v)
+    # 各阶段当前数量之和 = 项目总数（每个项目恰处于一个阶段）
+    assert sum(s["count"] for s in funnel["stages"]) == len(items)
 
     exp_trac = round(sum(p["tractorDemand"] * probs[p["stage"]] for p in items))
     exp_trai = round(sum(p["trailerDemand"] * probs[p["stage"]] for p in items))
