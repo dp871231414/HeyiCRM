@@ -6,32 +6,19 @@
  */
 import pw from '/Users/gavin/.workbuddy/binaries/node/workspace/node_modules/playwright-core/index.js'
 import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
 const { chromium } = pw
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8000'
 const USER = process.env.DIAG_USER || 'admin'
 const PWD = process.env.DIAG_PWD || '123456'
+const TPL = process.env.TPL_PATH || '/tmp/verify13_template.xlsx'
 const XLSX = process.env.XLSX_PATH || '/tmp/verify13_accounts.xlsx'
 
-/** 每次跑都换一批账号名：批量导入对同名账号会判重，固定文件名重复跑必然失败 */
+/** 每次跑都换一批账号名：批量导入对同名账号会判重，固定账号重复跑必然失败 */
 const SUFFIX = String(Date.now()).slice(-7)
 const ACCT_A = 'imp' + SUFFIX + 'a'
 const ACCT_B = 'imp' + SUFFIX + 'b'
-
-const GEN = `
-import openpyxl
-wb = openpyxl.Workbook()
-ws = wb.active
-ws.title = "Sheet"
-ws.append(["账号批量导入标准模板"])
-ws.append([])
-ws.append([])
-ws.append(["姓名", "账号", "初始密码", "所属部门", "角色", "数据可见范围", "状态"])
-ws.append(["导入甲", "${ACCT_A}", "Pass#2026", "市场部", "普通成员", "全公司", "启用"])
-ws.append(["导入乙", "${ACCT_B}", "Pass#2026", "市场部", "普通成员", "本部门", ""])
-wb.save("${XLSX}")
-`
-execFileSync('backend/.venv/bin/python', ['-c', GEN], { stdio: 'inherit' })
 
 let passed = 0
 let failed = 0
@@ -130,12 +117,26 @@ console.log('\n二、批量导入账号')
 const tpl = await page.evaluate(async (u) => {
   const r = await fetch(u, { credentials: 'include' })
   const b = await r.arrayBuffer()
-  return { status: r.status, bytes: b.byteLength, type: r.headers.get('content-type') || '' }
+  return {
+    status: r.status,
+    bytes: b.byteLength,
+    type: r.headers.get('content-type') || '',
+    data: Array.from(new Uint8Array(b)),
+  }
 }, BASE + '/api/v1/users/import/template')
 ok(
   '导入模板接口可达且返回文件',
   tpl.status === 200 && tpl.bytes > 1000,
   'HTTP ' + tpl.status + ' ' + tpl.bytes + 'B ' + tpl.type,
+)
+fs.writeFileSync(TPL, Buffer.from(tpl.data))
+
+// 以模板为底稿生成待导入文件：部门 / 角色取值来自模板自带的清单，
+// 本地库与线上库的部门名称不一致时也不会整批校验失败。
+execFileSync(
+  'backend/.venv/bin/python',
+  ['tools/gen_account_import.py', TPL, XLSX, ACCT_A, ACCT_B],
+  { stdio: 'inherit' },
 )
 
 const before = await api('/api/v1/users')
@@ -197,10 +198,12 @@ if (!tid && busy) {
   tempTid = tid
 }
 
+let origOwner = null
 if (busy && tid) {
   // TaskUpdate 全量字段必填且是 snake_case，而 GET 回的是 camelCase，
   // 不能直接展开回传 —— 必须显式逐字段构造，否则会缺 start_date 等被 422 拒。
   const cur = (await api('/api/v1/tasks/' + tid)).body || {}
+  origOwner = cur.owner
   const full = {
     parent: cur.parent,
     title: cur.title ?? '',
@@ -248,13 +251,40 @@ if (clean) {
   ok('删除后库中查不到', !left.body.some((u) => u.id === clean.id))
 }
 
-// 兜底清理：临时任务先删，再删账号；已删的不重复删，避免制造无意义的 404
+// 还原：先把责任人改回原值，再删账号。顺序反了会因为「被引用」而删不掉，
+// 在演示库里留下一个谁也删不掉的僵尸账号。
+if (busy && tid && origOwner != null) {
+  const back = (await api('/api/v1/tasks/' + tid)).body || {}
+  await api('/api/v1/tasks/' + tid, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      parent: back.parent,
+      title: back.title ?? '',
+      description: back.description ?? '',
+      abnormal: !!back.abnormal,
+      target: back.target,
+      done: back.done,
+      unit: back.unit ?? '',
+      note: back.note ?? '',
+      start_date: back.startDate,
+      end_date: back.endDate,
+      dept_id: back.deptId,
+      owner: origOwner,
+    }),
+  })
+}
 if (tempTid) await api('/api/v1/tasks/' + tempTid, { method: 'DELETE' })
+
+// 兜底清理：只删仍然存在的账号，避免制造无意义的 404
 const rest = await api('/api/v1/users')
 const alive = new Set((rest.body || []).map((u) => u.id))
 for (const u of [busy, clean]) {
   if (u && alive.has(u.id)) await api('/api/v1/users/' + u.id, { method: 'DELETE' })
 }
+const final = await api('/api/v1/users')
+ok('验收结束后无残留账号', !final.body.some((u) => u.account.startsWith('imp')),
+  '剩余 ' + final.body.filter((u) => u.account.startsWith('imp')).length + ' 个')
 
 // 409 / 422 是本轮刻意触发的（拒绝删除、缺字段），其余 4xx/5xx 才需要排查
 const realHttp = httpErrs.filter((e) => !/HTTP (409|422) /.test(e))
