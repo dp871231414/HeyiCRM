@@ -131,7 +131,7 @@
           </button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <FunnelChart title="市场项目转化漏斗" :stages="funnel.stages" field="count" unit="项" />
+          <FunnelChart title="市场项目转化漏斗" :stages="funnel.stages" field="count" unit="个" />
           <FunnelChart title="车辆需求漏斗（牵引车）" :stages="funnel.stages" field="tractor" unit="辆" />
           <FunnelChart title="挂车需求漏斗" :stages="funnel.stages" field="trailer" unit="辆" />
           <div class="card p-4 flex flex-col">

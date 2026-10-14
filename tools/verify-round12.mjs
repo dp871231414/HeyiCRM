@@ -70,21 +70,28 @@ ok('三个漏斗卡片齐全', /市场项目转化漏斗/.test(funnelSec) && /�
 ok('销量预测卡片存在', /销量预测/.test(funnelSec) && /预测牵引车销量/.test(funnelSec) && /预测挂车销量/.test(funnelSec))
 ok(
   '六个阶段标签齐全',
-  ['10% 项目导入', '25% 市场尽调', '50% 初审通过', '75% 联合评审通过', '90% 签约落地', '100% 交车/投运'].every((t) =>
+  ['项目导入', '市场尽调', '初审通过', '联合评审通过', '签约落地', '交车/投运'].every((t) =>
     funnelSec.includes(t),
   ),
 )
 
-// 页面漏斗数字与接口一致（项目数漏斗：取每层「N 项」）
-const uiCounts = await page.evaluate(() => {
+// 页面漏斗数字与接口一致（项目数漏斗：右侧加粗数值逐层读取）
+const countCard = await page.evaluate(() => {
   const sec = [...document.querySelectorAll('main section')].find((s) => /市场项目概览/.test(s.innerText))
-  if (!sec) return []
+  if (!sec) return null
   const card = [...sec.querySelectorAll('.card')].find((c) => /市场项目转化漏斗/.test(c.innerText))
-  if (!card) return []
-  return [...card.querySelectorAll('span')].map((s) => s.innerText.trim()).filter((t) => /^\d+ 项$/.test(t)).map((t) => parseInt(t))
+  if (!card) return null
+  return {
+    counts: [...card.querySelectorAll('b')].map((b) => parseInt(b.innerText)).filter((n) => !Number.isNaN(n)),
+    convs: [...card.querySelectorAll('span.w-9')].map((s) => s.innerText.trim()),
+    polygons: card.querySelectorAll('svg polygon').length,
+  }
 })
 const apiCounts = funnel.stages.map((s) => s.count)
-ok('项目数漏斗与接口逐层一致', JSON.stringify(uiCounts) === JSON.stringify(apiCounts), `UI ${uiCounts} / API ${apiCounts}`)
+ok('项目数漏斗与接口逐层一致', JSON.stringify(countCard?.counts) === JSON.stringify(apiCounts), `UI ${countCard?.counts} / API ${apiCounts}`)
+ok('漏斗造型为 6 个梯形层（SVG）', countCard?.polygons === 6, `${countCard?.polygons} 个`)
+const expConvs = apiCounts.map((v, i) => (i === 0 ? '100%' : apiCounts[i - 1] > 0 ? `${parseFloat(((v / apiCounts[i - 1]) * 100).toFixed(1))}%` : '—'))
+ok('每层显示相对上一层的转化率', JSON.stringify(countCard?.convs) === JSON.stringify(expConvs), `UI ${countCard?.convs} / 期望 ${expConvs}`)
 ok(
   '销量预测与接口一致',
   funnelSec.includes(`预测牵引车销量`) &&
