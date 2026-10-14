@@ -313,14 +313,14 @@
 | GET | `/dashboard/summary?period=&org_id=` | `{headline, tone, weighted, timeProgress, vsTime, counts, wins[], risks[], points[]}` |
 | GET | `/dashboard/overview?period=&org_id=` | `{annual[], project[], monitor[], projectCompare[]}` |
 | GET | `/dashboard/dept-task-stats?period=&filter=` | 部门任务完成度，支持口径筛选（独立于 overview 取数） |
-| GET | `/dashboard/project-funnel` | 市场项目概览：六层漏斗（项目数/牵引车/挂车，累计口径）+ 加权销量预测 |
+| GET | `/dashboard/project-funnel` | 市场项目概览：六层漏斗（项目数/牵引车/挂车，各阶段当前数量口径）+ 加权销量预测 |
 | GET | `/dashboard/funnel-config` | 各阶段转化概率（默认 = 阶段百分比） |
 | PUT | `/dashboard/funnel-config` | 整份保存六层概率（需 dashboard.config；全系统共用，立即影响预测） |
 | GET | `/dashboard/metrics/{id}/trend?org_id=` | 该指标历史各期实际值（用于下钻趋势） |
 
 `dept-task-stats` 的 `filter` 口径：`all` 全部（默认）/ `year` 本年新增 / `month` 当月新增 / `open` 未结束（done < target，含进行中与逾期）。年与月均取 `period`（页面顶部统计周期）所在年月，未识别取值按「全部」处理；年/月口径筛选的是**创建时间**落在所选时间范围内的任务。
 
-`project-funnel` 口径：**漏斗为累计口径** —— 处于某阶段的项目必然经过前面的阶段，故第 N 层统计「stage ≥ 该层」的项目数 / 牵引车需求 / 挂车需求，保证漏斗单调收窄；**销量预测按项目各自阶段的转化概率加权**：预测销量 = Σ（项目需求数 × 所在阶段概率），取整到辆。漏斗与预测只按角色权限开放（dashboard.view），不做数据范围裁剪，与驾驶舱其他模块同一口径。
+`project-funnel` 口径：**漏斗为当前阶段口径** —— 每层只统计 `stage` 恰好等于该层的项目数 / 牵引车需求 / 挂车需求（不保证单调收窄，哪层项目多哪层数值大）；**销量预测按项目各自阶段的转化概率加权**：预测销量 = Σ（项目需求数 × 所在阶段概率），取整到辆。前端呈现为**条形图式漏斗**：左侧六条矩形条（宽度 = 当前阶段数值占最大层比例，浅蓝→深蓝、末层绿色），右侧逐层排列「阶段标题 + 当前数量 + 占总量百分比」，漏斗与标题文字分离；整体卡片高度压缩（每层 34px / 层间距 6px）。漏斗与预测只按角色权限开放（dashboard.view），不做数据范围裁剪，与驾驶舱其他模块同一口径。
 
 **错误码约定**：`UNAUTHORIZED` `FORBIDDEN` `NOT_FOUND` `NAME_CONFLICT` `DELETE_BLOCKED` `IMPORT_INVALID` `PERIOD_MISMATCH`。
 

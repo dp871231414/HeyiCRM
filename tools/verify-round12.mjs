@@ -84,20 +84,20 @@ const countCard = await page.evaluate(() => {
   return {
     counts: [...card.querySelectorAll('b')].map((b) => parseInt(b.innerText)).filter((n) => !Number.isNaN(n)),
     pcts: [...card.querySelectorAll('span.pct')].map((s) => s.innerText.trim()),
-    polygons: card.querySelectorAll('svg polygon').length,
-    // 阶段标题是否绘制在漏斗层级上（叠加在 SVG 上的 HTML 标签）
-    layerLabels: [...card.querySelectorAll('span.funnel-label')].map((t) => t.textContent.trim()),
+    // 条形图造型：左侧矩形条（div.funnel-bar），右侧阶段标题（span.funnel-stage-label）
+    bars: card.querySelectorAll('div.funnel-bar').length,
+    stageLabels: [...card.querySelectorAll('span.funnel-stage-label')].map((t) => t.textContent.trim()),
   }
 })
 const apiCounts = funnel.stages.map((s) => s.count)
 ok('项目数漏斗与接口逐层一致（各阶段当前数量）', JSON.stringify(countCard?.counts) === JSON.stringify(apiCounts), `UI ${countCard?.counts} / API ${apiCounts}`)
-ok('漏斗造型为 6 个梯形层（SVG）', countCard?.polygons === 6, `${countCard?.polygons} 个`)
-// 标题绘制在漏斗对应层上（项目数漏斗 6 个 <text>，且覆盖六个阶段）
+ok('漏斗造型为 6 个矩形条形层', countCard?.bars === 6, `${countCard?.bars} 个`)
+// 标题与数字都在右侧、按层级排列（六个阶段标题齐全）
 ok(
-  '阶段标题绘制在漏斗对应层级上',
-  (countCard?.layerLabels?.length ?? 0) === 6 &&
-    ['项目导入', '市场尽调', '初审通过', '联合评审通过', '签约落地', '交车/投运'].every((t) => countCard.layerLabels.includes(t)),
-  countCard?.layerLabels?.join(' / '),
+  '阶段标题在右侧按层级排列',
+  (countCard?.stageLabels?.length ?? 0) === 6 &&
+    ['项目导入', '市场尽调', '初审通过', '联合评审通过', '签约落地', '交车/投运'].every((t) => countCard.stageLabels.includes(t)),
+  countCard?.stageLabels?.join(' / '),
 )
 // 右侧百分比 = 各阶段当前数量 / 总量
 const totalCount = apiCounts.reduce((a, b) => a + b, 0)
