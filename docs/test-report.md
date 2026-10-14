@@ -955,3 +955,60 @@ verify-round12 同步加固（26 项）：新增「标题绘制在层上」「�
 verify-round12 断言同步适配：`svg polygon` → `div.funnel-bar`（6 个矩形条形层）、
 `span.funnel-label` → `span.funnel-stage-label`（阶段标题在右侧按层级排列）；
 `span.pct` 断言保留。本地连跑 26/26、控制台 0 错误。
+
+### 21.9 账号模块三项改动（2026-10-14，提交 4d69eda / 334fb5e）
+
+用户本轮提出三点：①去掉「数据可见范围跟随角色默认」、必须人工选择一种规则；
+②增加批量导入与删除账号功能并约定必填字段，账号未作为任何数据的创建人或被引用选择的
+填写项时才允许删除；③检查全局输入框的提示语和必填标记并补充。
+
+**（1）可见范围必选**
+
+| 层 | 改动 |
+|---|---|
+| 后端 | 新增 `_require_scope()`，`create_user` / `update_user` 对空值或非法值一律 422「请选择数据可见范围」 |
+| 前端 | 默认项由 `<option value="">跟随角色默认（…）</option>` 改为 `<option value="" disabled>请选择数据可见范围</option>`，并加 `required` 与提交前校验 |
+| 清理 | 移除 `roleDefaultScope` 计算属性与列表里的「（账号覆盖）」标记（该语义已不存在） |
+
+**（2）批量导入 / 删除账号**
+
+- 模板：`GET /users/import/template` 由 `build_account_template(db)` 生成，说明栏 3 行 →
+  表头第 4 行 → 数据第 5 行起，并附「部门清单」「角色清单」两个 sheet，
+  对部门/角色/可见范围/状态四个字段加 DataValidation 下拉。
+- 导入：`POST /users/import` 先逐行校验再落库，**任一行有错则整批不写入**
+  （避免「导入一半」的脏数据），回执形如 `{imported: 2, errors: []}`；
+  错误项与任务导入保持一致，为 `{row, field, msg}` 扁平结构。
+- 必填字段约定：姓名、账号、初始密码、所属部门、角色、数据可见范围；「状态」选填，
+  留空默认启用。部门与角色按名称匹配，可见范围中文标签与英文 key 均受支持。
+- 删除：行内「删除」按钮先调 `GET /users/{id}/impact` 预检，前端把计数翻译成人话
+  （如「被 1 条任务选为责任人」）；有引用时按钮禁用。后端对六类引用、删除自己、
+  最后一个管理员三种情况分别拦截，返回 409 并说明原因。
+
+**（3）提示语与必填标记**
+
+`main.css` 新增 `.req`（红色星号）作为全站统一的必填标记；任务、项目、指标、账号、
+部门、角色六个表单补齐 placeholder 与星号。指标页是密集录入表格，逐格放 placeholder
+会造成视觉噪音，改为 `title` + `aria-label` 让每个格子自解释。脚本审计结果：
+缺少提示语的可输入控件 **0** 个。
+
+**顺带修复**：公用弹窗 `ModalDialog` 此前只能点遮罩或右上角 × 关闭，现支持 Esc 关闭
+（仅在打开期间监听，关闭后即时摘除监听）。
+
+**测试与验收**
+
+| 项 | 结果 |
+|---|---|
+| 后端 pytest | **116 passed**（`tests/test_accounts.py` 新增 10 项，覆盖必选校验、模板下载、导入成功/整批回滚、scope 两种写法、状态默认值、五类删除拦截） |
+| 前端 `npm run build` | 通过（含 `vue-tsc --noEmit`） |
+| `tools/verify-round13.mjs` | **16 通过 / 0 失败**，非预期 HTTP 错误 0 |
+| `tools/verify-round12.mjs` 回归 | **26 通过 / 0 失败** |
+
+**本轮排查记录**
+
+| 编号 | 现象 | 根因 | 处理 |
+|---|---|---|---|
+| D-34 | 批量导入第二行报 `UNIQUE constraint failed: user.id` | 循环内只 flush 一次，下一行基于未落库的 ID 继续编号 | 每行 `db.add()` 后 `db.flush()` |
+| D-35 | 导入回执 `ResponseValidationError: errors[].field missing` | `validate_account_rows` 返回嵌套 `{row, errors:[]}`，与扁平 `ImportErrorItem` 不符 | 展开为 `{row, field, msg}` |
+| D-36 | 验收脚本「批量导入」按钮 30s 超时 | `main.py` 不跑 `seed`，本地库 admin 仍是旧权限清单，缺 `account.import`/`account.delete` | 执行 `python -m app.seed` 同步内置角色权限 |
+| D-37 | 验收里 PATCH 任务责任人返回 422 | `TaskUpdate` 全量必填且为 snake_case，直接展开 camelCase 的 `TaskOut` 回传导致缺字段 | 显式逐字段构造 payload |
+| D-38 | 脚本按「全公司」文本定位可见范围下拉误匹配 | 组织清单里也有名为「全公司」的公司节点 | 改用 `select:has(option[value="all"])` 唯一定位 |
