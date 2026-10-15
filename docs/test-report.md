@@ -1148,7 +1148,16 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round14.mjs
 
 `npm run build`（`vue-tsc --noEmit` + `vite build`）通过（124 模块，TasksView 产物 19.83 kB）；`frontend/dist` 已同步至 `backend/static` 供发布。
 
-### 23.6 待办 / 发布
+### 23.6 发布（用户确认后已执行）
 
-- 文档：`design.md` 已补 §5.5a `main_task` 表与 §6.5a 主任务接口、§6.5 任务列表/分组视图说明；本记录已补。
-- 发布：按用户约定「每轮发布需当轮确认」，待用户确认后 `workbuddy_sites_deploy`（directory=backend/，language=python，startCmd=`bash start.sh`，domainPrefix=heyi-fleet-dashboard）；发布后启动期 seed 已含补列逻辑，线上旧库升级无障碍。
+- 部署目录 `backend/`（language=python，startCmd=`bash start.sh`，复用既有 app，链接稳定）。
+- 发布结果：`verified=true`，shareLink `https://heyi-fleet-dashboard.app.workbuddy.host/`。
+- 发布前移除本地 `app.db`（避免携带本地验证数据），`frontend/dist` 已同步 `backend/static`。
+- **线上核验**：health=200；admin 登录（22 权限）正常；`GET /api/v1/main-tasks` 首位 `MT_NONE/空/isSystem=true`；
+  `POST /api/v1/tasks` 带 `main_task_id=MT0001` 正确回填 `mainTaskId/mainTaskName`，删除 200；任务列表全量暴露 `mainTaskId/mainTaskName/ownerId`。
+- 线上旧库升级：seed 的 `backfill_task_main_tasks` 把既有 `main_task_id IS NULL` 任务按 `title` 回填为主任务（空→MT_NONE），线上数据平滑迁移，无碍。
+
+### 23.7 线上数据观察（待用户决定是否清理）
+
+- 线上库在 round 15 之前已存在标题为「1」「222」等历史任务，回填后生成对应主任务（MT0001=「1」、MT0003=「222」），与本地演示库主任务名（华东大区营收达成等）不同。
+- 功能正确，但演示主任务集带了历史脏标题。如需干净演示数据，可对线上库执行 `SEED_RESET=1` 重置重灌（数据清理动作，需用户确认）。
