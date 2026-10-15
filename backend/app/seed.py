@@ -353,6 +353,14 @@ def main() -> None:
         existing = {r[1] for r in conn.execute(text("PRAGMA table_info(task)")).fetchall()}
         if "main_task_id" not in existing:
             conn.execute(text("ALTER TABLE task ADD COLUMN main_task_id VARCHAR(32)"))
+        # 主任务新增 责任人/责任部门/更新时间 字段，老库补 ALTER（与 main.py 启动期保持一致）
+        mt_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(main_task)")).fetchall()}
+        if "owner_id" not in mt_existing:
+            conn.execute(text("ALTER TABLE main_task ADD COLUMN owner_id VARCHAR(16)"))
+        if "dept_id" not in mt_existing:
+            conn.execute(text("ALTER TABLE main_task ADD COLUMN dept_id VARCHAR(16)"))
+        if "updated_at" not in mt_existing:
+            conn.execute(text("ALTER TABLE main_task ADD COLUMN updated_at TIMESTAMP"))
     with SessionLocal() as db:
         created = seed(db, reset=reset)
     print(f"[seed] 完成（reset={reset}）: {created}")

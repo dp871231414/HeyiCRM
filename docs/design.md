@@ -205,6 +205,9 @@
 | name | varchar(128) unique | 主任务名称（即选项名），可修改 |
 | created_by | varchar(16) FK→user.id | 创建人 |
 | created_at | datetime | 创建时间 |
+| owner_id | varchar(16) FK→user.id nullable | **责任人**（round 16 新增）：主任务首次被任务选用时由该任务的责任人回填；人工维护后不再被覆盖 |
+| dept_id | varchar(16) FK→organization.id nullable | **责任部门**（round 16 新增）：同上，由首个关联任务的责任部门回填 |
+| updated_at | datetime | 更新时间（改名、回填均会刷新） |
 | is_system | bool | 是否系统内置。系统内置项 `MT_NONE`（名称「空」）由 seed 默认创建，表示「未选择主任务」 |
 
 **关键规则**
@@ -212,6 +215,8 @@
 - 主任务改名只改 `name`，`id` 不变；历史任务通过外键保留关联。
 - 批量导入时「任务分类」列按名称匹配；不存在则自动新建主任务（记录创建人/时间）。
 - 重名新增 → 409；改名时排除自身查重。
+- **责任人与责任部门回填（round 16 新增）**：主任务创建时 `owner_id`/`dept_id` 为空；当某任务（非「空」主任务）首次选用该主任务并保存时，若主任务这两项仍为空，则取该任务的责任人（owner→user.id）、责任部门（dept_id）回填；已有值则保留，不覆盖人工维护结果。系统默认「空」(MT_NONE) 不参与回填。
+- **下拉展示（round 16 新增）**：主任务下拉每项展示「名称 创建人」（如「注册新公司 胡国海」），拥有 `task.edit` 权限者在选项后可见铅笔按钮，点击就地改名（ID 不变）；展示范围仅按角色权限（`task.view` 可见全部，`task.edit` 可改名），不做按部门的数据范围过滤。
 
 **计算列（不落库）**
 ```
@@ -324,13 +329,13 @@
 | POST | `/tasks/import` | multipart，返回 `{imported, errors[]}` |
 | GET | `/tasks/export` | 导出当前可见任务 xlsx |
 
-**列表/分组视图**：前端在「平铺列表」与「按部门分组」两种视图间切换。分组视图排序规则——部门内先按人员 ID 升序，同人员按主任务名称升序（无主任务的 `MT_NONE` 排最后），同规则下按创建时间倒序。
+**列表/分组视图**：前端在「平铺列表」与「按部门分组」两种视图间切换。分组视图排序规则（round 16 #3 修正）——部门内先按人员 ID 升序（ownerId 缺失时退回责任人姓名），同人员按主任务 **ID 归类**升序（无主任务的 `MT_NONE` 排最后；按 ID 而非名称归类可避免同名不同 ID 被拆散），同规则下按创建时间倒序。
 
 ### 6.5a 主任务字典（round 15 新增）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/main-tasks` | 列表（系统「空」置顶，其余按名称排序），供前端下拉 |
+| GET | `/main-tasks` | 列表（系统「空」置顶，其余按名称排序），供前端下拉；返回 owner_id/owner_name/dept_id/dept_name/updated_at |
 | POST | `/main-tasks` | 新增 `{name}` → 生成 `MT` 序号 ID，记录 created_by；重名 409 |
 | PATCH | `/main-tasks/{id}` | 改名 `{name}`（ID 不变，排除自身查重） |
 

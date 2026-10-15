@@ -15,6 +15,11 @@ def test_main_tasks_list_includes_system_none(client, admin_headers):
     assert items[0]["isSystem"] is True
     assert items[0]["id"] == "MT_NONE"
     assert items[0]["name"] == "空"
+    # 新增字段随主任务单独建表维护：责任人 / 责任部门 / 更新时间
+    for m in items:
+        assert "ownerId" in m and "ownerName" in m
+        assert "deptId" in m and "deptName" in m
+        assert "updatedAt" in m
     # 演示数据里出现的「任务分类」已建为主任务
     names = {m["name"] for m in items}
     assert "华东大区营收达成" in names
@@ -92,3 +97,30 @@ def test_task_list_exposes_main_task_and_owner_id(client, admin_headers):
     assert "mainTaskId" in t and "mainTaskName" in t and "ownerId" in t
     assert t["mainTaskName"] == "华东大区营收达成"
     assert t["ownerId"]  # 责任人郑凯应有对应 user.id
+
+
+# ---------------------------------------------------------------- 主任务责任人/部门回填（#2）
+
+
+def test_main_task_backfilled_from_first_task(client, admin_headers):
+    # 新建主任务（初始无责任人/部门）
+    mt = client.post("/api/v1/main-tasks", json={"name": "回填测试主任务"}, headers=admin_headers).json()
+    assert mt["ownerId"] == ""
+    assert mt["deptId"] == ""
+    # 首个关联任务：责任人 郑凯(U006) / 部门 D01 → 回填到主任务
+    resp = _create_task(client, admin_headers, mt["id"])
+    assert resp.status_code == 201
+    items = {m["id"]: m for m in client.get("/api/v1/main-tasks", headers=admin_headers).json()}
+    back = items[mt["id"]]
+    assert back["ownerId"] == "U006"
+    assert back["ownerName"] == "郑凯"
+    assert back["deptId"] == "D01"
+    assert back["deptName"] == "市场部"
+
+
+def test_none_main_task_never_backfilled(client, admin_headers):
+    # 「空」(MT_NONE) 不参与回填，始终无责任人/部门
+    _create_task(client, admin_headers, None)
+    item = {m["id"]: m for m in client.get("/api/v1/main-tasks", headers=admin_headers).json()}["MT_NONE"]
+    assert item["ownerId"] == ""
+    assert item["deptId"] == ""

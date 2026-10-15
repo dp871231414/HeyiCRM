@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_perm
 from app.db.session import get_db
 from app.models import MainTask, User
+from app.services.serializers import org_name
 
 router = APIRouter(prefix="/main-tasks", tags=["主任务"])
 
@@ -30,6 +31,13 @@ class MainTaskOut(BaseModel):
     createdAt: str = ""
     createdBy: str = ""
     createdByName: str = ""
+    # 责任人 / 责任部门：主任务首次被任务选用时从任务回填，下拉展示「名称 创建人」用 createdByName，
+    # 这两个字段供「主任务单独维护」的数据表呈现（id 不可变，改名只改 name）。
+    ownerId: str = ""
+    ownerName: str = ""
+    deptId: str = ""
+    deptName: str = ""
+    updatedAt: str = ""
     isSystem: bool = False
 
 
@@ -56,12 +64,22 @@ def _to_out(db: Session, mt: MainTask) -> MainTaskOut:
     if mt.created_by:
         u = db.get(User, mt.created_by)
         creator_name = u.name if u else ""
+    owner_name = ""
+    if mt.owner_id:
+        u = db.get(User, mt.owner_id)
+        owner_name = u.name if u else ""
+    dept_name = org_name(db, mt.dept_id) if mt.dept_id else ""
     return MainTaskOut(
         id=mt.id,
         name=mt.name,
         createdAt=mt.created_at.isoformat() if mt.created_at else "",
         createdBy=mt.created_by or "",
         createdByName=creator_name,
+        ownerId=mt.owner_id or "",
+        ownerName=owner_name,
+        deptId=mt.dept_id or "",
+        deptName=dept_name,
+        updatedAt=mt.updated_at.isoformat() if mt.updated_at else "",
         isSystem=bool(mt.is_system),
     )
 

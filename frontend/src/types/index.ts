@@ -223,13 +223,21 @@ export interface TaskItem {
   updatedAt: string
 }
 
-/** 主任务（下拉选项）。系统默认「空」始终存在，任务未选主任务时默认关联它 */
+/** 主任务（下拉选项）。系统默认「空」始终存在，任务未选主任务时默认关联它。
+ * 责任人/责任部门在主任务首次被任务选用时由该任务回填（ownerId/ownerName/deptId/deptName）。 */
 export interface MainTask {
   id: string
   name: string
   createdAt: string
   createdBy: string
   createdByName: string
+  /** 责任人（主任务首次被任务选用时回填） */
+  ownerId: string
+  ownerName: string
+  /** 责任部门 */
+  deptId: string
+  deptName: string
+  updatedAt: string
   isSystem: boolean
 }
 

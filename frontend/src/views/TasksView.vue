@@ -158,7 +158,7 @@
           <input v-model.trim="form.parent" class="input" placeholder="如：完成全年营收目标 10.2 亿" />
         </div>
         <div>
-          <label class="label">主任务<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」）</span></label>
+          <label class="label">主任务<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」，下拉展示「名称 创建人」）</span></label>
           <div v-if="addingMainTask" class="flex items-center gap-2">
             <input
               v-model.trim="newMainTaskName"
@@ -171,13 +171,70 @@
             </button>
             <button class="btn-ghost" @click="addingMainTask = false">取消</button>
           </div>
-          <div v-else class="flex items-center gap-2">
-            <select v-model="form.mainTaskId" class="input">
-              <option v-for="m in mainTasks" :key="m.id" :value="m.id">{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</option>
-            </select>
-            <button v-if="auth.hasPerm('task.edit')" class="btn-ghost whitespace-nowrap" @click="addingMainTask = true">
-              + 新增
+          <div v-else class="relative">
+            <button
+              type="button"
+              class="input flex items-center justify-between w-full text-left"
+              @click="mtDropdownOpen = !mtDropdownOpen"
+            >
+              <span class="truncate">{{ selectedMainTaskLabel || '请选择主任务' }}</span>
+              <span class="text-slate-400 ml-2">▾</span>
             </button>
+            <!-- 点击空白处关闭下拉 -->
+            <div v-if="mtDropdownOpen" class="fixed inset-0 z-10" @click="mtDropdownOpen = false" />
+            <div
+              v-if="mtDropdownOpen"
+              class="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-64 overflow-auto"
+            >
+              <button
+                v-for="m in mainTasks"
+                :key="m.id"
+                type="button"
+                class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                :class="form.mainTaskId === m.id ? 'bg-brand-50' : ''"
+                @click="selectMainTask(m.id)"
+              >
+                <span class="flex-1 min-w-0 truncate">
+                  <template v-if="renamingId === m.id">
+                    <input
+                      v-model.trim="renameValue"
+                      class="input !py-0.5 !px-1.5 text-xs w-full"
+                      :disabled="renamingBusy"
+                      @click.stop
+                      @keyup.enter="confirmRename(m)"
+                      @keyup.esc="cancelRename"
+                    />
+                  </template>
+                  <template v-else>
+                    <span>{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</span>
+                    <span v-if="m.createdByName" class="text-slate-400 text-xs"> {{ m.createdByName }}</span>
+                  </template>
+                </span>
+                <span v-if="renamingId === m.id" class="flex items-center gap-1 shrink-0" @click.stop>
+                  <button type="button" class="text-good-600 text-xs" :disabled="renamingBusy" @click="confirmRename(m)">保存</button>
+                  <button type="button" class="text-slate-400 text-xs" :disabled="renamingBusy" @click="cancelRename">取消</button>
+                </span>
+                <button
+                  v-else-if="auth.hasPerm('task.edit') && !m.isSystem"
+                  type="button"
+                  class="text-slate-400 hover:text-brand-600 shrink-0"
+                  title="修改主任务名称"
+                  @click.stop="startRename(m)"
+                >
+                  ✎
+                </button>
+              </button>
+              <div class="border-t border-slate-100 p-2">
+                <button
+                  v-if="auth.hasPerm('task.edit')"
+                  type="button"
+                  class="btn-ghost w-full"
+                  @click="addingMainTask = true; mtDropdownOpen = false"
+                >
+                  + 新增主任务
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         <div>
@@ -326,6 +383,50 @@ const mainTasks = ref<MainTask[]>([])
 const addingMainTask = ref(false)
 const addingMainTaskBusy = ref(false)
 const newMainTaskName = ref('')
+/** 主任务自定义下拉：展开状态 + 内联改名 */
+const mtDropdownOpen = ref(false)
+const renamingId = ref('')
+const renameValue = ref('')
+const renamingBusy = ref(false)
+
+/** 当前选中主任务的展示文案：名称 + 创建人（如「注册新公司 胡国海」），系统默认「空」标记 */
+const selectedMainTaskLabel = computed(() => {
+  const m = mainTasks.value.find((x) => x.id === form.mainTaskId)
+  if (!m) return ''
+  return `${m.name}${m.isSystem ? '（默认）' : ''}${m.createdByName ? ` ${m.createdByName}` : ''}`
+})
+
+function selectMainTask(id: string) {
+  form.mainTaskId = id
+  mtDropdownOpen.value = false
+}
+
+function startRename(m: MainTask) {
+  renamingId.value = m.id
+  renameValue.value = m.name
+}
+function cancelRename() {
+  renamingId.value = ''
+  renameValue.value = ''
+}
+async function confirmRename(m: MainTask) {
+  const name = renameValue.value.trim()
+  if (!name) {
+    app.toast('主任务名称不能为空', 'error')
+    return
+  }
+  renamingBusy.value = true
+  try {
+    const updated = await mainTaskApi.rename(m.id, name)
+    const idx = mainTasks.value.findIndex((x) => x.id === m.id)
+    if (idx >= 0) mainTasks.value[idx] = { ...mainTasks.value[idx], ...updated }
+    cancelRename()
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  } finally {
+    renamingBusy.value = false
+  }
+}
 
 /** 视图模式：false=平铺列表，true=按部门分组（每组带小标题） */
 const groupByDept = ref(false)

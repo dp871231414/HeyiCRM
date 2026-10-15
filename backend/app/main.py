@@ -45,6 +45,18 @@ async def lifespan(_: FastAPI):
             conn.execute(text("ALTER TABLE task ADD COLUMN main_task_id VARCHAR(32)"))
             logger.info("已为 task 补列 main_task_id")
 
+        # main_task.owner_id / dept_id / updated_at：本轮为主任务新增「责任人与责任部门」字段，老库补 ALTER
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(main_task)")).fetchall()}
+        if "owner_id" not in existing:
+            conn.execute(text("ALTER TABLE main_task ADD COLUMN owner_id VARCHAR(16)"))
+            logger.info("已为 main_task 补列 owner_id")
+        if "dept_id" not in existing:
+            conn.execute(text("ALTER TABLE main_task ADD COLUMN dept_id VARCHAR(16)"))
+            logger.info("已为 main_task 补列 dept_id")
+        if "updated_at" not in existing:
+            conn.execute(text("ALTER TABLE main_task ADD COLUMN updated_at TIMESTAMP"))
+            logger.info("已为 main_task 补列 updated_at")
+
     yield
 
 

@@ -1161,3 +1161,57 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round14.mjs
 
 - 线上库在 round 15 之前已存在标题为「1」「222」等历史任务，回填后生成对应主任务（MT0001=「1」、MT0003=「222」），与本地演示库主任务名（华东大区营收达成等）不同。
 - 功能正确，但演示主任务集带了历史脏标题。如需干净演示数据，可对线上库执行 `SEED_RESET=1` 重置重灌（数据清理动作，需用户确认）。
+
+## 二十四、第十六轮变更测试（2026-10-15）
+
+### 24.1 需求背景
+
+用户提出任务管理模块三项改动：
+
+1. **必填项调整**：任务名称、主任务、责任人、目标、计划开始、计划结束、任务描述 必填（其余已必填，无需改）；其中「任务描述」原在新增/编辑界面标为选填、导入未校验，本轮改为双向必填。
+2. **主任务独立表 + 责任人/责任部门 + 下拉编辑**：主任务单独建表，存 主任务ID、名称、责任人、责任部门、创建时间、更新时间；下拉列表展示「名称 创建人」（如「注册新公司 胡国海」），选项后带编辑按钮可就地改名（ID 不变）；选择主任务时按当前用户权限判断展示范围。
+3. **分组视图排序修复**：分组视图按「部门 → 人员ID → 主任务 → 创建时间倒序（无主任务 MT_NONE 排最后）」排序，修复同人员多个任务、主任务相同却未排在一起的问题。
+
+### 24.2 设计确认（#2 两项歧义经询问用户锁定）
+
+- **责任人/责任部门来源**：主任务创建时 `owner_id`/`dept_id` 为空；当某任务（非「空」主任务）首次选用该主任务并保存时，若主任务这两项仍为空，则取该任务的责任人（`owner`→`user.id`）、责任部门（`dept_id`）回填；已有值则保留，不覆盖人工维护结果。系统默认「空」(`MT_NONE`) 不参与回填。
+- **展示范围**：仅按角色权限控制 —— 所有 `task.view` 用户可见全部主任务，仅 `task.edit` 可改名；不做按部门的数据范围过滤。
+
+### 24.3 设计与实现要点
+
+- **#1 任务描述必填**：`frontend/src/views/TasksView.vue` 表单标签改 `*` 并加 placeholder，`save()` 新增 `if (!form.description.trim()) return '任务描述不能为空'`；`backend/app/services/importer.py` 的 `validate_task_rows` 对「任务描述」空值报错；`tests/test_api.py` 导入用例补该列。
+- **#2 主任务扩展**：`MainTask` 模型新增 `owner_id`(FK→user)、`dept_id`(FK→organization)、`updated_at`；`main.py` 启动期与 `seed.main()` 均补这三列 ALTER（与 `main_task_id` 先例一致，兼容旧库）。`MainTaskOut` 增加 `ownerId/ownerName/deptId/deptName/updatedAt`。任务 `POST/PATCH` 的 `_apply_payload` 在保存时执行回填（守卫 `mt_id != MT_NONE_ID`）。前端 `MainTask` 类型补字段；主任务下拉改造为自定义控件：每项「名称 创建人」+（`task.edit` 可见的）铅笔按钮就地改名，点击空白处关闭。
+- **#3 排序修复**：`rows` computed 改为按不可变 `mainTaskId` 归类（替代易失配的 `mainTaskName` 字符串比较），人员维度 `ownerId || owner` 兜底；后端 `_enrich` 解析 `ownerId` 加 trim 兜底。
+
+### 24.4 后端用例（131 项，较上轮 +2）
+
+全量 `cd backend && PYTHONPATH=. /Users/gavin/.workbuddy/binaries/python/envs/fleet/bin/python -m pytest -q` → **131 passed**（上轮 129 → 本轮 131）。
+
+> 本机后端依赖在托管环境 `fleet`，无 `.venv`；端口 8011 被无关项目 notebase 占用，本地验证改用 8012。
+
+`tests/test_main_tasks.py` 本轮新增 2 项（累计 9 项）：
+
+| 用例 | 断言要点 | 结果 |
+|---|---|---|
+| `test_main_tasks_list_includes_owner_fields` | 列表每项含 `ownerId/ownerName/deptId/deptName/updatedAt` | ✅ |
+| `test_main_task_backfilled_from_first_task` | 新建主任务（初始无责任人/部门）→ 首个关联任务保存后回填 `ownerId=U006/ownerName=郑凯`、`deptId=D01/deptName=市场部` | ✅ |
+| `test_none_main_task_never_backfilled` | 关联 `MT_NONE` 后其 `ownerId/deptId` 仍为空 | ✅ |
+
+### 24.5 接口联调（管理员 Token，端口 8012）
+
+| 场景 | 请求 | 验证结果 |
+|---|---|---|
+| 主任务列表字段 | `GET /api/v1/main-tasks` | 每项含 `ownerId/ownerName/deptId/deptName/updatedAt`；`MT_NONE` 全空 ✅ |
+| 新建主任务（初始） | `POST /api/v1/main-tasks {"name":"回填验收主任务"}` | `ownerId=""`、`deptId=""` ✅ |
+| 新建任务关联 + 回填 | `POST /api/v1/tasks` + `main_task_id=MT0015`(owner=郑凯,dept=D01) | 任务 `mainTaskId=MT0015`；再查主任务 `ownerId=U006/ownerName=郑凯`、`deptId=D01/deptName=市场部` ✅ |
+| 下拉改名（ID 不变） | `PATCH /api/v1/main-tasks/{id}` | id 不变、name 更新、列表同步 ✅ |
+
+### 24.6 前端构建与类型
+
+`npm run build`（`vue-tsc --noEmit` + `vite build`）通过（124 模块，TasksView 产物 22.44 kB）；类型检查确认 `MainTask` 新字段与自定义下拉逻辑无误；`frontend/dist` 已同步至 `backend/static` 供发布。
+
+### 24.7 提交与发布
+
+- **提交**：round 16 拆两次提交 —— `cd90972`（p1：#1 任务描述必填 + #3 分组排序修复）；本轮 #2 主任务扩展与下拉改造（待提交）。
+- **发布**：#2 实现后需用户当轮确认再 `workbuddy_sites_deploy`（目录 `backend/`、startCmd `bash start.sh`，复用既有 app）。
+- 发布前将移除本地 `app.db` 验证残留（`seed --reset` 不清 `main_task` 表，已手工清理验证产生的临时主任务），`frontend/dist` 已同步 `backend/static`。

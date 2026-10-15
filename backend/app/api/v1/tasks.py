@@ -355,6 +355,15 @@ def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
     task.end_date = end
     task.dept_id = payload.dept_id
     task.owner = payload.owner.strip()
+    # 主任务（非「空」）首次被任务选用时，将其 责任人/责任部门 回填为当前任务的责任人/部门。
+    # 设计约定：主任务创建时这两项为空，主任务名下第一个任务保存时由该任务带出；
+    # 已有值则保留（不覆盖人工维护结果）。改名只改 name，ID 不变，故回填只认非「空」主任务。
+    if mt_id != MT_NONE_ID and mt is not None:
+        if not mt.owner_id:
+            u = db.scalar(select(User).where(User.name == task.owner))
+            mt.owner_id = u.id if u else None
+        if not mt.dept_id:
+            mt.dept_id = task.dept_id
 
 
 @router.post("", response_model=TaskOut, status_code=201)

@@ -61,6 +61,12 @@ class MainTask(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
     created_by: Mapped[str | None] = mapped_column(String(16), ForeignKey("user.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # 责任人 / 责任部门：主任务单独建表维护；创建时为空，首次被任务选用时由任务的责任人/部门回填
+    owner_id: Mapped[str | None] = mapped_column(String(16), ForeignKey("user.id"), nullable=True, index=True)
+    dept_id: Mapped[str | None] = mapped_column(String(16), ForeignKey("organization.id"), nullable=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
