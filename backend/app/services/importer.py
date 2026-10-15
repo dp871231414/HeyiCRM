@@ -407,6 +407,9 @@ def validate_task_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[
         if not r.get("任务名称"):
             row_errors.append({"field": "任务名称", "msg": "不能为空"})
 
+        if not (r.get("任务描述") or "").strip():
+            row_errors.append({"field": "任务描述", "msg": "不能为空"})
+
         abn = r.get("是否异常", "")
         if abn and abn not in ("是", "否"):
             row_errors.append({"field": "是否异常", "msg": "只能填「是」或「否」"})

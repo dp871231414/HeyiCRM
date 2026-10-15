@@ -154,11 +154,11 @@
     <ModalDialog :open="formOpen" :title="form.id ? '编辑任务' : '新建任务'" width="lg" @close="formOpen = false">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="md:col-span-2">
-          <label class="label">任务名称</label>
+          <label class="label">任务名称<span class="req">*</span></label>
           <input v-model.trim="form.parent" class="input" placeholder="如：完成全年营收目标 10.2 亿" />
         </div>
         <div>
-          <label class="label">主任务<span class="text-slate-400 font-normal">（不选默认「空」）</span></label>
+          <label class="label">主任务<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」）</span></label>
           <div v-if="addingMainTask" class="flex items-center gap-2">
             <input
               v-model.trim="newMainTaskName"
@@ -224,8 +224,8 @@
           <input v-model="form.endDate" type="date" class="input" />
         </div>
         <div class="md:col-span-2">
-          <label class="label">任务描述<span class="text-slate-400 font-normal">（选填）</span></label>
-          <textarea v-model="form.description" rows="2" class="input" />
+          <label class="label">任务描述<span class="req">*</span></label>
+          <textarea v-model="form.description" rows="2" class="input" placeholder="任务的背景、交付要求与关键说明" />
         </div>
         <div class="md:col-span-2">
           <label class="label">进展描述<span class="text-slate-400 font-normal">（选填）</span></label>
@@ -370,13 +370,17 @@ const rows = computed<TaskRow[]>(() => {
   }
   const out: TaskRow[] = []
   for (const [k, items] of buckets) {
-    // 分组视图排序：部门内 → 按人员 ID 升序 → 同人员按主任务（无主任务排最后）→ 创建时间倒序
+    // 分组视图排序：部门内 → 按人员（ownerId，缺失时退回责任人姓名）→ 同人员按主任务（id 归类、无主任务排最后）→ 创建时间倒序
+    // 关键点：主任务按 id 而非名称归类，避免同名不同 id 或名称解析差异把同一主任务拆散；
+    // 人员优先用 ownerId，空值时退回 owner 姓名，保证同一责任人的任务归到一组。
     const sorted = [...items].sort((a, b) => {
-      if (a.ownerId !== b.ownerId) return a.ownerId < b.ownerId ? -1 : 1
+      const oa = a.ownerId || a.owner || ''
+      const ob = b.ownerId || b.owner || ''
+      if (oa !== ob) return oa < ob ? -1 : 1
       const ae = a.mainTaskId === MT_NONE_ID ? 1 : 0
       const be = b.mainTaskId === MT_NONE_ID ? 1 : 0
       if (ae !== be) return ae - be
-      if (a.mainTaskName !== b.mainTaskName) return a.mainTaskName < b.mainTaskName ? -1 : 1
+      if (a.mainTaskId !== b.mainTaskId) return (a.mainTaskId || '') < (b.mainTaskId || '') ? -1 : 1
       const at = new Date(a.createdAt).getTime() || 0
       const bt = new Date(b.createdAt).getTime() || 0
       return bt - at
@@ -546,6 +550,7 @@ async function save() {
   if (!(form.target > 0)) return (formError.value = '目标必须为正数')
   if (!form.endDate) return (formError.value = '请选择计划结束日期')
   if (form.endDate < form.startDate) return (formError.value = '计划结束日期不能早于开始日期')
+  if (!form.description.trim()) return (formError.value = '任务描述不能为空')
 
   saving.value = true
   // 请求体使用后端约定的 snake_case 字段（见 docs/design.md §6.5）

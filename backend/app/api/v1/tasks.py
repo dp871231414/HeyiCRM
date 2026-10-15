@@ -128,7 +128,7 @@ def _enrich(db: Session, items: list[dict]) -> list[dict]:
             dept_names[did] = org_name(db, did)
         it["deptName"] = dept_names.get(did, "")
         it["createdByName"] = creators.get(str(it.get("createdById") or ""), "")
-        it["ownerId"] = owner_ids.get(it.get("owner") or "", "")
+        it["ownerId"] = owner_ids.get((it.get("owner") or "").strip(), "") or owner_ids.get(it.get("owner") or "", "")
         mt_id = str(it.get("mainTaskId") or "")
         it["mainTaskName"] = mt_names.get(mt_id, "")
         # 兼容旧字段：title 沿用主任务名（无主任务时为空）
