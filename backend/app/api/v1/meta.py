@@ -9,6 +9,7 @@ from app.constants import ORG_TYPE_PROJECT
 from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models import Organization, User
+from app.services.org_tree import market_tree_ids
 
 router = APIRouter(prefix="/meta", tags=["元数据"])
 
@@ -39,3 +40,31 @@ def owner_options(db: Session = Depends(get_db), user: User = Depends(get_curren
     """责任人候选：系统内启用状态的账号姓名。"""
     rows = db.scalars(select(User).where(User.status == "active").order_by(User.id)).all()
     return [{"id": u.id, "name": u.name, "deptId": u.dept_id} for u in rows]
+
+
+@router.get("/market-owners")
+def market_owner_options(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """项目管理（市场项目）负责人候选：仅市场部及其下属部门内的启用账号。
+
+    返回每个人员的直接所属部门（deptId / deptName），供前端「选负责人后自动带出所属部门」。
+    """
+    market_ids = market_tree_ids(db)
+    name_by_id = {o.id: o.name for o in db.scalars(select(Organization)).all()}
+    rows = (
+        db.execute(
+            select(User)
+            .where(User.status == "active", User.dept_id.in_(market_ids))
+            .order_by(User.dept_id, User.id)
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": u.id,
+            "name": u.name,
+            "deptId": u.dept_id,
+            "deptName": name_by_id.get(u.dept_id, ""),
+        }
+        for u in rows
+    ]

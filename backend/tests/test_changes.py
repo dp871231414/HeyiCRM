@@ -1196,7 +1196,12 @@ def test_market_menu_permission_required(client, admin_headers):
 
 
 def test_project_funnel_per_stage_and_forecast(client, admin_headers):
-    """漏斗按各阶段当前数量统计（stage == 该层），不向上累计；预测 = Σ 需求 × 各阶段概率。"""
+    """漏斗按各阶段当前数量统计（stage == 该层），不向上累计；预测 = Σ 需求 × 各阶段概率。
+
+    先按市场部人员清单重新生成，确保负责人全部落在市场子树内（漏斗口径与列表口径一致），
+    数据确定可复现。
+    """
+    assert client.post("/api/v1/market-projects/reseed", headers=admin_headers).status_code == 200
     items = client.get("/api/v1/market-projects", params={"size": 500}, headers=admin_headers).json()["items"]
     funnel = client.get("/api/v1/dashboard/project-funnel", headers=admin_headers).json()
     probs = {p["stage"]: p["prob"] for p in client.get("/api/v1/dashboard/funnel-config", headers=admin_headers).json()["probs"]}
@@ -1217,7 +1222,11 @@ def test_project_funnel_per_stage_and_forecast(client, admin_headers):
 
 
 def test_funnel_config_affects_forecast(client, admin_headers):
-    """转化概率整份保存、立即影响预测；非法配置被拒绝；测完还原。"""
+    """转化概率整份保存、立即影响预测；非法配置被拒绝；测完还原。
+
+    先按市场部人员清单重新生成，确保负责人全部落在市场子树内、统计口径一致。
+    """
+    assert client.post("/api/v1/market-projects/reseed", headers=admin_headers).status_code == 200
     cfg = client.get("/api/v1/dashboard/funnel-config", headers=admin_headers).json()["probs"]
     original = [{"stage": c["stage"], "prob": c["prob"]} for c in cfg]
     try:

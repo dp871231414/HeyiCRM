@@ -44,6 +44,10 @@ ORGS = [
     ("D09", "人事部", "dept", "CO", "何欣"),
     ("D10", "数智化部", "dept", "CO", "周涛"),
     ("D11", "法务部", "dept", "CO", "—"),
+    # 市场部的二级部门（经营驾驶舱「市场项目概览」筛选标签 + 项目管理负责人范围以此为准）。
+    # 系统默认市场部 D01 按 ID 锁定不可删除，但其下二级部门可自由增删。
+    ("D12", "市场1部", "team", "D01", "—"),
+    ("D13", "市场2部", "team", "D01", "—"),
     ("PC1", "合一重卡运营公司", "project", "CO", "李强"),
     ("PC2", "合一补能运营公司", "project", "CO", "周敏"),
     ("PC3", "合一车辆租赁公司", "project", "CO", "高翔"),
@@ -175,6 +179,10 @@ USERS = [
     ("U012", "李强", "liqiang", "PC1", "dept_head", "active"),
     ("U013", "周敏", "zhoumin", "PC2", "dept_head", "active"),
     ("U014", "高翔", "gaoxiang", "PC3", "dept_head", "active"),
+    # 市场部二级部门人员（与线上库一致，保证线上线下市场人员清单对齐）
+    ("U015", "胡启迪", "huqidi", "D12", "dept_head", "active"),
+    ("U016", "冯成志", "fengchengzhi", "D12", "member", "active"),
+    ("U017", "周春泉", "zhouchunquan", "D13", "dept_head", "active"),
 ]
 
 

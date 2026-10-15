@@ -6,6 +6,7 @@ import type {
   FunnelProbItem,
   ImportResult,
   LoginResult,
+  MarketOwner,
   MarketProjectItem,
   MeResult,
   MetricBoard,
@@ -28,6 +29,7 @@ export const metaApi = {
       (r) => r.data,
     ),
   owners: () => http.get<{ id: string; name: string; deptId: string }[]>('/meta/owners').then((r) => r.data),
+  marketOwners: () => http.get<MarketOwner[]>('/meta/market-owners').then((r) => r.data),
 }
 
 /* ---------------- 鉴权 ---------------- */
@@ -137,6 +139,8 @@ export const marketApi = {
   update: (id: string, payload: Record<string, unknown>) =>
     http.patch<MarketProjectItem>(`/market-projects/${id}`, payload).then((r) => r.data),
   remove: (id: string) => http.delete(`/market-projects/${id}`).then((r) => r.data),
+  /** 按市场部人员清单重新生成项目数据（删除全部后逐个重建） */
+  reseed: () => http.post<{ ok: boolean; msg: string; created: number }>('/market-projects/reseed').then((r) => r.data),
 }
 
 /* ---------------- 驾驶舱 ---------------- */
@@ -157,8 +161,12 @@ export const dashboardApi = {
         params: { ids: metricIds.join(','), org_id: orgId },
       })
       .then((r) => r.data),
-  /** 市场项目概览：三漏斗 + 加权销量预测（只按角色权限，不看数据范围） */
-  projectFunnel: () => http.get<ProjectFunnelResult>('/dashboard/project-funnel').then((r) => r.data),
+  /** 市场项目概览：三漏斗 + 加权销量预测（只按角色权限，不看数据范围）
+   *  dept 为二级部门 ID 时只统计该部门负责人的项目；为空（全部）统计市场部子树全部负责人。 */
+  projectFunnel: (dept?: string) =>
+    http
+      .get<ProjectFunnelResult>('/dashboard/project-funnel', { params: dept ? { dept } : {} })
+      .then((r) => r.data),
   funnelConfig: () =>
     http.get<{ probs: FunnelProbItem[] }>('/dashboard/funnel-config').then((r) => r.data),
   saveFunnelConfig: (probs: FunnelProbItem[]) =>

@@ -130,6 +130,30 @@
             配置转化概率
           </button>
         </div>
+
+        <!-- 筛选标签：全部 + 市场部各二级部门（动态读取，随组织变化同步更新） -->
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+          <span class="text-xs text-slate-400">按部门筛选</span>
+          <div class="inline-flex gap-0.5 p-0.5 rounded-lg bg-slate-100">
+            <button
+              class="px-2.5 py-1 rounded-md text-xs font-semibold transition-all duration-200 ease-out"
+              :class="funnelDept === '' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+              @click="setFunnelDept('')"
+            >
+              全部
+            </button>
+            <button
+              v-for="d in funnelDeptOptions"
+              :key="d.id"
+              class="px-2.5 py-1 rounded-md text-xs font-semibold transition-all duration-200 ease-out"
+              :class="funnelDept === d.id ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+              @click="setFunnelDept(d.id)"
+            >
+              {{ d.name }}
+            </button>
+          </div>
+          <span v-if="funnelDept" class="text-xs text-slate-400">当前：{{ funnelDeptName }}</span>
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <FunnelChart title="市场项目转化漏斗" :stages="funnel.stages" field="count" unit="个" />
           <FunnelChart title="车辆需求漏斗（牵引车）" :stages="funnel.stages" field="tractor" unit="辆" />
@@ -519,6 +543,17 @@ async function openDrilldown(row: MetricRow) {
 
 /** 市场项目概览：三漏斗 + 销量预测（与周期无关，随主加载并发取） */
 const funnel = ref<ProjectFunnelResult | null>(null)
+/** 市场项目概览的部门筛选：'' = 全部（市场部子树），否则为某二级部门 ID */
+const funnelDept = ref<string>('')
+/** 二级部门筛选标签：取自漏斗接口返回的 deptOptions，随组织变化同步更新 */
+const funnelDeptOptions = computed(() => funnel.value?.deptOptions ?? [])
+const funnelDeptName = computed(
+  () => funnelDeptOptions.value.find((d) => d.id === funnelDept.value)?.name ?? '',
+)
+function setFunnelDept(id: string) {
+  funnelDept.value = id
+  loadFunnel()
+}
 const probSummary = computed(
   () => (funnel.value?.stages ?? []).map((s) => `${Math.round(s.prob * 100)}%`).join(' / '),
 )
@@ -544,7 +579,7 @@ function resetFunnelCfg() {
 }
 
 async function loadFunnel() {
-  funnel.value = await dashboardApi.projectFunnel()
+  funnel.value = await dashboardApi.projectFunnel(funnelDept.value || undefined)
 }
 
 async function saveFunnelCfg() {
@@ -588,7 +623,7 @@ async function load() {
       dashboardApi.summary(view.period, view.orgId),
       dashboardApi.overview(view.period, view.orgId),
       dashboardApi.deptTaskStats(view.period, deptFilter.value),
-      dashboardApi.projectFunnel(),
+      dashboardApi.projectFunnel(funnelDept.value || undefined),
     ])
     // 并发加载时丢弃过期响应，避免先到的 403 覆盖后到的成功结果
     if (seq !== loadSeq) return

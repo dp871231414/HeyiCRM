@@ -11,13 +11,13 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.constants import MARKET_PROJECT_ID_PREFIX, MARKET_STAGE_VALUES, MARKET_STAGES
 from app.core.deps import require_perm
 from app.db.session import get_db
-from app.models import MarketProject, User
+from app.models import MarketProject, Organization, User
 from app.schemas.project import (
     MarketProjectCreate,
     MarketProjectListOut,
@@ -26,6 +26,7 @@ from app.schemas.project import (
 )
 from app.services import scope as scope_svc
 from app.services.audit import write_log
+from app.services.org_tree import market_tree_ids
 
 router = APIRouter(prefix="/market-projects", tags=["项目管理"])
 
@@ -57,6 +58,8 @@ def _to_dict(db: Session, p: MarketProject, creator_names: dict[str, str] | None
         "stage": int(p.stage),
         "stageLabel": _STAGE_LABELS.get(int(p.stage), ""),
         "owner": p.owner,
+        "ownerDeptId": p.owner_dept_id or "",
+        "ownerDeptName": "",
         "createdById": p.created_by or "",
         "createdByName": creator_names.get(p.created_by or "", ""),
         "createdAt": p.created_at.isoformat() if p.created_at else "",
@@ -72,6 +75,17 @@ def _enrich_creators(db: Session, items: list[dict]) -> list[dict]:
         names = {uid: name for uid, name in db.execute(select(User.id, User.name).where(User.id.in_(ids))).all()}
     for it in items:
         it["createdByName"] = names.get(it["createdById"], "")
+    return items
+
+
+def _enrich_owner_depts(db: Session, items: list[dict]) -> list[dict]:
+    """批量补齐负责人所属部门名称（选负责人后自动带出的「所属部门」展示用）。"""
+    ids = {it["ownerDeptId"] for it in items if it.get("ownerDeptId")}
+    names = {}
+    if ids:
+        names = {oid: name for oid, name in db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(ids))).all()}
+    for it in items:
+        it["ownerDeptName"] = names.get(it.get("ownerDeptId"), "")
     return items
 
 
@@ -106,6 +120,7 @@ def _apply_payload(p: MarketProject, payload) -> None:
     p.trailer_demand = int(payload.trailer_demand or 0)
     p.stage = int(payload.stage)
     p.owner = payload.owner.strip()
+    p.owner_dept_id = payload.owner_dept_id or None
 
 
 @router.get("", response_model=MarketProjectListOut)
@@ -128,7 +143,7 @@ def list_projects(
     total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     rows = list(db.scalars(q.order_by(MarketProject.id).limit(size).offset((page - 1) * size)).all())
     return {
-        "items": _enrich_creators(db, [_to_dict(db, p) for p in rows]),
+        "items": _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p) for p in rows])),
         "total": total,
         "page": page,
         "size": size,
@@ -138,7 +153,7 @@ def list_projects(
 @router.get("/{project_id}", response_model=MarketProjectOut)
 def get_project(project_id: str, db: Session = Depends(get_db), user: User = Depends(require_perm("market.view"))):
     p = _project_or_404(db, user, project_id)
-    return _enrich_creators(db, [_to_dict(db, p)])[0]
+    return _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))[0]
 
 
 @router.post("", response_model=MarketProjectOut, status_code=201)
@@ -155,7 +170,7 @@ def create_project(
     write_log(db, user, "create", "market_project", pid, {"name": p.name}, request)
     db.commit()
     db.refresh(p)
-    return _enrich_creators(db, [_to_dict(db, p)])[0]
+    return _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))[0]
 
 
 @router.patch("/{project_id}", response_model=MarketProjectOut)
@@ -171,7 +186,7 @@ def update_project(
     write_log(db, user, "update", "market_project", project_id, {"name": p.name}, request)
     db.commit()
     db.refresh(p)
-    return _enrich_creators(db, [_to_dict(db, p)])[0]
+    return _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))[0]
 
 
 @router.delete("/{project_id}")
@@ -186,3 +201,77 @@ def delete_project(
     write_log(db, user, "delete", "market_project", project_id, {"name": p.name}, request)
     db.commit()
     return {"ok": True, "msg": "已删除", "data": {"id": project_id}}
+
+
+@router.post("/reseed", status_code=200)
+def reseed_projects(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("market.edit")),
+):
+    """按市场部人员清单重新生成项目数据。
+
+    删除全部现有市场项目，再为「市场部及其下属部门」内的每个**启用**人员生成 1 个市场项目
+    （负责人 = 该人员，所属部门 = 其直接部门，阶段 / 牵引车 / 挂车需求按确定规则生成，
+    便于线上线下用同一套逻辑得到一致、无脏引用的数据）。
+
+    生成规则（确定性，与人员顺序无关地可复现）：
+    - 阶段按 MARKET_STAGE_VALUES 循环取（10→25→…→100→10…）
+    - 牵引车需求 = 20 + (序号 × 53) % 200（20~219 辆）
+    - 挂车需求 = 牵引车 × 3 // 5（约 0.6 倍）
+    项目 ID 沿用 MP 递增号段（清空后从 MP0001 起）。
+    """
+    from app.constants import MARKET_STAGE_VALUES
+
+    # 1) 清空现有项目（含其审计引用由数据库外键置空处理）
+    #    会话 autoflush=False，DELETE 已立即执行；此处再 flush 一次，确保后续 next_project_id
+    #    读到的「最大已用 ID」是清空后的状态，而不残留旧号段。
+    db.execute(delete(MarketProject))
+    db.flush()
+
+    # 2) 取市场部子树内的启用人员，按部门 + 账号稳定排序
+    market_ids = market_tree_ids(db)
+    users = (
+        db.execute(
+            select(User)
+            .where(User.status == "active", User.dept_id.in_(market_ids))
+            .order_by(User.dept_id, User.id)
+        )
+        .scalars()
+        .all()
+    )
+
+    created = 0
+    for idx, u in enumerate(users):
+        stage = MARKET_STAGE_VALUES[idx % len(MARKET_STAGE_VALUES)]
+        tractor = 20 + (idx * 53) % 200
+        trailer = tractor * 3 // 5
+        pid = next_project_id(db)
+        p = MarketProject(
+            id=pid,
+            name=f"{u.name}负责的市场项目",
+            description=f"系统按市场部人员清单自动生成（负责人 {u.name}）",
+            tractor_demand=tractor,
+            trailer_demand=trailer,
+            stage=stage,
+            owner=u.name,
+            owner_dept_id=u.dept_id,
+            created_by=user.id,
+        )
+        db.add(p)
+        # 立即 flush：让下一轮 next_project_id 读到本行已写入的 ID（会话 autoflush=False，
+        # 不清空也会因读不到刚插入的行而重复生成 MP0001，导致主键冲突）。
+        db.flush()
+        created += 1
+
+    db.commit()
+    write_log(
+        db,
+        user,
+        "reseed",
+        "market_project",
+        "global",
+        {"deleted": "all", "created": created, "marketUsers": len(users)},
+        request,
+    )
+    return {"ok": True, "msg": f"已按 {len(users)} 名市场部人员重新生成 {created} 个项目", "created": created}

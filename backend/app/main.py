@@ -27,6 +27,18 @@ async def lifespan(_: FastAPI):
 
     Base.metadata.create_all(bind=engine)
     logger.info("数据库表已就绪")
+
+    # 兼容已上线但模型后续新增列的旧库：market_project.owner_dept_id 是后来补的字段，
+    # 旧库（dev.db / 线上 app.db）建表时还没有它。这里在启动时为缺失列做一次 ALTER，
+    # 避免查询该列报 "no such column"。全新库由 create_all 直接带列，跳过。
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(market_project)")).fetchall()}
+        if "owner_dept_id" not in existing:
+            conn.execute(text("ALTER TABLE market_project ADD COLUMN owner_dept_id VARCHAR(16)"))
+            logger.info("已为 market_project 补列 owner_dept_id")
+
     yield
 
 

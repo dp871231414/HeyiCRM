@@ -9,7 +9,8 @@
       </select>
       <button class="btn-ghost" @click="applyFilters">查询</button>
 
-      <div class="ml-auto">
+      <div class="ml-auto flex items-center gap-2">
+        <button v-if="auth.hasPerm('market.edit')" class="btn-ghost" @click="confirmReseed = true">重新生成</button>
         <button v-if="auth.hasPerm('market.edit')" class="btn-primary" @click="openForm()">新建项目</button>
       </div>
     </div>
@@ -37,6 +38,7 @@
               <th class="th w-[100px] text-right">挂车需求</th>
               <th class="th w-[150px]">项目阶段</th>
               <th class="th w-[90px]">负责人</th>
+              <th class="th w-[120px]">所属部门</th>
               <th class="th w-[90px]">创建人</th>
               <th class="th w-[140px]">创建时间</th>
               <th class="th w-[140px]">更新时间</th>
@@ -58,6 +60,7 @@
                 <span class="chip border" :class="STAGE_CHIP[p.stage]">{{ p.stage }}% {{ p.stageLabel }}</span>
               </td>
               <td class="td">{{ p.owner }}</td>
+              <td class="td text-slate-500">{{ p.ownerDeptName || '—' }}</td>
               <td class="td text-slate-500">{{ p.createdByName || '—' }}</td>
               <td class="td text-xs text-slate-500">{{ fmtTime(p.createdAt) }}</td>
               <td class="td text-xs text-slate-500">{{ fmtTime(p.updatedAt) }}</td>
@@ -98,9 +101,14 @@
         </div>
         <div>
           <label class="label">负责人<span class="req">*</span></label>
-          <select v-model="form.owner" class="input">
-            <option v-for="o in owners" :key="o.id" :value="o.name">{{ o.name }}</option>
+          <select v-model="form.owner" class="input" @change="onOwnerChange">
+            <option value="" disabled>请选择负责人</option>
+            <option v-for="o in marketOwners" :key="o.id" :value="o.name">{{ o.name }}（{{ o.deptName }}）</option>
           </select>
+        </div>
+        <div>
+          <label class="label">所属部门<span class="text-slate-400 font-normal">（选负责人后自动带出）</span></label>
+          <input :value="form.ownerDeptName" class="input bg-slate-50" disabled placeholder="选择负责人后自动带出" />
         </div>
         <div>
           <label class="label">牵引车需求数（辆）</label>
@@ -133,6 +141,19 @@
         <button class="btn-danger" @click="doDelete">确认删除</button>
       </template>
     </ModalDialog>
+
+    <!-- 重新生成确认 -->
+    <ModalDialog :open="confirmReseed" title="重新生成项目数据" width="sm" @close="confirmReseed = false">
+      <p class="text-sm text-slate-600">
+        将删除全部现有市场项目，并按当前「市场部及其下属部门」人员清单重新生成。该操作不可撤销。
+      </p>
+      <template #footer>
+        <button class="btn-ghost" @click="confirmReseed = false">取消</button>
+        <button class="btn-danger" :disabled="reseeding" @click="doReseed">
+          {{ reseeding ? '生成中…' : '确认重新生成' }}
+        </button>
+      </template>
+    </ModalDialog>
   </div>
 </template>
 
@@ -144,12 +165,15 @@ import ModalDialog from '@/components/ModalDialog.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { MARKET_STAGE_LABELS, type MarketProjectItem, type MarketStage } from '@/types'
+import { MARKET_STAGE_LABELS, type MarketOwner, type MarketProjectItem, type MarketStage } from '@/types'
 
 const auth = useAuthStore()
 const app = useAppStore()
 
 const STAGES: MarketStage[] = [10, 25, 50, 75, 90, 100]
+
+/** 系统默认市场部 ID · 与后端 DEFAULT_MARKET_DEPT_ID 对应（用于负责人范围提示文案） */
+const MARKET_DEPT_ID = 'D01'
 
 /** 阶段徽章配色：由浅入深，与驾驶舱漏斗色阶一致 */
 const STAGE_CHIP: Record<number, string> = {
@@ -166,7 +190,8 @@ const total = ref(0)
 const loading = ref(false)
 const keyword = ref('')
 const stageFilter = ref<number | ''>('')
-const owners = ref<{ id: string; name: string }[]>([])
+/** 负责人候选：仅市场部及其下属部门内的启用账号 */
+const marketOwners = ref<MarketOwner[]>([])
 
 const PAGE_SIZE = 50
 const page = ref(1)
@@ -194,10 +219,14 @@ const form = reactive({
   description: '',
   stage: 10 as MarketStage,
   owner: '',
+  ownerDeptId: '',
+  ownerDeptName: '',
   tractorDemand: 0,
   trailerDemand: 0,
 })
 const deleteTarget = ref<MarketProjectItem | null>(null)
+const confirmReseed = ref(false)
+const reseeding = ref(false)
 
 async function load() {
   loading.value = true
@@ -232,22 +261,28 @@ function goPage(n: number) {
 function openForm(p?: MarketProjectItem) {
   formError.value = ''
   if (p) {
+    const owner = marketOwners.value.find((o) => o.name === p.owner)
     Object.assign(form, {
       id: p.id,
       name: p.name,
       description: p.description,
       stage: p.stage,
       owner: p.owner,
+      ownerDeptId: p.ownerDeptId ?? owner?.deptId ?? '',
+      ownerDeptName: p.ownerDeptName || owner?.deptName || '',
       tractorDemand: p.tractorDemand,
       trailerDemand: p.trailerDemand,
     })
   } else {
+    const first = marketOwners.value[0]
     Object.assign(form, {
       id: '',
       name: '',
       description: '',
       stage: 10,
-      owner: owners.value[0]?.name ?? auth.user?.name ?? '',
+      owner: first?.name ?? auth.user?.name ?? '',
+      ownerDeptId: first?.deptId ?? MARKET_DEPT_ID,
+      ownerDeptName: first?.deptName ?? '',
       tractorDemand: 0,
       trailerDemand: 0,
     })
@@ -255,11 +290,19 @@ function openForm(p?: MarketProjectItem) {
   formOpen.value = true
 }
 
+/** 选择负责人后，自动带出其直接所属部门（二级/三级部门均可） */
+function onOwnerChange() {
+  const o = marketOwners.value.find((x) => x.name === form.owner)
+  form.ownerDeptId = o?.deptId ?? ''
+  form.ownerDeptName = o?.deptName ?? ''
+}
+
 async function save() {
   formError.value = ''
   if (!form.name) return (formError.value = '项目名称不能为空')
   if (!(form.tractorDemand >= 0) || !(form.trailerDemand >= 0)) return (formError.value = '需求数不能为负')
   if (!form.owner) return (formError.value = '请选择负责人')
+  if (!form.ownerDeptId) return (formError.value = '请选择市场部及下属部门的负责人')
 
   saving.value = true
   // 请求体使用后端约定的 snake_case 字段
@@ -270,6 +313,7 @@ async function save() {
     trailer_demand: form.trailerDemand,
     stage: form.stage,
     owner: form.owner,
+    owner_dept_id: form.ownerDeptId,
   }
   try {
     if (form.id) await marketApi.update(form.id, payload)
@@ -296,9 +340,23 @@ async function doDelete() {
   }
 }
 
+async function doReseed() {
+  reseeding.value = true
+  try {
+    const r = await marketApi.reseed()
+    app.toast(r.msg || '已重新生成项目数据')
+    confirmReseed.value = false
+    await load()
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  } finally {
+    reseeding.value = false
+  }
+}
+
 onMounted(async () => {
   try {
-    owners.value = await metaApi.owners()
+    marketOwners.value = await metaApi.marketOwners()
   } catch {
     /* 忽略字典加载失败 */
   }

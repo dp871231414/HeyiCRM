@@ -103,8 +103,16 @@ def test_create_and_delete_dept(client, admin_headers):
     assert deleted.status_code == 200
 
 
-def test_delete_dept_with_users_blocked(client, admin_headers):
+def test_delete_market_dept_locked(client, admin_headers):
+    # 系统默认市场部（D01）按 ID 锁定，无论是否有账号都不允许删除
     resp = client.delete("/api/v1/orgs/D01", headers=admin_headers)
+    assert resp.status_code == 409
+    assert "市场部" in resp.json()["detail"]
+
+
+def test_delete_dept_with_users_blocked(client, admin_headers):
+    # 其它部门（如 D02 资产部）有账号时仍按原规则拦截
+    resp = client.delete("/api/v1/orgs/D02", headers=admin_headers)
     assert resp.status_code == 409
     assert "账号" in resp.json()["detail"]
 

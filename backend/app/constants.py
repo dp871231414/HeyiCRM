@@ -124,6 +124,10 @@ METRIC_GROUP_META: dict[str, dict] = {
 # 全公司（根组织）ID · 公司整体指标的归属组织
 COMPANY_ORG_ID = "CO"
 
+# 系统默认市场部 ID · 按 ID 锁定，不可删除（名称可改、负责人可改）。
+# 经营驾驶舱「市场项目概览」的二级部门筛选、项目管理负责人范围都以它为根。
+DEFAULT_MARKET_DEPT_ID = "D01"
+
 # 组织类型
 ORG_TYPE_COMPANY = "company"
 ORG_TYPE_DEPT = "dept"

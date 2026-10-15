@@ -7,7 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.constants import ORG_TYPE_COMPANY, ORG_TYPE_DEPT, ORG_TYPE_PROJECT, ORG_TYPE_TEAM
+from app.constants import (
+    DEFAULT_MARKET_DEPT_ID,
+    ORG_TYPE_COMPANY,
+    ORG_TYPE_DEPT,
+    ORG_TYPE_PROJECT,
+    ORG_TYPE_TEAM,
+)
 from app.core.deps import require_perm
 from app.db.session import get_db
 from app.models import MetricActual, MetricTarget, Organization, Task, User
@@ -198,6 +204,9 @@ def delete_org(
     org = db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="组织不存在")
+    # 系统默认市场部：按 ID 锁定，不可删除（名称与负责人仍可修改）
+    if org.id == DEFAULT_MARKET_DEPT_ID:
+        raise HTTPException(status_code=409, detail="市场部为系统默认部门，不可删除，仅可修改名称与负责人")
     if org.type == ORG_TYPE_COMPANY:
         raise HTTPException(status_code=409, detail="全公司为根节点，不可删除")
     if org.type == ORG_TYPE_PROJECT:

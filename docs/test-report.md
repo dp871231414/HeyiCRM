@@ -1019,4 +1019,78 @@ verify-round12 断言同步适配：`svg polygon` → `div.funnel-bar`（6 个�
 | D-37 | 验收里 PATCH 任务责任人返回 422 | `TaskUpdate` 全量必填且为 snake_case，直接展开 camelCase 的 `TaskOut` 回传导致缺字段 | 显式逐字段构造 payload |
 | D-38 | 脚本按「全公司」文本定位可见范围下拉误匹配 | 组织清单里也有名为「全公司」的公司节点 | 改用 `select:has(option[value="all"])` 唯一定位 |
 | D-39 | 导入文件硬编码「市场部 / 普通成员」，本地跑通、线上整批校验失败 | 本地 `dev.db` 与线上库部门名称不一致（本地「市场部」vs 线上「市场1部」） | 新增 `tools/gen_account_import.py`，以接口下载的真实模板为底稿，套用模板自带清单取值 |
+
+---
+
+## 二十二、第十四轮变更测试（2026-10-15）
+
+### 22.1 需求背景
+
+用户提出四项改动：①组织结构中「市场部」按 ID 锁定不可删除（名称可改、系统定义为默认市场部）；
+②经营驾驶舱「市场项目概览」增加「全部 / 市场二级部门」筛选标签，随组织变化同步；
+③项目管理负责人仅可填市场部及下属部门人员，并自动带出所属部门；
+④更新后删除现有项目数据，按当前市场部人员清单重新生成。
+
+数据策略（用户确认）：先读线上库保持一致，添加市场人员账号后，删除现有项目、按新市场人员清单重新造数，
+线上线下处理逻辑与最终数据口径一致。
+
+### 22.2 后端用例（122 项，含本轮新增 5 项）
+
+全量 `cd backend && .venv/bin/python -m pytest -q` → **122 passed**（上轮 116 → 本轮 122）。
+
+本轮新增 `tests/test_market_dept.py`（5 项）覆盖四项改动：
+
+| 用例 | 断言要点 | 结果 |
+|---|---|---|
+| `test_market_dept_locked` | D01 删除返回 409「市场部」；名称仍可改（改后还原） | ✅ |
+| `test_market_sub_departments_exist` | D01 下存在 市场1部(D12) / 市场2部(D13) | ✅ |
+| `test_market_owners_only_market_tree` | `/meta/market-owners` 仅返回市场子树账号且带部门名；不含赵国强(资产部) | ✅ |
+| `test_funnel_dept_filter` | reseed 后全部口径 > 单二级部门口径；deptOptions 动态返回 D12/D13 | ✅ |
+| `test_reseed_regenerates_from_market_personnel` | reseed 生成数 = 市场人员数；每个项目均带 ownerDeptId 且 owner 在市场清单 | ✅ |
+
+`test_changes.py` 两个漏斗用例（`test_project_funnel_per_stage_and_forecast` /
+`test_funnel_config_affects_forecast`）改写为「当前阶段口径」并先 `reseed` 取确定性数据。
+
+### 22.3 前端构建与类型
+
+`npm run build`（`vue-tsc --noEmit` + `vite build`）通过，无类型错误。
+
+### 22.4 浏览器验收（`tools/verify-round14.mjs`，23 项）
+
+本地 23/23 通过，控制台 0 错误，非预期 HTTP 错误 0：
+
+| 维度 | 检查 | 结果 |
+|---|---|---|
+| 市场部锁定 | 列表显示「默认市场部 · 不可删除」与「🔒 锁定」；删除接口 409 且原因含「市场部」；二级部门仍可编辑 | ✅ |
+| 漏斗筛选 | 含「按部门筛选」标签与 全部/市场1部/市场2部；选中二级部门显示「当前：市场1部」；全部口径(5) > 单部门口径(2)；deptOptions 动态返回 D12/D13 | ✅ |
+| 负责人限定 | 负责人下拉含 胡启迪（市场1部）等市场人员、不含赵国强；选胡启迪带出「市场1部」、改选周春泉带出「市场2部」 | ✅ |
+| 重新生成 | 弹「重新生成项目数据」确认框；确认后项目数 = 市场人员数(5) 且均带所属部门 | ✅ |
+
+### 22.5 本轮修复的缺陷
+
+| 编号 | 缺陷 | 影响 | 处理 |
+|---|---|---|---|
+| D-40 | `reseed` 循环内 `next_project_id` 每次都返回 MP0001 | `UNIQUE constraint failed: market_project.id`，重生成整批失败 | 清空后 `db.flush()`、循环内每轮 `db.add` 后 `db.flush()`（会话 `autoflush=False`） |
+| D-41 | 两个漏斗回归用例断言口径与 `build_funnel`「当前阶段口径」不符 | 用例失败 | 改写为当前阶段口径 + 先 reseed 取确定性数据 |
+
+### 22.6 复现命令
+
+```bash
+# 后端（122 项）
+cd backend && .venv/bin/python -m pytest -q
+
+# 前端类型检查 + 生产构建
+cd frontend && npm run build
+
+# 浏览器验收（23 项；需后端可访问，默认 http://127.0.0.1:8000）
+cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round14.mjs
+```
+
+### 22.7 发布前数据处置
+
+- 本地 `dev.db`：删除旧库后 `python -m app.seed` 重建（含 D12/D13/U015-017 与新 `owner_dept_id` 列），再经 verify 内 reseed 落成 5 个市场项目。
+- 线上 `app.db`：发布后启动期 `main.py` 的 `PRAGMA ALTER` 自动补 `owner_dept_id` 列；线上既有 D12/D13/市场人员保留，
+  发布后需对线上执行一次 reseed（经「项目管理 → 重新生成」或接口）清掉旧脏数据、按线上 3 名市场人员重生成。
+- 口径一致：本地 5 人 / 线上 3 人的差异源于环境既有人员，处理逻辑与最终数据生成规则一致。
+
 | D-40 | 验收结束线上残留一个删不掉的「导入乙」账号 | 脚本先删账号、后还原引用，顺序颠倒导致被引用账号删不掉 | 改为先 PATCH 还原任务责任人再删账号；新增「无残留账号」断言 |

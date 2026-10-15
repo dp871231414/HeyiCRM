@@ -83,15 +83,23 @@ def dept_task_stats(
 
 
 @router.get("/project-funnel")
-def project_funnel(db: Session = Depends(get_db), user: User = Depends(require_perm("dashboard.view"))):
+def project_funnel(
+    dept: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("dashboard.view")),
+):
     """市场项目概览：三漏斗（项目数 / 牵引车需求 / 挂车需求）+ 加权销量预测。
 
     只按角色权限开放，不做数据范围裁剪（与驾驶舱其他模块同一口径）。
-    漏斗为累计口径（stage ≥ 该层即计入），预测按项目各自阶段的转化概率加权。
+    漏斗为各阶段当前数量口径（不向上累计），预测按项目各自阶段的转化概率加权。
+
+    `dept`：筛选标签对应的二级部门 ID（市场部的直接子部门）。不传或为空时展示
+    「全部」——市场部及其下属部门全体负责人名下的项目；返回值里的 `deptOptions`
+    即市场部当前全部二级部门，供前端渲染筛选标签，随组织变化同步更新。
     """
     from app.services.funnel import build_funnel
 
-    return build_funnel(db)
+    return build_funnel(db, dept_id=dept or None)
 
 
 @router.get("/funnel-config")

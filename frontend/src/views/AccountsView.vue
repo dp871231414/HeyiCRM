@@ -107,15 +107,20 @@
             <span class="w-2 h-2 rounded-full shrink-0" :class="o.type === 'company' ? 'bg-brand-600' : o.type === 'dept' ? 'bg-brand-300' : 'bg-slate-300'" />
             <span class="text-sm font-semibold text-slate-800">{{ o.name }}</span>
             <span class="text-[11px] text-slate-400">{{ o.id }}</span>
+            <span
+              v-if="o.id === MARKET_DEPT_ID"
+              class="chip border border-brand-200 bg-brand-50 text-brand-700"
+              title="系统默认市场部，按 ID 锁定不可删除，名称与负责人仍可修改"
+            >默认市场部 · 不可删除</span>
             <span class="text-xs text-slate-500">负责人 {{ o.head }}</span>
             <span class="text-[11px] text-slate-400">账号 {{ o.userCount }} · 任务 {{ o.taskCount }}</span>
 
             <div v-if="auth.hasPerm('account.edit')" class="ml-auto flex items-center gap-1.5">
               <button class="btn-ghost btn-sm" @click="openOrgForm(null, o.id)">+ 子部门</button>
-              <!-- 公司节点（全公司）同样可编辑名称与负责人；删除仍不允许 -->
+              <!-- 公司节点（全公司）与系统默认市场部同样可编辑名称与负责人；删除仍不允许 -->
               <button class="btn-ghost btn-sm" @click="openOrgForm(o)">编辑</button>
               <button
-                v-if="o.type !== 'company'"
+                v-if="o.type !== 'company' && o.id !== MARKET_DEPT_ID"
                 class="btn-danger btn-sm"
                 :disabled="o.userCount > 0 || o.childCount > 0"
                 :title="deleteReason(o)"
@@ -123,6 +128,11 @@
               >
                 删除
               </button>
+              <span
+                v-else-if="o.id === MARKET_DEPT_ID"
+                class="chip bg-slate-100 text-slate-400 cursor-not-allowed"
+                title="系统默认市场部，不允许删除"
+              >🔒 锁定</span>
             </div>
           </li>
         </ul>
@@ -447,6 +457,9 @@ const download = downloadFile
 
 const auth = useAuthStore()
 const app = useAppStore()
+
+/** 系统默认市场部 ID · 与后端 DEFAULT_MARKET_DEPT_ID 对应，按 ID 锁定不可删除 */
+const MARKET_DEPT_ID = 'D01'
 
 const tabs: { key: 'users' | 'org' | 'roles'; label: string }[] = [
   { key: 'users', label: '账号' },

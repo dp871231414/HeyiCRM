@@ -13,6 +13,8 @@ class MarketProjectOut(BaseModel):
     stage: int
     stageLabel: str = ""
     owner: str
+    ownerDeptId: str | None = None
+    ownerDeptName: str = ""
     # 系统自动记录，只读（不接受前端写入）
     createdById: str = ""
     createdByName: str = ""
@@ -27,6 +29,7 @@ class MarketProjectCreate(BaseModel):
     trailer_demand: int = Field(default=0, ge=0, description="挂车需求数（辆）")
     stage: int = Field(description="项目阶段：10/25/50/75/90/100")
     owner: str = Field(min_length=1, max_length=32, description="负责人")
+    owner_dept_id: str | None = Field(default=None, description="负责人直接所属部门（选负责人后自动带出）")
 
 
 class MarketProjectUpdate(BaseModel):
@@ -36,6 +39,7 @@ class MarketProjectUpdate(BaseModel):
     trailer_demand: int = Field(default=0, ge=0)
     stage: int
     owner: str = Field(min_length=1, max_length=32)
+    owner_dept_id: str | None = Field(default=None, description="负责人直接所属部门（选负责人后自动带出）")
 
 
 class MarketProjectListOut(BaseModel):

@@ -273,10 +273,20 @@ export interface MarketProjectItem {
   stage: MarketStage
   stageLabel: string
   owner: string
+  ownerDeptId: string
+  ownerDeptName: string
   createdById: string
   createdByName: string
   createdAt: string
   updatedAt: string
+}
+
+/** 市场部人员（项目管理负责人候选） */
+export interface MarketOwner {
+  id: string
+  name: string
+  deptId: string
+  deptName: string
 }
 
 export interface FunnelStageStat {
@@ -284,17 +294,19 @@ export interface FunnelStageStat {
   label: string
   /** 该阶段的转化概率（0~1），默认与阶段百分比一致 */
   prob: number
-  /** 累计口径：stage ≥ 该层的项目数 */
+  /** 当前阶段口径：仅 stage == 该层的项目数（不向上累计） */
   count: number
-  /** 累计口径：stage ≥ 该层的牵引车需求数 */
+  /** 当前阶段口径：stage == 该层的牵引车需求数 */
   tractor: number
-  /** 累计口径：stage ≥ 该层的挂车需求数 */
+  /** 当前阶段口径：stage == 该层的挂车需求数 */
   trailer: number
 }
 
 export interface ProjectFunnelResult {
   stages: FunnelStageStat[]
   forecast: { tractor: number; trailer: number }
+  /** 市场部直接子部门（二级部门）列表，供「市场项目概览」筛选标签渲染 */
+  deptOptions: { id: string; name: string }[]
 }
 
 export interface FunnelProbItem {
