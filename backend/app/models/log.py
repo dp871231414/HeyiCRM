@@ -37,11 +37,31 @@ class Task(Base):
     end_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     dept_id: Mapped[str] = mapped_column(String(16), ForeignKey("organization.id"), nullable=False, index=True)
     owner: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    main_task_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("main_task.id"), nullable=True, index=True
+    )
     created_by: Mapped[str | None] = mapped_column(String(16), ForeignKey("user.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class MainTask(Base):
+    """主任务（原「任务分类」）· 单独建表，支持下拉选择与动态新增。
+
+    - id：系统生成、不可变（改名只改 name，不动 id）；
+    - name：选项名，可修改；
+    - is_system：系统默认主任务「空」(id=MT_NONE) 标记，始终存在，任务未选主任务时默认关联它。
+    """
+
+    __tablename__ = "main_task"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    created_by: Mapped[str | None] = mapped_column(String(16), ForeignKey("user.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class OperationLog(Base):

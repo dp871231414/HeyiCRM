@@ -18,7 +18,7 @@ from app.config import settings
 from app.constants import ORG_TYPE_TEAM
 from app.core.deps import get_user_perms, require_perm
 from app.db.session import get_db
-from app.models import Organization, Task, User
+from app.models import MainTask, Organization, Task, User
 from app.schemas.common import ImportResult
 from app.schemas.task import DeptTaskStat, TaskCreate, TaskListOut, TaskOut, TaskUpdate
 from app.services import scope as scope_svc
@@ -97,10 +97,10 @@ def _task_or_404(db: Session, user: User, task_id: str) -> Task:
 
 
 def _enrich(db: Session, items: list[dict]) -> list[dict]:
-    """批量补齐展示用名称：责任部门名 + 创建人名。
+    """批量补齐展示用名称：责任部门名 + 创建人名 + 主任务名 + 责任人 ID。
 
-    创建人由 created_by（用户 ID）解析为姓名，供列表与导出直接展示；
-    组织名与用户名都做去重缓存，避免逐条查询造成 N+1。
+    创建人由 created_by（用户 ID）解析为姓名，责任人与其 user.id 也一并补齐
+    （分组视图需按人员 ID 排序）；组织名、用户名、主任务名都做去重缓存，避免 N+1。
     """
     dept_names: dict[str, str] = {}
     creator_ids = {str(it.get("createdById") or "") for it in items} - {""}
@@ -110,12 +110,30 @@ def _enrich(db: Session, items: list[dict]) -> list[dict]:
             uid: name
             for uid, name in db.execute(select(User.id, User.name).where(User.id.in_(creator_ids))).all()
         }
+    # 责任人姓名 → user.id（用于分组视图「按人员 ID 排序」）
+    owner_ids: dict[str, str] = {
+        name: uid for uid, name in db.execute(select(User.id, User.name)).all()
+    }
+    # 主任务名映射
+    mt_ids = {str(it.get("mainTaskId") or "") for it in items} - {""}
+    mt_names: dict[str, str] = {}
+    if mt_ids:
+        mt_names = {
+            mid: name
+            for mid, name in db.execute(select(MainTask.id, MainTask.name).where(MainTask.id.in_(mt_ids))).all()
+        }
     for it in items:
         did = str(it.get("deptId") or "")
         if did and did not in dept_names:
             dept_names[did] = org_name(db, did)
         it["deptName"] = dept_names.get(did, "")
         it["createdByName"] = creators.get(str(it.get("createdById") or ""), "")
+        it["ownerId"] = owner_ids.get(it.get("owner") or "", "")
+        mt_id = str(it.get("mainTaskId") or "")
+        it["mainTaskName"] = mt_names.get(mt_id, "")
+        # 兼容旧字段：title 沿用主任务名（无主任务时为空）
+        if it.get("title") is None:
+            it["title"] = it["mainTaskName"]
     return items
 
 
@@ -304,6 +322,10 @@ def get_task(task_id: str, db: Session = Depends(get_db), user: User = Depends(r
     return _enrich(db, [task_to_dict(task)])[0]
 
 
+# 系统默认主任务：任务未选择主任务时默认关联它
+MT_NONE_ID = "MT_NONE"
+
+
 def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
     org = db.get(Organization, payload.dept_id)
     if not org:
@@ -315,8 +337,14 @@ def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
         raise HTTPException(status_code=422, detail="日期格式应为 2026-10-01") from exc
     if end < start:
         raise HTTPException(status_code=422, detail="计划结束日期不能早于计划开始日期")
+    # 主任务：不选择 → 默认关联系统「空」；选择 → 校验存在
+    mt_id = payload.main_task_id or MT_NONE_ID
+    mt = db.get(MainTask, mt_id)
+    if not mt:
+        raise HTTPException(status_code=422, detail="主任务不存在")
     task.parent = payload.parent.strip()
-    task.title = (payload.title or "").strip() or None
+    task.title = mt.name  # 冗余存储，便于旧查询 / 导出兼容
+    task.main_task_id = mt_id
     task.description = payload.description
     task.abnormal = bool(payload.abnormal)
     task.target = Decimal(str(payload.target))

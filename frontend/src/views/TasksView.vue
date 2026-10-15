@@ -31,15 +31,11 @@
             :class="groupByDept ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
             @click="switchView(true)"
           >
-            按部门分组
+            分组视图
           </button>
         </div>
-        <button class="btn-ghost" @click="download(taskApi.templateUrl(), '重点任务导入标准模板.xlsx')">下载模板</button>
         <button class="btn-ghost" @click="download(taskApi.exportUrl(), '重点任务清单.xlsx')">导出</button>
-        <label v-if="auth.hasPerm('task.import')" class="btn-ghost cursor-pointer">
-          批量导入
-          <input type="file" accept=".xlsx" class="hidden" @change="onImport" />
-        </label>
+        <button v-if="auth.hasPerm('task.import')" class="btn-ghost" @click="importOpen = true">批量导入</button>
         <button v-if="auth.hasPerm('task.edit')" class="btn-primary" @click="openForm()">新建任务</button>
       </div>
     </div>
@@ -66,7 +62,7 @@
             <tr class="border-b border-slate-200">
               <th class="th col-id w-[96px]">任务ID</th>
               <th class="th col-name w-[240px]">任务名称</th>
-              <th class="th w-[140px]">任务分类</th>
+              <th class="th w-[140px]">主任务</th>
               <th class="th w-[100px]">责任人</th>
               <th class="th w-[120px]">责任部门</th>
               <th class="th w-[100px]">创建人</th>
@@ -110,7 +106,7 @@
                 <td class="td col-name">
                   <div class="font-semibold text-slate-800 truncate" :title="row.task.parent">{{ row.task.parent }}</div>
                 </td>
-                <td class="td text-slate-500">{{ row.task.title || '—' }}</td>
+                <td class="td text-slate-500">{{ row.task.mainTaskName || '空' }}</td>
                 <td class="td">{{ row.task.owner }}</td>
                 <td class="td">{{ row.task.deptName }}</td>
                 <td class="td text-slate-500">{{ row.task.createdByName || '—' }}</td>
@@ -162,8 +158,27 @@
           <input v-model.trim="form.parent" class="input" placeholder="如：完成全年营收目标 10.2 亿" />
         </div>
         <div>
-          <label class="label">任务分类</label>
-          <input v-model.trim="form.title" class="input" placeholder="如：华东大区营收达成（可留空）" />
+          <label class="label">主任务<span class="text-slate-400 font-normal">（不选默认「空」）</span></label>
+          <div v-if="addingMainTask" class="flex items-center gap-2">
+            <input
+              v-model.trim="newMainTaskName"
+              class="input"
+              placeholder="输入新主任务名称"
+              @keyup.enter="confirmAddMainTask"
+            />
+            <button class="btn-ghost" :disabled="addingMainTaskBusy" @click="confirmAddMainTask">
+              {{ addingMainTaskBusy ? '创建中…' : '确定' }}
+            </button>
+            <button class="btn-ghost" @click="addingMainTask = false">取消</button>
+          </div>
+          <div v-else class="flex items-center gap-2">
+            <select v-model="form.mainTaskId" class="input">
+              <option v-for="m in mainTasks" :key="m.id" :value="m.id">{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</option>
+            </select>
+            <button v-if="auth.hasPerm('task.edit')" class="btn-ghost whitespace-nowrap" @click="addingMainTask = true">
+              + 新增
+            </button>
+          </div>
         </div>
         <div>
           <label class="label">责任人<span class="req">*</span></label>
@@ -235,33 +250,45 @@
       </template>
     </ModalDialog>
 
-    <!-- 导入结果 -->
-    <ModalDialog :open="importOpen" title="批量导入结果" width="lg" @close="importOpen = false">
-      <div v-if="importResult">
-        <p class="text-sm" :class="importResult.imported ? 'text-good-700' : 'text-bad-700'">
-          {{ importResult.imported ? `成功导入 ${importResult.imported} 行。` : '存在错误行，本次未写入任何数据。' }}
+    <!-- 批量导入（含下载模板 + 上传 + 结果） -->
+    <ModalDialog :open="importOpen" title="批量导入" width="lg" @close="importOpen = false">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-500">
+          先下载标准模板填写，再上传。模板中「任务分类」列会对应到主任务（主任务不存在时自动新建）。
         </p>
-        <div v-if="importResult.errors.length" class="mt-3 max-h-72 overflow-y-auto border border-slate-200 rounded-lg">
-          <table class="w-full">
-            <thead class="sticky top-0">
-              <tr>
-                <th class="th w-20">行号</th>
-                <th class="th w-40">字段</th>
-                <th class="th">错误说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(e, i) in importResult.errors" :key="i" class="border-b border-slate-100 bg-bad-50/40">
-                <td class="td">{{ e.row }}</td>
-                <td class="td text-bad-700 font-semibold">{{ e.field }}</td>
-                <td class="td whitespace-normal">{{ e.msg }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="btn-ghost" @click="download(taskApi.templateUrl(), '重点任务导入标准模板.xlsx')">下载模板</button>
+          <label v-if="auth.hasPerm('task.import')" class="btn-primary cursor-pointer">
+            选择文件导入
+            <input type="file" accept=".xlsx" class="hidden" @change="onImport" />
+          </label>
+        </div>
+        <div v-if="importResult">
+          <p class="text-sm" :class="importResult.imported ? 'text-good-700' : 'text-bad-700'">
+            {{ importResult.imported ? `成功导入 ${importResult.imported} 行。` : '存在错误行，本次未写入任何数据。' }}
+          </p>
+          <div v-if="importResult.errors.length" class="mt-3 max-h-72 overflow-y-auto border border-slate-200 rounded-lg">
+            <table class="w-full">
+              <thead class="sticky top-0">
+                <tr>
+                  <th class="th w-20">行号</th>
+                  <th class="th w-40">字段</th>
+                  <th class="th">错误说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(e, i) in importResult.errors" :key="i" class="border-b border-slate-100 bg-bad-50/40">
+                  <td class="td">{{ e.row }}</td>
+                  <td class="td text-bad-700 font-semibold">{{ e.field }}</td>
+                  <td class="td whitespace-normal">{{ e.msg }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
       <template #footer>
-        <button class="btn-primary" @click="importOpen = false">知道了</button>
+        <button class="btn-primary" @click="importOpen = false">关闭</button>
       </template>
     </ModalDialog>
   </div>
@@ -270,14 +297,17 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 
-import { downloadFile, metaApi, taskApi } from '@/api'
+import { downloadFile, mainTaskApi, metaApi, taskApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import type { ImportResult, TaskItem } from '@/types'
+import type { ImportResult, MainTask, TaskItem } from '@/types'
 import { fmt } from '@/utils/format'
+
+/** 系统默认主任务 ID（与后端 MT_NONE 约定一致）：任务未选主任务时默认关联它 */
+const MT_NONE_ID = 'MT_NONE'
 
 const auth = useAuthStore()
 const app = useAppStore()
@@ -290,6 +320,12 @@ const deptFilter = ref('')
 const statusFilter = ref('')
 const orgs = ref<{ id: string; name: string; depth: number }[]>([])
 const owners = ref<{ id: string; name: string }[]>([])
+/** 主任务（原任务分类）下拉选项 */
+const mainTasks = ref<MainTask[]>([])
+/** 新增主任务内联输入 */
+const addingMainTask = ref(false)
+const addingMainTaskBusy = ref(false)
+const newMainTaskName = ref('')
 
 /** 视图模式：false=平铺列表，true=按部门分组（每组带小标题） */
 const groupByDept = ref(false)
@@ -334,23 +370,34 @@ const rows = computed<TaskRow[]>(() => {
   }
   const out: TaskRow[] = []
   for (const [k, items] of buckets) {
-    const pc = Math.max(1, Math.ceil(items.length / GROUP_PAGE_SIZE))
+    // 分组视图排序：部门内 → 按人员 ID 升序 → 同人员按主任务（无主任务排最后）→ 创建时间倒序
+    const sorted = [...items].sort((a, b) => {
+      if (a.ownerId !== b.ownerId) return a.ownerId < b.ownerId ? -1 : 1
+      const ae = a.mainTaskId === MT_NONE_ID ? 1 : 0
+      const be = b.mainTaskId === MT_NONE_ID ? 1 : 0
+      if (ae !== be) return ae - be
+      if (a.mainTaskName !== b.mainTaskName) return a.mainTaskName < b.mainTaskName ? -1 : 1
+      const at = new Date(a.createdAt).getTime() || 0
+      const bt = new Date(b.createdAt).getTime() || 0
+      return bt - at
+    })
+    const pc = Math.max(1, Math.ceil(sorted.length / GROUP_PAGE_SIZE))
     const cur = Math.min(Math.max(1, groupPages[k] ?? 1), pc)
     out.push({
       kind: 'group',
       key: `g:${k}`,
       deptId: k,
-      deptName: items[0]?.deptName || '未指定部门',
-      count: items.length,
+      deptName: sorted[0]?.deptName || '未指定部门',
+      count: sorted.length,
       page: cur,
       pageCount: pc,
     })
     const start = (cur - 1) * GROUP_PAGE_SIZE
-    for (const t of items.slice(start, start + GROUP_PAGE_SIZE)) {
+    for (const t of sorted.slice(start, start + GROUP_PAGE_SIZE)) {
       out.push({ kind: 'task', key: t.id, task: t })
     }
     // 每个部门都带分页器（只有一页时按钮为禁用态），页序与总数在分页器里体现
-    out.push({ kind: 'pager', key: `p:${k}`, deptId: k, page: cur, pageCount: pc, total: items.length })
+    out.push({ kind: 'pager', key: `p:${k}`, deptId: k, page: cur, pageCount: pc, total: sorted.length })
   }
   return out
 })
@@ -373,7 +420,7 @@ const formError = ref('')
 const form = reactive({
   id: '',
   parent: '',
-  title: '',
+  mainTaskId: '',
   description: '',
   abnormal: false,
   target: 1,
@@ -385,6 +432,11 @@ const form = reactive({
   deptId: '',
   owner: '',
 })
+
+/** 系统默认主任务 ID（用于新建任务未选主任务时回填） */
+function defaultMainTaskId(): string {
+  return mainTasks.value.find((m) => m.isSystem)?.id ?? MT_NONE_ID
+}
 
 const deleteTarget = ref<TaskItem | null>(null)
 const importOpen = ref(false)
@@ -456,7 +508,7 @@ function openForm(t?: TaskItem) {
     Object.assign(form, {
       id: t.id,
       parent: t.parent,
-      title: t.title ?? '',
+      mainTaskId: t.mainTaskId || defaultMainTaskId(),
       description: t.description,
       abnormal: t.abnormal,
       target: Number(t.target),
@@ -472,7 +524,7 @@ function openForm(t?: TaskItem) {
     Object.assign(form, {
       id: '',
       parent: '',
-      title: '',
+      mainTaskId: defaultMainTaskId(),
       description: '',
       abnormal: false,
       target: 1,
@@ -499,7 +551,7 @@ async function save() {
   // 请求体使用后端约定的 snake_case 字段（见 docs/design.md §6.5）
   const payload = {
     parent: form.parent,
-    title: form.title || null,
+    main_task_id: form.mainTaskId || null,
     description: form.description,
     abnormal: form.abnormal,
     target: form.target,
@@ -521,6 +573,27 @@ async function save() {
     formError.value = (e as Error).message
   } finally {
     saving.value = false
+  }
+}
+
+/** 新增主任务：调接口创建，刷新下拉并自动选中 */
+async function confirmAddMainTask() {
+  const name = newMainTaskName.value.trim()
+  if (!name) {
+    formError.value = '主任务名称不能为空'
+    return
+  }
+  addingMainTaskBusy.value = true
+  try {
+    const created = await mainTaskApi.create(name)
+    mainTasks.value = [...mainTasks.value, created].sort((a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name))
+    form.mainTaskId = created.id
+    newMainTaskName.value = ''
+    addingMainTask.value = false
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  } finally {
+    addingMainTaskBusy.value = false
   }
 }
 
@@ -560,7 +633,12 @@ async function onImport(e: Event) {
 
 onMounted(async () => {
   try {
-    ;[orgs.value, owners.value] = await Promise.all([metaApi.orgs(), metaApi.owners()])
+    const [orgsRes, ownersRes, mtRes] = await Promise.all([metaApi.orgs(), metaApi.owners(), mainTaskApi.list()])
+    orgs.value = orgsRes
+    owners.value = ownersRes
+    mainTasks.value = mtRes.sort(
+      (a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name, 'zh'),
+    )
   } catch {
     /* 忽略字典加载失败 */
   }

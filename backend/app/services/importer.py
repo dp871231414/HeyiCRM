@@ -21,7 +21,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.constants import SCOPES, TASK_ID_PREFIX
-from app.models import MetricActual, MetricDef, Organization, Role, Task, User
+from app.models import MainTask, MetricActual, MetricDef, Organization, Role, Task, User
+
+# 系统默认主任务：导入时「任务分类」留空则归到它
+MT_NONE_ID = "MT_NONE"
 
 # ------------------------------------------------------------------ 模板列定义
 #
@@ -520,16 +523,44 @@ def next_task_id(db: Session) -> str:
     return f"{prefix}{max_seq + 1:04d}"
 
 
+def next_main_task_id(db: Session) -> str:
+    """生成下一个主任务 ID：MT + 4 位自增序号（系统默认 MT_NONE 不参与序号）。"""
+    rows = db.scalars(select(MainTask.id)).all()
+    max_seq = 0
+    for mid in rows:
+        m = re.fullmatch(r"MT(\d+)", mid or "")
+        if m:
+            max_seq = max(max_seq, int(m.group(1)))
+    return f"MT{max_seq + 1:04d}"
+
+
+def _resolve_main_task(db: Session, name: str, user: User) -> MainTask:
+    """按名称解析主任务：命中则返回，否则以导入者身份新建（「任务分类」即主任务名）。"""
+    name = (name or "").strip()
+    if not name:
+        mt = db.get(MainTask, MT_NONE_ID)
+        return mt  # 系统默认「空」必定存在（seed 已建）
+    existing = db.scalar(select(MainTask).where(MainTask.name == name))
+    if existing:
+        return existing
+    mt = MainTask(id=next_main_task_id(db), name=name, created_by=user.id)
+    db.add(mt)
+    db.flush()
+    return mt
+
+
 def import_tasks(db: Session, rows: list[dict], user: User) -> int:
     for r in rows:
         dept_raw = r["责任部门"]
         org = db.scalar(select(Organization).where(Organization.id == dept_raw))
         if not org:
             org = db.scalar(select(Organization).where(Organization.name == dept_raw))
+        mt = _resolve_main_task(db, r.get("任务分类", ""), user)
         task = Task(
             id=next_task_id(db),
             parent=r["任务名称"],
-            title=r.get("任务分类") or None,
+            title=mt.name if mt else None,
+            main_task_id=mt.id if mt else MT_NONE_ID,
             description=r.get("任务描述", ""),
             abnormal=r.get("是否异常") == "是",
             target=Decimal(str(r["目标"])),
@@ -598,13 +629,21 @@ def export_tasks(db: Session, rows: list[Task]) -> bytes:
     _style_header(ws, HEADER_ROW, TASK_EXPORT_COLUMNS)
 
     user_names = {u.id: u.name for u in db.scalars(select(User)).all()}
+    # 主任务名解析（按 ID → 名称），「空」输出为空串以便回灌时重新归到默认
+    mt_ids = {t.main_task_id for t in rows if t.main_task_id}
+    mt_names = (
+        {mid: name for mid, name in db.execute(select(MainTask.id, MainTask.name).where(MainTask.id.in_(mt_ids))).all()}
+        if mt_ids
+        else {}
+    )
     for t in rows:
         d = task_to_dict(t)
+        main_name = mt_names.get(t.main_task_id, "") if t.main_task_id else ""
         ws.append(
             [
                 d["id"],
                 d["parent"],
-                d["title"] or "",
+                main_name,
                 d["description"],
                 "是" if d["abnormal"] else "否",
                 d["target"],

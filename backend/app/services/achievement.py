@@ -377,6 +377,7 @@ def task_to_dict(task) -> dict:
         "id": task.id,
         "parent": task.parent,
         "title": task.title,
+        "mainTaskId": task.main_task_id or "",
         "description": task.description,
         "abnormal": bool(task.abnormal),
         "target": target,

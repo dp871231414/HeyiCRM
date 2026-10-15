@@ -8,6 +8,9 @@ class TaskOut(BaseModel):
     id: str
     parent: str
     title: str | None = None
+    # 主任务（原「任务分类」）：下拉选择，单独建表；不选择时默认关联系统「空」
+    mainTaskId: str = ""
+    mainTaskName: str = ""
     description: str = ""
     abnormal: bool = False
     target: float
@@ -19,6 +22,7 @@ class TaskOut(BaseModel):
     deptId: str
     deptName: str = ""
     owner: str
+    ownerId: str = ""
     progress: int = 0
     daysLeft: int | None = None
     statusLevel: str = "normal"
@@ -32,7 +36,7 @@ class TaskOut(BaseModel):
 
 class TaskCreate(BaseModel):
     parent: str = Field(min_length=1, max_length=128, description="任务名称")
-    title: str | None = Field(default=None, max_length=128, description="任务分类")
+    main_task_id: str | None = Field(default=None, description="主任务ID；不传则默认关联系统「空」")
     description: str = ""
     abnormal: bool = False
     target: float = Field(gt=0)
@@ -47,7 +51,7 @@ class TaskCreate(BaseModel):
 
 class TaskUpdate(BaseModel):
     parent: str = Field(min_length=1, max_length=128)
-    title: str | None = Field(default=None, max_length=128)
+    main_task_id: str | None = Field(default=None, description="主任务ID；不传则默认关联系统「空」")
     description: str = ""
     abnormal: bool = False
     target: float = Field(gt=0)

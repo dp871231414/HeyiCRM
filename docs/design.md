@@ -182,7 +182,8 @@
 |---|---|---|
 | id | varchar(32) PK | 任务ID，T202601… |
 | parent | varchar(128) | 任务名称 |
-| title | varchar(128) nullable | 任务分类，可空 |
+| title | varchar(128) nullable | **冗余字段**：= 主任务名称（兼容旧查询/导出，不再作为自由文本分类） |
+| main_task_id | varchar(32) FK→main_task.id | 关联主任务；为空时回落到系统默认「空」(MT_NONE) |
 | description | text | 任务描述 |
 | abnormal | bool | 人工异常标记，默认 false |
 | target | numeric(18,2) | 目标，非量化填 1 |
@@ -193,6 +194,24 @@
 | dept_id | varchar(16) FK | 责任部门 |
 | owner | varchar(32) | 责任人姓名 |
 | created_by / created_at / updated_at | | 审计 |
+
+### 5.5a `main_task` 主任务（独立字典表，round 15 新增）
+
+任务分类从自由文本升级为后台独立存储的「主任务」字典。前端下拉选择、支持新增；每个主任务有不可变 ID 与可改名名称。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | varchar(32) PK | 主任务ID，格式 `MT` + 4 位序号（MT0001…）；**创建后不可变** |
+| name | varchar(128) unique | 主任务名称（即选项名），可修改 |
+| created_by | varchar(16) FK→user.id | 创建人 |
+| created_at | datetime | 创建时间 |
+| is_system | bool | 是否系统内置。系统内置项 `MT_NONE`（名称「空」）由 seed 默认创建，表示「未选择主任务」 |
+
+**关键规则**
+- 创建任务时不传 `main_task_id` → 默认关联 `MT_NONE`（名称「空」）。
+- 主任务改名只改 `name`，`id` 不变；历史任务通过外键保留关联。
+- 批量导入时「任务分类」列按名称匹配；不存在则自动新建主任务（记录创建人/时间）。
+- 重名新增 → 409；改名时排除自身查重。
 
 **计算列（不落库）**
 ```
@@ -297,13 +316,23 @@
 |---|---|---|
 | GET | `/tasks?keyword=&dept_id=&status=&page=&size=` | 列表（服务端按可见范围过滤） |
 | GET | `/tasks/{id}` | 详情 |
-| POST | `/tasks` | 新建（自动生成任务ID） |
-| PATCH | `/tasks/{id}` | 编辑 |
+| POST | `/tasks` | 新建（自动生成任务ID）；`main_task_id` 选填，不传默认 `MT_NONE` |
+| PATCH | `/tasks/{id}` | 编辑（可改 `main_task_id`） |
 | DELETE | `/tasks/{id}` | 删除（需 task.delete 权限） |
 | GET | `/tasks/dept-stats?period=` | 部门任务完成度聚合（SQL GROUP BY） |
-| GET | `/tasks/import/template` | 下载任务导入模板 |
+| GET | `/tasks/import/template` | 下载任务导入模板（「任务分类」列对应主任务，不存在自动新建） |
 | POST | `/tasks/import` | multipart，返回 `{imported, errors[]}` |
 | GET | `/tasks/export` | 导出当前可见任务 xlsx |
+
+**列表/分组视图**：前端在「平铺列表」与「按部门分组」两种视图间切换。分组视图排序规则——部门内先按人员 ID 升序，同人员按主任务名称升序（无主任务的 `MT_NONE` 排最后），同规则下按创建时间倒序。
+
+### 6.5a 主任务字典（round 15 新增）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/main-tasks` | 列表（系统「空」置顶，其余按名称排序），供前端下拉 |
+| POST | `/main-tasks` | 新增 `{name}` → 生成 `MT` 序号 ID，记录 created_by；重名 409 |
+| PATCH | `/main-tasks/{id}` | 改名 `{name}`（ID 不变，排除自身查重） |
 
 ### 6.5b 项目管理（市场项目/商机）
 

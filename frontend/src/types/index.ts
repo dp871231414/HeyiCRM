@@ -197,6 +197,9 @@ export interface TaskItem {
   id: string
   parent: string
   title: string | null
+  /** 主任务（原「任务分类」）：下拉选择，单独建表 */
+  mainTaskId: string
+  mainTaskName: string
   description: string
   abnormal: boolean
   target: number
@@ -208,6 +211,7 @@ export interface TaskItem {
   deptId: string
   deptName: string
   owner: string
+  ownerId: string
   progress: number
   daysLeft: number | null
   statusLevel: 'done' | 'overdue' | 'due_soon' | 'normal' | 'risk'
@@ -217,6 +221,16 @@ export interface TaskItem {
   createdByName: string
   createdAt: string
   updatedAt: string
+}
+
+/** 主任务（下拉选项）。系统默认「空」始终存在，任务未选主任务时默认关联它 */
+export interface MainTask {
+  id: string
+  name: string
+  createdAt: string
+  createdBy: string
+  createdByName: string
+  isSystem: boolean
 }
 
 export interface DeptTaskStat {

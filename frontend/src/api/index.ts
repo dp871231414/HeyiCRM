@@ -6,6 +6,7 @@ import type {
   FunnelProbItem,
   ImportResult,
   LoginResult,
+  MainTask,
   MarketOwner,
   MarketProjectItem,
   MeResult,
@@ -105,6 +106,13 @@ export const metricApi = {
       .then((r) => r.data)
   },
   templateUrl: () => '/api/v1/metrics/import/template',
+}
+
+/* ---------------- 主任务（原任务分类） ---------------- */
+export const mainTaskApi = {
+  list: () => http.get<MainTask[]>('/main-tasks').then((r) => r.data),
+  create: (name: string) => http.post<MainTask>('/main-tasks', { name }).then((r) => r.data),
+  rename: (id: string, name: string) => http.patch<MainTask>(`/main-tasks/${id}`, { name }).then((r) => r.data),
 }
 
 /* ---------------- 任务 ---------------- */

@@ -1094,3 +1094,61 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round14.mjs
 - 口径一致：本地 5 人 / 线上 3 人的差异源于环境既有人员，处理逻辑与最终数据生成规则一致。
 
 | D-40 | 验收结束线上残留一个删不掉的「导入乙」账号 | 脚本先删账号、后还原引用，顺序颠倒导致被引用账号删不掉 | 改为先 PATCH 还原任务责任人再删账号；新增「无残留账号」断言 |
+
+## 二十三、第十五轮变更测试（2026-10-15）
+
+### 23.1 需求背景
+
+用户提出四项改动（任务管理模块）：
+
+1. **任务分类 → 主任务**：改造为后台独立字典表，支持下拉选择与新增选项；创建任务新增主任务时记录主任务 ID、名称、创建时间、创建人；主任务名称可改但 ID 不变；不选主任务则默认关联系统内置「空」(`MT_NONE`)。
+2. **下载任务并入批量导入弹窗**：新增「批量导入」弹窗，原独立「下载模板」入口移入该弹窗内（含下载模板 + 上传 + 结果）。
+3. **视图切换更名**：列表 / 按部门分组 切换按钮改为「列表 / 分组视图」。
+4. **分组视图排序**：按部门分组 → 部门内按人员 ID 升序 → 同人员按主任务排序（无主任务 `MT_NONE` 排最后）→ 创建时间倒序。
+
+### 23.2 设计与实现要点
+
+- 新增 `main_task` 表（`id=MT+4位序号` PK、`name` unique、`created_by`、`created_at`、`is_system`）。`Task` 表加 `main_task_id` 外键，`title` 降级为冗余字段（=主任务名，兼容旧查询/导出）。
+- 系统内置 `MT_NONE`（名称「空」）由 `seed.ensure_main_task_none` 默认创建；旧库 `title` 非空任务经 `backfill_task_main_tasks` 回填主任务（空→MT_NONE），幂等。
+- `seed.main()` 在 `create_all` 之后、`seed()` 之前补 `main_task_id` 列（与 `main.py` 启动期 PRAGMA ALTER 一致），保证「先 seed 再起 uvicorn」的旧库升级路径可用。
+- 路由：`GET/POST /main-tasks`、`PATCH /main-tasks/{id}`（改名 ID 不变、排除自身查重、重名 409）；任务 `POST/PATCH` 的 `main_task_id` 选填，不传回落 `MT_NONE`。
+- 批量导入 `importer` 按名称解析主任务（不存在自动新建）；导出按 id 反查主任务名。
+- 前端 `TasksView`：主任务下拉 + 内联新增；`rows` computed 严格实现四级排序；工具栏「列表 / 分组视图」切换；新「批量导入」弹窗内嵌下载模板。
+
+### 23.3 后端用例（129 项，新增 7 项）
+
+全量 `cd backend && PYTHONPATH=. /Users/gavin/.workbuddy/binaries/python/envs/fleet/bin/python -m pytest -q` → **129 passed**（上轮 122 → 本轮 129）。
+
+> 注：本机后端依赖装在托管环境 `fleet`（`/Users/gavin/.workbuddy/binaries/python/envs/fleet`），仓库内无 `.venv`；且端口 8011 被无关项目 notebase 占用，本地验证改用 8012。
+
+本轮新增 `tests/test_main_tasks.py`（7 项）：
+
+| 用例 | 断言要点 | 结果 |
+|---|---|---|
+| `test_main_tasks_list_has_system_none_first` | 列表首位为 `{isSystem:true, id:MT_NONE, name:空}`；演示主任务已建 | ✅ |
+| `test_create_main_task` | 新增生成 `MT` 前缀 ID + 记录 createdBy | ✅ |
+| `test_create_main_task_duplicate_409` | 重名返回 409 | ✅ |
+| `test_rename_main_task_keeps_id` | 改名后 ID 不变 | ✅ |
+| `test_task_create_links_main_task` | 带 `main_task_id` 创建，返回 mainTaskId/mainTaskName/ownerId 正确 | ✅ |
+| `test_task_create_defaults_to_none` | 不传 `main_task_id` 默认 MT_NONE | ✅ |
+| `test_task_list_exposes_main_task_fields` | 列表暴露 mainTaskId/mainTaskName/ownerId（T202601→华东大区营收达成 + ownerId） | ✅ |
+
+### 23.4 接口联调（管理员 Token，端口 8012）
+
+| 场景 | 请求 | 验证结果 |
+|---|---|---|
+| 主任务列表 | `GET /api/v1/main-tasks` | 15 项，首位 `MT_NONE/空/isSystem=true`；演示主任务带 createdBy=U001 ✅ |
+| 新增主任务 | `POST /api/v1/main-tasks {"name":"试点项目推进"}` | 返回 `MT0015` + createdBy=U001 ✅ |
+| 改名（ID 不变） | `PATCH /api/v1/main-tasks/MT0015 {"name":"…（改）"}` | id 保持 MT0015，name 更新 ✅ |
+| 重名 | 同上再建「华东大区营收达成」 | 409 ✅ |
+| 建任务（带主任务） | `POST /api/v1/tasks` + `main_task_id=MT0002` | mainTaskId=MT0002、mainTaskName=华南大区营收达成、ownerId=U006 ✅ |
+| 建任务（不带） | `POST /api/v1/tasks`（无 main_task_id） | mainTaskId=MT_NONE、mainTaskName=空 ✅ |
+
+### 23.5 前端构建与类型
+
+`npm run build`（`vue-tsc --noEmit` + `vite build`）通过（124 模块，TasksView 产物 19.83 kB）；`frontend/dist` 已同步至 `backend/static` 供发布。
+
+### 23.6 待办 / 发布
+
+- 文档：`design.md` 已补 §5.5a `main_task` 表与 §6.5a 主任务接口、§6.5 任务列表/分组视图说明；本记录已补。
+- 发布：按用户约定「每轮发布需当轮确认」，待用户确认后 `workbuddy_sites_deploy`（directory=backend/，language=python，startCmd=`bash start.sh`，domainPrefix=heyi-fleet-dashboard）；发布后启动期 seed 已含补列逻辑，线上旧库升级无障碍。

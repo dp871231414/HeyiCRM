@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from datetime import date
 from decimal import Decimal
@@ -18,6 +19,7 @@ from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.models import (
+    MainTask,
     MarketProject,
     MetricActual,
     MetricDef,
@@ -28,6 +30,10 @@ from app.models import (
     Task,
     User,
 )
+
+# 系统默认主任务：任务未选择主任务时默认关联它（始终存在，id 固定不可变）
+MT_NONE_ID = "MT_NONE"
+MT_NONE_NAME = "空"
 
 SEED_PASSWORD = os.getenv("SEED_PASSWORD", "123456")
 
@@ -190,6 +196,55 @@ def _d(s: str) -> date:
     return date.fromisoformat(s)
 
 
+# ---------------------------------------------------------------- 主任务（原「任务分类」）
+
+
+def next_main_task_id(db: Session) -> str:
+    """生成下一个主任务 ID：MT + 4 位自增序号（系统默认 MT_NONE 不参与序号）。"""
+    rows = db.scalars(select(MainTask.id)).all()
+    max_seq = 0
+    for mid in rows:
+        m = re.fullmatch(r"MT(\d+)", mid or "")
+        if m:
+            max_seq = max(max_seq, int(m.group(1)))
+    return f"MT{max_seq + 1:04d}"
+
+
+def get_or_create_main_task(db: Session, name: str, created_by: str | None = None) -> MainTask:
+    """按名称取主任务，不存在则新建（名称唯一）。"""
+    existing = db.scalar(select(MainTask).where(MainTask.name == name))
+    if existing:
+        return existing
+    mt = MainTask(id=next_main_task_id(db), name=name, created_by=created_by)
+    db.add(mt)
+    db.flush()
+    return mt
+
+
+def ensure_main_task_none(db: Session) -> None:
+    """确保系统默认主任务「空」(MT_NONE) 存在。"""
+    if not db.scalar(select(MainTask).where(MainTask.id == MT_NONE_ID)):
+        db.add(MainTask(id=MT_NONE_ID, name=MT_NONE_NAME, created_by=None, is_system=True))
+        db.flush()
+
+
+def backfill_task_main_tasks(db: Session) -> int:
+    """数据迁移：把 main_task_id 为空的任务按原 title 回填主任务（幂等，仅处理空值）。
+
+    升级旧库时，已有任务没有主任务关联；这里以原「任务分类」文本对应到主任务，
+    文本为空则归到系统默认「空」。返回回填条数。
+    """
+    nulls = db.scalars(select(Task).where(Task.main_task_id.is_(None))).all()
+    if not nulls:
+        return 0
+    for t in nulls:
+        if t.title:
+            t.main_task_id = get_or_create_main_task(db, t.title, created_by=t.created_by).id
+        else:
+            t.main_task_id = MT_NONE_ID
+    return len(nulls)
+
+
 def seed(db: Session, reset: bool = False) -> dict:
     if reset:
         for model in (OperationLog, MetricActual, MetricTarget, Task, MarketProject, User, Role, MetricDef, Organization):
@@ -247,17 +302,29 @@ def seed(db: Session, reset: bool = False) -> dict:
                 created["actuals"] += 1
 
     # 任务同样只在首次初始化时灌入（见上：清空后不应被重启"复活"）
+    ensure_main_task_none(db)
     if first_init and not db.scalar(select(Task).limit(1)):
+        # 演示任务各自的「任务分类」对应为主任务（按名称建表），建立 名称→id 映射
+        title_to_mt: dict[str, str] = {}
         for t in TASKS:
+            title = t["title"]
+            if title and title not in title_to_mt:
+                title_to_mt[title] = get_or_create_main_task(db, title, created_by="U001").id
+        for t in TASKS:
+            mt_id = title_to_mt.get(t["title"]) or MT_NONE_ID
             db.add(
                 Task(
-                    id=t["id"], parent=t["parent"], title=t["title"], description=t["description"],
+                    id=t["id"], parent=t["parent"], title=t["title"], main_task_id=mt_id,
+                    description=t["description"],
                     abnormal=t["abnormal"], target=Decimal(str(t["target"])), done=Decimal(str(t["done"])),
                     unit=t["unit"], note=t["note"], start_date=_d(t["start"]), end_date=_d(t["end"]),
                     dept_id=t["dept"], owner=t["owner"], created_by="U001",
                 )
             )
             created["tasks"] += 1
+
+    # 数据迁移：升级旧库时，把 main_task_id 为空的任务按原「任务分类」回填主任务
+    created["mainTasksBackfilled"] = backfill_task_main_tasks(db)
 
     # 市场项目同理：只在首次初始化时灌入演示数据
     if first_init and not db.scalar(select(MarketProject).limit(1)):
@@ -278,6 +345,14 @@ def seed(db: Session, reset: bool = False) -> dict:
 def main() -> None:
     reset = "--reset" in sys.argv
     Base.metadata.create_all(bind=engine)
+    # 兼容已上线但模型后续新增列的旧库：create_all 只建表不补列，这里对缺失列做一次 ALTER。
+    # 必须放在 seed 之前 —— start.sh 先 seed 再起 uvicorn，否则 backfill 会报 "no such column"。
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        existing = {r[1] for r in conn.execute(text("PRAGMA table_info(task)")).fetchall()}
+        if "main_task_id" not in existing:
+            conn.execute(text("ALTER TABLE task ADD COLUMN main_task_id VARCHAR(32)"))
     with SessionLocal() as db:
         created = seed(db, reset=reset)
     print(f"[seed] 完成（reset={reset}）: {created}")
