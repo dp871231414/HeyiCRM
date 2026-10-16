@@ -1212,6 +1212,6 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round14.mjs
 
 ### 24.7 提交与发布
 
-- **提交**：round 16 拆两次提交 —— `cd90972`（p1：#1 任务描述必填 + #3 分组排序修复）；本轮 #2 主任务扩展与下拉改造（待提交）。
-- **发布**：#2 实现后需用户当轮确认再 `workbuddy_sites_deploy`（目录 `backend/`、startCmd `bash start.sh`，复用既有 app）。
-- 发布前将移除本地 `app.db` 验证残留（`seed --reset` 不清 `main_task` 表，已手工清理验证产生的临时主任务），`frontend/dist` 已同步 `backend/static`。
+- **提交**：round 16 拆两次提交 —— `cd90972`（p1：#1 任务描述必填 + #3 分组排序修复）；`da66eca`（#2 主任务扩展与下拉改造）。
+- **发布（已上线，2026-10-16）**：用户指令「部署上线」→ `workbuddy_sites_deploy`（目录 `backend/`、language=python、startCmd `bash start.sh`、domainPrefix `heyi-fleet-dashboard`，复用既有 app）。部署后内部校验通过；本地 `curl https://heyi-fleet-dashboard.app.workbuddy.host/api/health` 返回 **200**。
+- 发布前已移除本地 `app.db` 验证残留（`seed --reset` 不清 `main_task` 表，已手工清理验证产生的临时主任务），`frontend/dist` 已同步 `backend/static`。
