@@ -247,6 +247,25 @@ body {
   box-shadow: -6px 0 12px -8px rgba(15, 23, 42, 0.18);
 }
 
+/* 项目管理：项目名称列冻结（紧邻项目ID右侧，参考任务管理的冻结列做法）。
+   left 与 .col-id(min-width:96px) 对齐，避免滚动时 ID 与名称之间露出空隙。 */
+.col-pname {
+  position: sticky;
+  left: 96px;
+  z-index: 2;
+  min-width: 320px;
+}
+.table-freeze .col-pname {
+  background: #fff;
+}
+.table-freeze thead .col-pname {
+  z-index: 3;
+  background: #f8fafc;
+}
+.table-freeze tbody tr:hover .col-pname {
+  background: #f5f8ff;
+}
+
 /* ===== 行高（按账号记忆，登陆后仍生效） =====
    default 默认；high 2X；ultra 3X。高/超高模式下字体折行，超出部分按行数用（…）截断。
    固定行高统一作用于所有行（含短内容列），切换后整表行高一次性调整。 */

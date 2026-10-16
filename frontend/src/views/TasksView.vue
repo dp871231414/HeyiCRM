@@ -75,12 +75,12 @@
               <th class="th w-[307px]">进展描述</th>
               <th class="th w-[100px]">责任人</th>
               <th class="th w-[120px]">责任部门</th>
-              <th class="th w-[100px]">创建人</th>
               <th class="th w-[100px] text-right">目标</th>
               <th class="th w-[110px] text-right">已完成</th>
               <th class="th w-[130px]">完成进度</th>
               <th class="th w-[110px]">状态</th>
               <th class="th w-[180px]">计划起止</th>
+              <th class="th w-[100px]">创建人</th>
               <th class="th w-[140px]">创建时间</th>
               <th class="th w-[140px]">更新时间</th>
               <th class="th col-ops w-[160px] text-right">操作</th>
@@ -124,7 +124,6 @@
                 </td>
                 <td class="td">{{ row.task.owner }}</td>
                 <td class="td">{{ row.task.deptName }}</td>
-                <td class="td text-slate-500">{{ row.task.createdByName || '—' }}</td>
                 <td class="td text-right font-mono">{{ fmt(row.task.target) }}<span class="text-[11px] text-slate-400 ml-0.5">{{ row.task.unit }}</span></td>
                 <td class="td text-right font-mono">{{ fmt(row.task.done) }}</td>
                 <td class="td">
@@ -137,6 +136,7 @@
                 </td>
                 <td class="td"><StatusBadge :status="row.task.statusLevel" :text="row.task.statusLabel" /></td>
                 <td class="td text-xs text-slate-500">{{ row.task.startDate }} ~ {{ row.task.endDate }}</td>
+                <td class="td text-slate-500">{{ row.task.createdByName || '—' }}</td>
                 <td class="td text-xs text-slate-500">{{ fmtTime(row.task.createdAt) }}</td>
                 <td class="td text-xs text-slate-500">{{ fmtTime(row.task.updatedAt) }}</td>
                 <td class="td col-ops text-right whitespace-nowrap">

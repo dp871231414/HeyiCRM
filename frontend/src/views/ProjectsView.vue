@@ -37,11 +37,11 @@
       <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
       <div v-else-if="!projects.length" class="p-10 text-center text-slate-400 text-sm">暂无项目</div>
       <div v-else class="overflow-x-auto">
-        <table :class="rowHeightClass" class="w-full min-w-[1960px]">
+        <table :class="rowHeightClass" class="table-freeze table-fixed w-[1936px]">
           <thead>
             <tr class="border-b border-slate-200">
-              <th class="th w-[90px]">项目ID</th>
-              <th class="th w-[320px]">项目名称</th>
+              <th class="th col-id w-[96px]">项目ID</th>
+              <th class="th col-pname w-[320px]">项目名称</th>
               <th class="th w-[460px]">项目描述</th>
               <th class="th w-[110px] text-right">牵引车需求</th>
               <th class="th w-[100px] text-right">挂车需求</th>
@@ -56,8 +56,8 @@
           </thead>
           <tbody>
             <tr v-for="p in projects" :key="p.id" class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-              <td class="td font-mono text-xs text-slate-500">{{ p.id }}</td>
-              <td class="td w-[320px]">
+              <td class="td col-id font-mono text-xs text-slate-500">{{ p.id }}</td>
+              <td class="td col-pname w-[320px]">
                 <div class="cell-c font-semibold text-slate-800" :title="p.name">{{ p.name }}</div>
               </td>
               <td class="td w-[460px]">
