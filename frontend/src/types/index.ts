@@ -206,6 +206,8 @@ export interface TaskItem {
   done: number
   unit: string
   note: string
+  /** 最新一条进展记录内容（列表「进展描述」列展示用） */
+  latestProgress: string
   startDate: string
   endDate: string
   deptId: string
@@ -250,6 +252,21 @@ export interface DeptTaskStat {
   risk: number
   dueSoon: number
   completion: number
+}
+
+/** 任务进展记录（时间轴，倒序分页） */
+export interface TaskProgressItem {
+  id: number
+  content: string
+  createdById: string
+  createdByName: string
+  createdAt: string
+}
+export interface TaskProgressListOut {
+  items: TaskProgressItem[]
+  total: number
+  page: number
+  size: number
 }
 
 export interface SummaryResult {

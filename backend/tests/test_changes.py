@@ -26,7 +26,7 @@ def _task_body(dept_id: str = "D01", owner: str = "林雪") -> dict:
         "target": 100,
         "done": 0,
         "unit": "万元",
-        "note": "",
+        "note": "首条进展",
         "start_date": "2026-10-01",
         "end_date": "2026-12-31",
         "dept_id": dept_id,

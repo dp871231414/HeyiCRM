@@ -57,23 +57,24 @@
       <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
       <div v-else-if="!tasks.length" class="p-10 text-center text-slate-400 text-sm">暂无任务</div>
       <div v-else class="overflow-x-auto">
-        <table class="table-freeze w-full min-w-[1740px]">
+        <table class="table-freeze w-full min-w-[1880px]">
           <thead>
             <tr class="border-b border-slate-200">
               <th class="th col-id w-[96px]">任务ID</th>
-              <th class="th col-name w-[240px]">任务名称</th>
+              <th class="th col-name w-[220px]">任务名称</th>
               <th class="th w-[140px]">主任务</th>
+              <th class="th w-[200px]">进展描述</th>
               <th class="th w-[100px]">责任人</th>
               <th class="th w-[120px]">责任部门</th>
               <th class="th w-[100px]">创建人</th>
               <th class="th w-[100px] text-right">目标</th>
               <th class="th w-[110px] text-right">已完成</th>
               <th class="th w-[130px]">完成进度</th>
+              <th class="th w-[110px]">状态</th>
               <th class="th w-[180px]">计划起止</th>
               <th class="th w-[140px]">创建时间</th>
               <th class="th w-[140px]">更新时间</th>
-              <th class="th w-[110px]">状态</th>
-              <th class="th col-ops w-[120px] text-right">操作</th>
+              <th class="th col-ops w-[160px] text-right">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -107,6 +108,7 @@
                   <div class="font-semibold text-slate-800 truncate" :title="row.task.parent">{{ row.task.parent }}</div>
                 </td>
                 <td class="td text-slate-500">{{ row.task.mainTaskName || '空' }}</td>
+                <td class="td text-slate-600"><span class="line-clamp-2" :title="row.task.latestProgress">{{ row.task.latestProgress || '—' }}</span></td>
                 <td class="td">{{ row.task.owner }}</td>
                 <td class="td">{{ row.task.deptName }}</td>
                 <td class="td text-slate-500">{{ row.task.createdByName || '—' }}</td>
@@ -120,12 +122,13 @@
                     <span class="text-xs font-bold text-slate-600 w-9 text-right">{{ row.task.progress }}%</span>
                   </div>
                 </td>
+                <td class="td"><StatusBadge :status="row.task.statusLevel" :text="row.task.statusLabel" /></td>
                 <td class="td text-xs text-slate-500">{{ row.task.startDate }} ~ {{ row.task.endDate }}</td>
                 <td class="td text-xs text-slate-500">{{ fmtTime(row.task.createdAt) }}</td>
                 <td class="td text-xs text-slate-500">{{ fmtTime(row.task.updatedAt) }}</td>
-                <td class="td"><StatusBadge :status="row.task.statusLevel" :text="row.task.statusLabel" /></td>
-                <td class="td col-ops text-right">
-                  <button v-if="auth.hasPerm('task.edit')" class="btn-ghost btn-sm" @click="openForm(row.task)">编辑</button>
+                <td class="td col-ops text-right whitespace-nowrap">
+                  <button v-if="auth.hasPerm('task.detail')" class="btn-ghost btn-sm" @click="openDetail(row.task)">详情</button>
+                  <button v-if="auth.hasPerm('task.edit')" class="btn-ghost btn-sm ml-1.5" @click="openForm(row.task)">编辑</button>
                   <button
                     v-if="auth.hasPerm('task.delete')"
                     class="btn-danger btn-sm ml-1.5"
@@ -133,7 +136,7 @@
                   >
                     删除
                   </button>
-                  <span v-if="!auth.hasAnyPerm(['task.edit', 'task.delete'])" class="text-xs text-slate-300">—</span>
+                  <span v-if="!auth.hasAnyPerm(['task.detail', 'task.edit', 'task.delete'])" class="text-xs text-slate-300">—</span>
                 </td>
               </tr>
             </template>
@@ -158,7 +161,7 @@
           <input v-model.trim="form.parent" class="input" placeholder="如：完成全年营收目标 10.2 亿" />
         </div>
         <div>
-          <label class="label">主任务<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」，下拉展示「名称 创建人」）</span></label>
+          <label class="label">主任务<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」，展示「名称 责任人」）</span></label>
           <div v-if="addingMainTask" class="flex items-center gap-2">
             <input
               v-model.trim="newMainTaskName"
@@ -171,70 +174,67 @@
             </button>
             <button class="btn-ghost" @click="addingMainTask = false">取消</button>
           </div>
-          <div v-else class="relative">
-            <button
-              type="button"
-              class="input flex items-center justify-between w-full text-left"
-              @click="mtDropdownOpen = !mtDropdownOpen"
-            >
-              <span class="truncate">{{ selectedMainTaskLabel || '请选择主任务' }}</span>
-              <span class="text-slate-400 ml-2">▾</span>
-            </button>
-            <!-- 点击空白处关闭下拉 -->
-            <div v-if="mtDropdownOpen" class="fixed inset-0 z-10" @click="mtDropdownOpen = false" />
-            <div
-              v-if="mtDropdownOpen"
-              class="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-64 overflow-auto"
-            >
+          <div v-else class="flex items-center gap-2">
+            <div class="relative flex-1 min-w-0">
               <button
-                v-for="m in mainTasks"
-                :key="m.id"
                 type="button"
-                class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
-                :class="form.mainTaskId === m.id ? 'bg-brand-50' : ''"
-                @click="selectMainTask(m.id)"
+                class="input flex items-center justify-between w-full text-left"
+                @click="mtDropdownOpen = !mtDropdownOpen"
               >
-                <span class="flex-1 min-w-0 truncate">
-                  <template v-if="renamingId === m.id">
-                    <input
-                      v-model.trim="renameValue"
-                      class="input !py-0.5 !px-1.5 text-xs w-full"
-                      :disabled="renamingBusy"
-                      @click.stop
-                      @keyup.enter="confirmRename(m)"
-                      @keyup.esc="cancelRename"
-                    />
-                  </template>
-                  <template v-else>
-                    <span>{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</span>
-                    <span v-if="m.createdByName" class="text-slate-400 text-xs"> {{ m.createdByName }}</span>
-                  </template>
-                </span>
-                <span v-if="renamingId === m.id" class="flex items-center gap-1 shrink-0" @click.stop>
-                  <button type="button" class="text-good-600 text-xs" :disabled="renamingBusy" @click="confirmRename(m)">保存</button>
-                  <button type="button" class="text-slate-400 text-xs" :disabled="renamingBusy" @click="cancelRename">取消</button>
-                </span>
-                <button
-                  v-else-if="auth.hasPerm('task.edit') && !m.isSystem"
-                  type="button"
-                  class="text-slate-400 hover:text-brand-600 shrink-0"
-                  title="修改主任务名称"
-                  @click.stop="startRename(m)"
-                >
-                  ✎
-                </button>
+                <span class="truncate">{{ selectedMainTaskLabel || '请选择主任务' }}</span>
+                <span class="text-slate-400 ml-2">▾</span>
               </button>
-              <div class="border-t border-slate-100 p-2">
+              <!-- 点击空白处关闭下拉 -->
+              <div v-if="mtDropdownOpen" class="fixed inset-0 z-10" @click="mtDropdownOpen = false" />
+              <div
+                v-if="mtDropdownOpen"
+                class="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-64 overflow-auto"
+              >
                 <button
-                  v-if="auth.hasPerm('task.edit')"
+                  v-for="m in mainTasks"
+                  :key="m.id"
                   type="button"
-                  class="btn-ghost w-full"
-                  @click="addingMainTask = true; mtDropdownOpen = false"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                  :class="form.mainTaskId === m.id ? 'bg-brand-50' : ''"
+                  @click="selectMainTask(m.id)"
                 >
-                  + 新增主任务
+                  <span class="flex-1 min-w-0 truncate">
+                    <template v-if="renamingId === m.id">
+                      <input
+                        v-model.trim="renameValue"
+                        class="input !py-0.5 !px-1.5 text-xs w-full"
+                        :disabled="renamingBusy"
+                        @click.stop
+                        @keyup.enter="confirmRename(m)"
+                        @keyup.esc="cancelRename"
+                      />
+                    </template>
+                    <template v-else>
+                      <span>{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</span>
+                      <!-- 展示主任务责任人（回填自首个关联任务）；创建人仅存数据表不在此体现 -->
+                      <span v-if="m.ownerName" class="text-slate-400 text-xs"> {{ m.ownerName }}</span>
+                    </template>
+                  </span>
+                  <span v-if="renamingId === m.id" class="flex items-center gap-1 shrink-0" @click.stop>
+                    <button type="button" class="text-good-600 text-xs" :disabled="renamingBusy" @click="confirmRename(m)">保存</button>
+                    <button type="button" class="text-slate-400 text-xs" :disabled="renamingBusy" @click="cancelRename">取消</button>
+                  </span>
+                  <button
+                    v-else-if="auth.hasPerm('task.edit') && !m.isSystem"
+                    type="button"
+                    class="text-slate-400 hover:text-brand-600 shrink-0"
+                    title="修改主任务名称"
+                    @click.stop="startRename(m)"
+                  >
+                    ✎
+                  </button>
                 </button>
               </div>
             </div>
+            <!-- 新增主任务：常显在下拉选择框右侧 -->
+            <button v-if="auth.hasPerm('task.edit')" class="btn-ghost whitespace-nowrap shrink-0" @click="addingMainTask = true">
+              + 新增
+            </button>
           </div>
         </div>
         <div>
@@ -284,15 +284,137 @@
           <label class="label">任务描述<span class="req">*</span></label>
           <textarea v-model="form.description" rows="2" class="input" placeholder="任务的背景、交付要求与关键说明" />
         </div>
-        <div class="md:col-span-2">
-          <label class="label">进展描述<span class="text-slate-400 font-normal">（选填）</span></label>
-          <textarea v-model="form.note" rows="2" class="input" />
+        <!-- 进展描述：新建时直接填写（必填，成为第一条进展记录）；编辑时只读，通过「新增进展」追加 -->
+        <div v-if="!form.id" class="md:col-span-2">
+          <label class="label">进展描述<span class="req">*</span><span class="text-slate-400 font-normal">（将作为第一条进展记录）</span></label>
+          <textarea v-model="form.note" rows="2" class="input" placeholder="当前进展说明" />
+        </div>
+        <div v-else class="md:col-span-2">
+          <label class="label">进展记录<span class="text-slate-400 font-normal">（不可直接修改，点击「新增进展」追加本次内容）</span></label>
+          <div class="flex items-center gap-2 mb-2">
+            <input
+              v-model.trim="progressInput"
+              class="input"
+              placeholder="填写本次进展内容"
+              @keyup.enter="addProgress"
+            />
+            <button class="btn-ghost whitespace-nowrap shrink-0" :disabled="progressBusy" @click="addProgress">
+              {{ progressBusy ? '保存中…' : '+ 新增进展' }}
+            </button>
+          </div>
+          <!-- 时间轴（倒序，默认最近 5 条，下拉加载更早） -->
+          <div v-if="progressItems.length" class="max-h-52 overflow-y-auto border border-slate-200 rounded-lg px-3.5 py-2.5">
+            <div v-for="(p, i) in progressItems" :key="p.id" class="flex gap-2.5">
+              <div class="flex flex-col items-center shrink-0">
+                <span class="w-2 h-2 rounded-full bg-brand-500 mt-1.5" />
+                <span v-if="i < progressItems.length - 1" class="w-px flex-1 bg-slate-200 min-h-[28px]" />
+              </div>
+              <div class="pb-3 min-w-0">
+                <div class="text-sm text-slate-700 whitespace-pre-wrap break-words">{{ p.content }}</div>
+                <div class="text-xs text-slate-400 mt-0.5">{{ p.createdByName || '—' }} · {{ fmtTime(p.createdAt) }}</div>
+              </div>
+            </div>
+            <button
+              v-if="progressItems.length < progressTotal"
+              class="btn-ghost btn-sm w-full mt-1"
+              :disabled="progressLoading"
+              @click="loadMoreProgress"
+            >
+              {{ progressLoading ? '加载中…' : `加载更早记录（剩余 ${progressTotal - progressItems.length} 条）` }}
+            </button>
+          </div>
+          <p v-else class="text-xs text-slate-400">暂无进展记录</p>
         </div>
       </div>
       <p v-if="formError" class="mt-3 text-sm text-bad-600">{{ formError }}</p>
       <template #footer>
         <button class="btn-ghost" @click="formOpen = false">取消</button>
         <button class="btn-primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
+      </template>
+    </ModalDialog>
+
+    <!-- 任务详情（只读 · 展示编辑内所有信息 + 进展记录时间轴） -->
+    <ModalDialog :open="detailOpen" title="任务详情" width="lg" @close="detailOpen = false">
+      <div v-if="detailTask" class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+        <div class="md:col-span-2">
+          <label class="label">任务名称</label>
+          <p class="text-sm text-slate-800 font-semibold">{{ detailTask.parent }}</p>
+        </div>
+        <div>
+          <label class="label">主任务</label>
+          <p class="text-sm text-slate-700">{{ detailTask.mainTaskName || '空' }}</p>
+        </div>
+        <div>
+          <label class="label">责任人</label>
+          <p class="text-sm text-slate-700">{{ detailTask.owner }}</p>
+        </div>
+        <div>
+          <label class="label">责任部门</label>
+          <p class="text-sm text-slate-700">{{ detailTask.deptName }}</p>
+        </div>
+        <div>
+          <label class="label">是否异常</label>
+          <p class="text-sm text-slate-700">{{ detailTask.abnormal ? '是' : '否' }}</p>
+        </div>
+        <div>
+          <label class="label">目标</label>
+          <p class="text-sm text-slate-700">{{ fmt(detailTask.target) }} {{ detailTask.unit }}</p>
+        </div>
+        <div>
+          <label class="label">已完成</label>
+          <p class="text-sm text-slate-700">{{ fmt(detailTask.done) }} {{ detailTask.unit }}</p>
+        </div>
+        <div>
+          <label class="label">完成进度</label>
+          <p class="text-sm text-slate-700">{{ detailTask.progress }}%</p>
+        </div>
+        <div>
+          <label class="label">状态</label>
+          <p class="text-sm"><StatusBadge :status="detailTask.statusLevel" :text="detailTask.statusLabel" /></p>
+        </div>
+        <div class="md:col-span-2">
+          <label class="label">计划起止</label>
+          <p class="text-sm text-slate-700">{{ detailTask.startDate }} ~ {{ detailTask.endDate }}</p>
+        </div>
+        <div class="md:col-span-2">
+          <label class="label">任务描述</label>
+          <p class="text-sm text-slate-700 whitespace-pre-wrap">{{ detailTask.description || '—' }}</p>
+        </div>
+        <div class="md:col-span-2">
+          <label class="label">进展记录（最近 {{ PROGRESS_PAGE_SIZE }} 条，倒序）</label>
+          <div v-if="progressItems.length" class="max-h-56 overflow-y-auto border border-slate-200 rounded-lg px-3.5 py-2.5">
+            <div v-for="(p, i) in progressItems" :key="p.id" class="flex gap-2.5">
+              <div class="flex flex-col items-center shrink-0">
+                <span class="w-2 h-2 rounded-full bg-brand-500 mt-1.5" />
+                <span v-if="i < progressItems.length - 1" class="w-px flex-1 bg-slate-200 min-h-[28px]" />
+              </div>
+              <div class="pb-3 min-w-0">
+                <div class="text-sm text-slate-700 whitespace-pre-wrap break-words">{{ p.content }}</div>
+                <div class="text-xs text-slate-400 mt-0.5">{{ p.createdByName || '—' }} · {{ fmtTime(p.createdAt) }}</div>
+              </div>
+            </div>
+            <button
+              v-if="progressItems.length < progressTotal"
+              class="btn-ghost btn-sm w-full mt-1"
+              :disabled="progressLoading"
+              @click="loadMoreProgress"
+            >
+              {{ progressLoading ? '加载中…' : `加载更早记录（剩余 ${progressTotal - progressItems.length} 条）` }}
+            </button>
+          </div>
+          <p v-else class="text-xs text-slate-400">暂无进展记录</p>
+        </div>
+        <div>
+          <label class="label">创建人</label>
+          <p class="text-sm text-slate-700">{{ detailTask.createdByName || '—' }}</p>
+        </div>
+        <div>
+          <label class="label">创建 / 更新时间</label>
+          <p class="text-sm text-slate-700">{{ fmtTime(detailTask.createdAt) }} / {{ fmtTime(detailTask.updatedAt) }}</p>
+        </div>
+      </div>
+      <template #footer>
+        <button class="btn-primary" @click="detailOpen = false">关闭</button>
       </template>
     </ModalDialog>
 
@@ -360,7 +482,7 @@ import PaginationBar from '@/components/PaginationBar.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import type { ImportResult, MainTask, TaskItem } from '@/types'
+import type { ImportResult, MainTask, TaskItem, TaskProgressItem } from '@/types'
 import { fmt } from '@/utils/format'
 
 /** 系统默认主任务 ID（与后端 MT_NONE 约定一致）：任务未选主任务时默认关联它 */
@@ -389,11 +511,12 @@ const renamingId = ref('')
 const renameValue = ref('')
 const renamingBusy = ref(false)
 
-/** 当前选中主任务的展示文案：名称 + 创建人（如「注册新公司 胡国海」），系统默认「空」标记 */
+/** 当前选中主任务的展示文案：名称 + 责任人（如「注册新公司 胡国海」），系统默认「空」标记。
+ *  按需求展示主任务责任人（回填字段）；创建人仅存数据表，不在前端体现。 */
 const selectedMainTaskLabel = computed(() => {
   const m = mainTasks.value.find((x) => x.id === form.mainTaskId)
   if (!m) return ''
-  return `${m.name}${m.isSystem ? '（默认）' : ''}${m.createdByName ? ` ${m.createdByName}` : ''}`
+  return `${m.name}${m.isSystem ? '（默认）' : ''}${m.ownerName ? ` ${m.ownerName}` : ''}`
 })
 
 function selectMainTask(id: string) {
@@ -471,13 +594,11 @@ const rows = computed<TaskRow[]>(() => {
   }
   const out: TaskRow[] = []
   for (const [k, items] of buckets) {
-    // 分组视图排序：部门内 → 按人员（ownerId，缺失时退回责任人姓名）→ 同人员按主任务（id 归类、无主任务排最后）→ 创建时间倒序
-    // 关键点：主任务按 id 而非名称归类，避免同名不同 id 或名称解析差异把同一主任务拆散；
-    // 人员优先用 ownerId，空值时退回 owner 姓名，保证同一责任人的任务归到一组。
+    // 分组视图排序：部门内 → 主任务（按不可变 mainTaskId 归类，同一主任务跨人员排在一起，无主任务 MT_NONE 置后）
+    //   → 创建时间倒序（同主任务内新任务在上）。
+    // 关键点：主任务优先于人员 —— 同一主任务下的任务必须相邻（如 T20260016 与 T202601 同属
+    // 「华东大区营收达成」，即使责任人不相同也要排在一起）；人员维度不再参与排序。
     const sorted = [...items].sort((a, b) => {
-      const oa = a.ownerId || a.owner || ''
-      const ob = b.ownerId || b.owner || ''
-      if (oa !== ob) return oa < ob ? -1 : 1
       const ae = a.mainTaskId === MT_NONE_ID ? 1 : 0
       const be = b.mainTaskId === MT_NONE_ID ? 1 : 0
       if (ae !== be) return ae - be
@@ -508,7 +629,7 @@ const rows = computed<TaskRow[]>(() => {
 })
 
 /** 表格列数（分组标题行需整行跨列） */
-const COL_COUNT = 14
+const COL_COUNT = 15
 
 /** ISO 时间 → 本地可读格式。后端返回带时区，须转本地时区展示 */
 function fmtTime(iso: string): string {
@@ -550,6 +671,85 @@ const importResult = ref<ImportResult | null>(null)
 const previewProgress = computed(() =>
   form.target > 0 ? Math.round((form.done / form.target) * 100) : 0,
 )
+
+/* ---------------- 进展记录（时间轴）· 编辑/详情共用 ---------------- */
+
+/** 每页条数：默认展示最近 5 条，下拉加载更早记录 */
+const PROGRESS_PAGE_SIZE = 5
+/** 进展记录展示对象：编辑弹窗与详情弹窗共用同一份（同一时间只开一个） */
+const detailOpen = ref(false)
+const detailTask = ref<TaskItem | null>(null)
+const progressItems = ref<TaskProgressItem[]>([])
+const progressTotal = ref(0)
+const progressPage = ref(1)
+const progressLoading = ref(false)
+const progressInput = ref('')
+const progressBusy = ref(false)
+
+function resetProgress() {
+  progressItems.value = []
+  progressTotal.value = 0
+  progressPage.value = 1
+  progressInput.value = ''
+}
+
+/** 拉取进展记录（倒序分页）；append=true 时追加（下拉加载更早记录） */
+async function fetchProgress(taskId: string, page: number, append = false) {
+  progressLoading.value = true
+  try {
+    const res = await taskApi.progressList(taskId, { page, size: PROGRESS_PAGE_SIZE })
+    progressItems.value = append ? [...progressItems.value, ...res.items] : res.items
+    progressTotal.value = res.total
+    progressPage.value = page
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  } finally {
+    progressLoading.value = false
+  }
+}
+
+function loadMoreProgress() {
+  const tid = form.id || detailTask.value?.id
+  if (tid) fetchProgress(tid, progressPage.value + 1, true)
+}
+
+/** 编辑：打开表单即加载该任务的进展记录（最近 5 条） */
+function loadProgressForEdit(taskId: string) {
+  resetProgress()
+  fetchProgress(taskId, 1)
+}
+
+/** 追加一条进展记录：置顶插入 + 同步列表里的最新进展快照 */
+async function addProgress() {
+  const content = progressInput.value.trim()
+  if (!content) {
+    app.toast('请填写本次进展内容', 'error')
+    return
+  }
+  progressBusy.value = true
+  try {
+    const created = await taskApi.progressAdd(form.id, content)
+    progressItems.value = [created, ...progressItems.value]
+    progressTotal.value += 1
+    progressInput.value = ''
+    // 列表「进展描述」列同步更新为最新一条
+    const t = tasks.value.find((x) => x.id === form.id)
+    if (t) t.latestProgress = created.content
+    app.toast('已添加进展')
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  } finally {
+    progressBusy.value = false
+  }
+}
+
+/** 详情（只读）：展示编辑内所有信息 + 进展记录时间轴 */
+function openDetail(t: TaskItem) {
+  detailTask.value = t
+  detailOpen.value = true
+  resetProgress()
+  fetchProgress(t.id, 1)
+}
 
 function countBy(level: string) {
   return tasks.value.filter((t) => t.statusLevel === level).length
@@ -642,6 +842,9 @@ function openForm(t?: TaskItem) {
       owner: owners.value[0]?.name ?? '',
     })
   }
+  // 编辑模式加载进展记录（新建无需）
+  if (t) loadProgressForEdit(t.id)
+  else resetProgress()
   formOpen.value = true
 }
 
@@ -652,10 +855,12 @@ async function save() {
   if (!form.endDate) return (formError.value = '请选择计划结束日期')
   if (form.endDate < form.startDate) return (formError.value = '计划结束日期不能早于开始日期')
   if (!form.description.trim()) return (formError.value = '任务描述不能为空')
+  // 进展描述必填（新建时填写，成为第一条进展记录；编辑时改为「新增进展」追加）
+  if (!form.id && !form.note.trim()) return (formError.value = '进展描述不能为空')
 
   saving.value = true
   // 请求体使用后端约定的 snake_case 字段（见 docs/design.md §6.5）
-  const payload = {
+  const payload: Record<string, unknown> = {
     parent: form.parent,
     main_task_id: form.mainTaskId || null,
     description: form.description,
@@ -663,12 +868,12 @@ async function save() {
     target: form.target,
     done: form.done,
     unit: form.unit,
-    note: form.note,
     start_date: form.startDate,
     end_date: form.endDate,
     dept_id: form.deptId,
     owner: form.owner,
   }
+  if (!form.id) payload.note = form.note // 仅创建携带进展描述；编辑不可直接改进展
   try {
     if (form.id) await taskApi.update(form.id, payload)
     else await taskApi.create(payload)

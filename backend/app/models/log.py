@@ -70,6 +70,27 @@ class MainTask(Base):
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
+class TaskProgress(Base):
+    """任务进展记录 · 时间轴。
+
+    - 新增任务时若填了进展描述，写入第一条记录；
+    - 编辑界面不可直接改进展描述，只能通过「新增进展」追加记录（每条独立保留）；
+    - task.note 为冗余的「最新进展」快照，供列表列展示与导出，避免每行子查询。
+    """
+
+    __tablename__ = "task_progress"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    task_id: Mapped[str] = mapped_column(String(32), ForeignKey("task.id"), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(16), ForeignKey("user.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 class OperationLog(Base):
     __tablename__ = "operation_log"
 

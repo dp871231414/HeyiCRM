@@ -191,7 +191,7 @@ def test_account_delete_blocked_when_creator(client, admin_headers):
     t = client.post(
         "/api/v1/tasks",
         json={"parent": f"删除校验任务{suffix}", "title": "", "description": "", "abnormal": False,
-              "target": 10, "done": 0, "unit": "项", "note": "", "start_date": "2026-01-01",
+              "target": 10, "done": 0, "unit": "项", "note": "首条进展", "start_date": "2026-01-01",
               "end_date": "2026-12-31", "dept_id": "D01", "owner": f"创建人{suffix}"},
         headers=h,
     )
@@ -222,7 +222,7 @@ def test_account_delete_blocked_when_referenced_as_owner(client, admin_headers):
     t = client.post(
         "/api/v1/tasks",
         json={"parent": f"责任人校验任务{suffix}", "title": "", "description": "", "abnormal": False,
-              "target": 10, "done": 0, "unit": "项", "note": "", "start_date": "2026-01-01",
+              "target": 10, "done": 0, "unit": "项", "note": "首条进展", "start_date": "2026-01-01",
               "end_date": "2026-12-31", "dept_id": "D01", "owner": name},
         headers=admin_headers,
     )

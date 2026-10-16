@@ -19,6 +19,8 @@ import type {
   RoleItem,
   SummaryResult,
   TaskItem,
+  TaskProgressItem,
+  TaskProgressListOut,
   TrendResult,
   UserItem,
 } from '@/types'
@@ -123,6 +125,12 @@ export const taskApi = {
   create: (payload: Record<string, unknown>) => http.post<TaskItem>('/tasks', payload).then((r) => r.data),
   update: (id: string, payload: Record<string, unknown>) => http.patch<TaskItem>(`/tasks/${id}`, payload).then((r) => r.data),
   remove: (id: string) => http.delete(`/tasks/${id}`).then((r) => r.data),
+  /** 进展记录：倒序分页（默认最近 5 条，下拉加载更早） */
+  progressList: (id: string, params: { page?: number; size?: number } = {}) =>
+    http.get<TaskProgressListOut>(`/tasks/${id}/progress`, { params }).then((r) => r.data),
+  /** 追加一条进展记录（编辑界面不可直接改进展描述，只能追加） */
+  progressAdd: (id: string, content: string) =>
+    http.post<TaskProgressItem>(`/tasks/${id}/progress`, { content }).then((r) => r.data),
   deptStats: () => http.get<DeptTaskStat[]>('/tasks/dept-stats').then((r) => r.data),
   importFile: (file: File) => {
     const fd = new FormData()

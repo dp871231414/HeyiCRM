@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.constants import SCOPES, TASK_ID_PREFIX
-from app.models import MainTask, MetricActual, MetricDef, Organization, Role, Task, User
+from app.models import MainTask, MetricActual, MetricDef, Organization, Role, Task, TaskProgress, User
 
 # 系统默认主任务：导入时「任务分类」留空则归到它
 MT_NONE_ID = "MT_NONE"
@@ -47,7 +47,7 @@ TASK_COLUMNS = [
 ]
 
 # 可选列：老版本模板（无「数量单位」等）仍可导入，缺失时按空值处理
-TASK_OPTIONAL_COLUMNS = {"任务分类", "任务描述", "数量单位", "进展描述", "是否异常"}
+TASK_OPTIONAL_COLUMNS = {"任务分类", "任务描述", "数量单位", "是否异常"}
 
 # 导出列 = 任务ID + 全部可填写列 + 系统列 —— 导出文件可直接当导入模板回灌
 TASK_SYSTEM_EXPORT_COLUMNS = ["完成进度", "状态", "创建人", "创建时间", "更新时间"]
@@ -181,7 +181,7 @@ TASK_TEMPLATE_NOTES = [
     ["目标", "必填。数字，非量化任务填 1"],
     ["已完成", "必填。数字，非量化任务未完成填 0、完成填 1"],
     ["数量单位", "选填。如 万元 / 台 / 项，留空则不显示单位"],
-    ["进展描述", "选填。当前进展的补充说明"],
+    ["进展描述", "必填。当前进展说明，导入后作为该任务的第一条进展记录"],
     ["计划开始日期", "必填，格式 2026-10-01"],
     ["计划结束日期", "必填，格式 2026-12-31，不能早于开始日期"],
     ["责任部门", "必填。组织名称或编码（见「组织清单」页）"],
@@ -410,6 +410,9 @@ def validate_task_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[
         if not (r.get("任务描述") or "").strip():
             row_errors.append({"field": "任务描述", "msg": "不能为空"})
 
+        if not (r.get("进展描述") or "").strip():
+            row_errors.append({"field": "进展描述", "msg": "不能为空"})
+
         abn = r.get("是否异常", "")
         if abn and abn not in ("是", "否"):
             row_errors.append({"field": "是否异常", "msg": "只能填「是」或「否」"})
@@ -578,6 +581,9 @@ def import_tasks(db: Session, rows: list[dict], user: User) -> int:
         )
         db.add(task)
         db.flush()
+        # 进展描述为导入必填项：同时写入第一条进展记录（与手工新建同一套规则）
+        if (r.get("进展描述") or "").strip():
+            db.add(TaskProgress(task_id=task.id, content=r["进展描述"].strip(), created_by=user.id))
     return len(rows)
 
 

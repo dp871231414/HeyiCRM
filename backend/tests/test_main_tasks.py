@@ -63,6 +63,7 @@ def _create_task(client, headers, main_task_id):
             "abnormal": False,
             "target": 100,
             "done": 0,
+            "note": "首条进展",
             "start_date": "2026-01-01",
             "end_date": "2026-12-31",
             "dept_id": "D01",

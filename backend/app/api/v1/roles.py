@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.constants import ALL_PERM_KEYS, PERM_GROUPS, SCOPES
+from app.constants import ALL_PERM_KEYS, DEFAULT_PERMS_FOR_ALL, PERM_GROUPS, SCOPES
 from app.core.deps import require_perm
 from app.db.session import get_db
 from app.models import Role, User
@@ -46,6 +46,10 @@ def create_role(
     if db.scalar(select(Role).where(Role.name == name)):
         raise HTTPException(status_code=409, detail="已存在同名角色，请更换名称")
     perms = [p for p in payload.permissions if p in ALL_PERM_KEYS]
+    # 默认权限点（如 task.detail）对所有角色兜底：即使界面未勾选也自动补上
+    for p in DEFAULT_PERMS_FOR_ALL:
+        if p not in perms:
+            perms.append(p)
     role = Role(
         id=f"role_{int(__import__('time').time() * 1000):x}",
         name=name,
@@ -81,7 +85,11 @@ def update_role(
     role.name = name
     role.description = payload.description.strip()
     role.scope = payload.scope if payload.scope in SCOPES else role.scope
-    role.permissions = [p for p in payload.permissions if p in ALL_PERM_KEYS]
+    perms = [p for p in payload.permissions if p in ALL_PERM_KEYS]
+    for p in DEFAULT_PERMS_FOR_ALL:
+        if p not in perms:
+            perms.append(p)
+    role.permissions = perms
     # 内置标记可配置：不传则保持原值，避免前端未携带时被误清空
     if payload.isSystem is not None:
         role.is_system = bool(payload.isSystem)

@@ -16,11 +16,20 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants import ORG_TYPE_TEAM
-from app.core.deps import get_user_perms, require_perm
+from app.core.deps import get_user_perms, require_any_perm, require_perm
 from app.db.session import get_db
-from app.models import MainTask, Organization, Task, User
+from app.models import MainTask, Organization, Task, TaskProgress, User
 from app.schemas.common import ImportResult
-from app.schemas.task import DeptTaskStat, TaskCreate, TaskListOut, TaskOut, TaskUpdate
+from app.schemas.task import (
+    DeptTaskStat,
+    TaskCreate,
+    TaskListOut,
+    TaskOut,
+    TaskProgressCreate,
+    TaskProgressItem,
+    TaskProgressListOut,
+    TaskUpdate,
+)
 from app.services import scope as scope_svc
 from app.services.achievement import reference_date, task_to_dict
 from app.services.audit import write_log
@@ -122,6 +131,17 @@ def _enrich(db: Session, items: list[dict]) -> list[dict]:
             mid: name
             for mid, name in db.execute(select(MainTask.id, MainTask.name).where(MainTask.id.in_(mt_ids))).all()
         }
+    # 最新进展记录（列表「进展描述」列）：按 id 取每个任务最大一条（自增主键即时间序）
+    task_ids = {str(it.get("id") or "") for it in items} - {""}
+    latest_progress: dict[str, str] = {}
+    if task_ids:
+        rows = db.execute(
+            select(TaskProgress.task_id, TaskProgress.id, TaskProgress.content)
+            .where(TaskProgress.task_id.in_(task_ids))
+            .order_by(TaskProgress.id.asc())
+        ).all()
+        for tid, _pid, content in rows:
+            latest_progress[tid] = content  # 升序遍历，后写覆盖 → 每任务留下最新一条
     for it in items:
         did = str(it.get("deptId") or "")
         if did and did not in dept_names:
@@ -131,6 +151,7 @@ def _enrich(db: Session, items: list[dict]) -> list[dict]:
         it["ownerId"] = owner_ids.get((it.get("owner") or "").strip(), "") or owner_ids.get(it.get("owner") or "", "")
         mt_id = str(it.get("mainTaskId") or "")
         it["mainTaskName"] = mt_names.get(mt_id, "")
+        it["latestProgress"] = latest_progress.get(str(it.get("id") or ""), "")
         # 兼容旧字段：title 沿用主任务名（无主任务时为空）
         if it.get("title") is None:
             it["title"] = it["mainTaskName"]
@@ -317,7 +338,11 @@ def list_tasks(
 
 
 @router.get("/{task_id}", response_model=TaskOut)
-def get_task(task_id: str, db: Session = Depends(get_db), user: User = Depends(require_perm("task.view"))):
+def get_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_any_perm(["task.view", "task.detail"])),
+):
     task = _task_or_404(db, user, task_id)
     return _enrich(db, [task_to_dict(task)])[0]
 
@@ -327,6 +352,7 @@ MT_NONE_ID = "MT_NONE"
 
 
 def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
+    """写入任务的业务字段。注意：不写 task.note —— 进展描述只能通过「新增进展」追加记录。"""
     org = db.get(Organization, payload.dept_id)
     if not org:
         raise HTTPException(status_code=422, detail="责任部门不存在")
@@ -350,7 +376,6 @@ def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
     task.target = Decimal(str(payload.target))
     task.done = Decimal(str(payload.done))
     task.unit = payload.unit
-    task.note = payload.note
     task.start_date = start
     task.end_date = end
     task.dept_id = payload.dept_id
@@ -376,7 +401,11 @@ def create_task(
     tid = next_task_id(db)
     task = Task(id=tid, created_by=user.id)
     _apply_payload(db, task, payload, user)
+    # 进展描述必填：写入任务快照（列表/导出用）并作为第一条进展记录
+    task.note = payload.note
     db.add(task)
+    db.flush()  # 先拿到 task.id 再写进展记录
+    db.add(TaskProgress(task_id=tid, content=payload.note, created_by=user.id))
     write_log(db, user, "create", "task", tid, {"parent": task.parent}, request)
     db.commit()
     db.refresh(task)
@@ -409,7 +438,81 @@ def delete_task(
     user: User = Depends(require_perm("task.delete")),
 ):
     task = _task_or_404(db, user, task_id)
+    # 级联删除进展记录，避免孤儿记录被后续新建任务（复用任务 ID）误继承
+    db.query(TaskProgress).filter(TaskProgress.task_id == task.id).delete()
     db.delete(task)
     write_log(db, user, "delete", "task", task_id, {"parent": task.parent}, request)
     db.commit()
     return {"ok": True, "msg": "已删除", "data": {"id": task_id}}
+
+
+# ------------------------------------------------------------------ 进展记录（时间轴）
+#
+# 规则：编辑界面不可直接改进展描述，只能「新增进展」追加记录；历史按时间倒序分页，
+# 前端默认展示最近 5 条、下拉加载更早记录。task.note 始终冗余最新一条，供列表列/导出。
+
+
+@router.get("/{task_id}/progress", response_model=TaskProgressListOut)
+def list_task_progress(
+    task_id: str,
+    page: int = 1,
+    size: int = Query(5, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_any_perm(["task.view", "task.detail"])),
+):
+    task = _task_or_404(db, user, task_id)
+    page = max(1, page)
+    q = select(TaskProgress).where(TaskProgress.task_id == task.id)
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    rows = list(
+        db.scalars(q.order_by(TaskProgress.id.desc()).limit(size).offset((page - 1) * size)).all()
+    )
+    creator_ids = {r.created_by for r in rows if r.created_by}
+    creators: dict[str, str] = (
+        {uid: name for uid, name in db.execute(select(User.id, User.name).where(User.id.in_(creator_ids))).all()}
+        if creator_ids
+        else {}
+    )
+    return {
+        "items": [
+            TaskProgressItem(
+                id=r.id,
+                content=r.content,
+                createdById=r.created_by or "",
+                createdByName=creators.get(r.created_by or "", ""),
+                createdAt=r.created_at.isoformat() if r.created_at else "",
+            )
+            for r in rows
+        ],
+        "total": total,
+        "page": page,
+        "size": size,
+    }
+
+
+@router.post("/{task_id}/progress", response_model=TaskProgressItem, status_code=201)
+def add_task_progress(
+    task_id: str,
+    payload: TaskProgressCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("task.edit")),
+):
+    task = _task_or_404(db, user, task_id)
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="进展内容不能为空")
+    record = TaskProgress(task_id=task.id, content=content, created_by=user.id)
+    db.add(record)
+    task.note = content  # 冗余快照同步为最新一条
+    db.flush()
+    write_log(db, user, "progress", "task", task.id, {"progress_id": record.id}, request)
+    db.commit()
+    db.refresh(record)
+    return TaskProgressItem(
+        id=record.id,
+        content=record.content,
+        createdById=user.id,
+        createdByName=user.name,
+        createdAt=record.created_at.isoformat() if record.created_at else "",
+    )

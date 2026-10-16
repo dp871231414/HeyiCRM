@@ -15,6 +15,7 @@ from decimal import Decimal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.constants import DEFAULT_PERMS_FOR_ALL
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
@@ -28,6 +29,7 @@ from app.models import (
     Organization,
     Role,
     Task,
+    TaskProgress,
     User,
 )
 
@@ -151,11 +153,11 @@ TASKS = [
 
 ROLES = [
     dict(id="admin", name="系统管理员", description="全部菜单与操作权限，可管理账号与角色", scope="all", is_system=True,
-         permissions=["dashboard.view", "dashboard.config", "task.view", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.edit", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete"]),
+         permissions=["dashboard.view", "dashboard.config", "task.view", "task.detail", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.edit", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete"]),
     dict(id="dept_head", name="部门负责人", description="本部门及下属部门的任务与指标全权", scope="dept_sub", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import", "market.view", "market.edit"]),
+         permissions=["dashboard.view", "task.view", "task.detail", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import", "market.view", "market.edit"]),
     dict(id="member", name="普通成员", description="仅维护本人任务与指标", scope="self", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.edit", "metric.view", "metric.edit", "market.view", "market.edit"]),
+         permissions=["dashboard.view", "task.view", "task.detail", "task.edit", "metric.view", "metric.edit", "market.view", "market.edit"]),
 ]
 
 # 市场项目（商机）演示数据 · 覆盖全部六个阶段，让漏斗每一层都有数
@@ -245,6 +247,60 @@ def backfill_task_main_tasks(db: Session) -> int:
     return len(nulls)
 
 
+def backfill_task_progress(db: Session) -> int:
+    """数据迁移：把已有任务的「进展描述」(note) 转为该任务的第一条进展记录（幂等）。
+
+    仅处理「note 非空且还没有任何进展记录」的任务；时间取任务更新时间，
+    记录人取任务创建人。返回回填条数。
+    """
+    # 会话 autoflush=False：seed 同事务里刚 add 的任务尚未落库，先 flush 保证查询可见
+    db.flush()
+    tasks = db.scalars(select(Task).where(Task.note != "")).all()
+    if not tasks:
+        return 0
+    has_records = {
+        tid
+        for (tid,) in db.execute(
+            select(TaskProgress.task_id).where(TaskProgress.task_id.in_([t.id for t in tasks]))
+        ).all()
+    }
+    n = 0
+    for t in tasks:
+        if t.id in has_records or not (t.note or "").strip():
+            continue
+        db.add(
+            TaskProgress(
+                task_id=t.id, content=t.note, created_by=t.created_by,
+                created_at=t.updated_at or t.created_at,
+            )
+        )
+        n += 1
+    return n
+
+
+def backfill_main_task_owners(db: Session) -> int:
+    """数据迁移：主任务责任人为空时，取其下最早创建的任务的责任人/部门回填（幂等）。
+
+    与「首次被任务选用时回填」同一语义 —— 对升级前已存在的任务，视最早那条为首次选用。
+    """
+    db.flush()
+    mts = db.scalars(select(MainTask).where(MainTask.is_system.is_(False), MainTask.owner_id.is_(None))).all()
+    if not mts:
+        return 0
+    n = 0
+    for mt in mts:
+        first = db.scalar(
+            select(Task).where(Task.main_task_id == mt.id).order_by(Task.id.asc()).limit(1)
+        )
+        if not first:
+            continue
+        u = db.scalar(select(User).where(User.name == (first.owner or "").strip()))
+        mt.owner_id = u.id if u else None
+        mt.dept_id = mt.dept_id or first.dept_id
+        n += 1
+    return n
+
+
 def seed(db: Session, reset: bool = False) -> dict:
     if reset:
         for model in (OperationLog, MetricActual, MetricTarget, Task, MarketProject, User, Role, MetricDef, Organization):
@@ -278,6 +334,13 @@ def seed(db: Session, reset: bool = False) -> dict:
                 role.permissions = list(spec["permissions"])
                 role.scope = spec["scope"]
                 created["roles_synced"] += 1
+
+    # 新增权限点默认授予所有用户：缺哪个补哪个（含自定义角色），幂等
+    for role in db.scalars(select(Role)).all():
+        missing = [p for p in DEFAULT_PERMS_FOR_ALL if p not in (role.permissions or [])]
+        if missing:
+            role.permissions = list(role.permissions or []) + missing
+            created.setdefault("perms_granted", {}).setdefault(role.id, []).extend(missing)
 
     # 是否「首次初始化」：库里连一个账号都没有。
     # 演示数据只在首次初始化时灌入 —— 否则管理员清空任务后，服务重启会把数据"复活"。
@@ -325,6 +388,12 @@ def seed(db: Session, reset: bool = False) -> dict:
 
     # 数据迁移：升级旧库时，把 main_task_id 为空的任务按原「任务分类」回填主任务
     created["mainTasksBackfilled"] = backfill_task_main_tasks(db)
+
+    # 数据迁移：升级旧库时，把已有任务的「进展描述」转为第一条进展记录
+    created["progressBackfilled"] = backfill_task_progress(db)
+
+    # 数据迁移：主任务责任人/部门为空时，取其下最早任务回填（下拉「名称 责任人」展示用）
+    created["mainTaskOwnersBackfilled"] = backfill_main_task_owners(db)
 
     # 市场项目同理：只在首次初始化时灌入演示数据
     if first_init and not db.scalar(select(MarketProject).limit(1)):

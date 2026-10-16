@@ -189,11 +189,30 @@
 | target | numeric(18,2) | 目标，非量化填 1 |
 | done | numeric(18,2) | 已完成，非量化未完成 0 / 完成 1 |
 | unit | varchar(16) | 数量单位，仅展示 |
-| note | text | 进展描述 |
+| note | text | 进展描述 · **最新一条进展记录的冗余快照**（列表列/导出用；编辑不可直改，见 task_progress） |
 | start_date / end_date | date | 计划起止 |
 | dept_id | varchar(16) FK | 责任部门 |
 | owner | varchar(32) | 责任人姓名 |
 | created_by / created_at / updated_at | | 审计 |
+
+### 5.4a `task_progress` 任务进展记录（round 18 新增）
+
+进展描述从单字段升级为时间轴记录表：每次「新增进展」插入一条，历史全部保留、倒序分页展示。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | int PK 自增 | 记录 ID（自增序即时间序） |
+| task_id | varchar(32) FK→task.id | 所属任务；任务删除时级联删除 |
+| content | text | 本次进展内容（必填） |
+| created_by | varchar(16) FK→user.id nullable | 记录人 |
+| created_at | datetime | 记录时间（时间轴展示用） |
+
+**关键规则**
+- **新建任务**：进展描述必填，写入第一条进展记录，同时冗余到 `task.note`。
+- **编辑任务**：不可直接修改进展描述；只能点「新增进展」追加记录，`task.note` 随最新一条刷新。
+- **列表「进展描述」列**：展示最新一条记录内容（`_enrich` 批量取每任务最大 id 的记录）。
+- **接口**：`GET /tasks/{id}/progress`（倒序分页，默认 5 条，权限 `task.view` 或 `task.detail`）；`POST /tasks/{id}/progress`（追加，权限 `task.edit`）。
+- **数据迁移**：升级旧库时，已有任务的 `note` 非空且无记录 → 自动转为第一条进展记录（幂等）。
 
 ### 5.5a `main_task` 主任务（独立字典表，round 15 新增）
 
@@ -216,7 +235,8 @@
 - 批量导入时「任务分类」列按名称匹配；不存在则自动新建主任务（记录创建人/时间）。
 - 重名新增 → 409；改名时排除自身查重。
 - **责任人与责任部门回填（round 16 新增）**：主任务创建时 `owner_id`/`dept_id` 为空；当某任务（非「空」主任务）首次选用该主任务并保存时，若主任务这两项仍为空，则取该任务的责任人（owner→user.id）、责任部门（dept_id）回填；已有值则保留，不覆盖人工维护结果。系统默认「空」(MT_NONE) 不参与回填。
-- **下拉展示（round 16 新增）**：主任务下拉每项展示「名称 创建人」（如「注册新公司 胡国海」），拥有 `task.edit` 权限者在选项后可见铅笔按钮，点击就地改名（ID 不变）；展示范围仅按角色权限（`task.view` 可见全部，`task.edit` 可改名），不做按部门的数据范围过滤。
+- **下拉展示（round 18 修正）**：主任务下拉每项展示「**名称 责任人**」（如「注册新公司 胡国海」）—— 责任人为回填字段；创建人仅存数据表、不在前端体现。`+ 新增` 按钮常显在下拉选择框右侧。拥有 `task.edit` 权限者在选项后可见铅笔按钮，点击就地改名（ID 不变）；展示范围仅按角色权限（`task.view` 可见全部，`task.edit` 可改名），不做按部门的数据范围过滤。
+- **存量数据回填（round 18）**：升级旧库时，责任人为空的非系统主任务取其下最早创建任务的责任人/部门回补（与「首次选用回填」同一语义）。
 
 **计算列（不落库）**
 ```
@@ -238,7 +258,7 @@
 | 菜单 | 权限 key（menu） | 按钮权限 key（action） |
 |---|---|---|
 | 经营驾驶舱 | dashboard.view | — |
-| 任务管理 | task.view | task.edit / task.delete / task.import |
+| 任务管理 | task.view | task.detail / task.edit / task.delete / task.import |
 | 指标维护 | metric.view | metric.edit / metric.import |
 | 账号管理 | account.view | account.edit / account.role |
 
@@ -320,16 +340,18 @@
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/tasks?keyword=&dept_id=&status=&page=&size=` | 列表（服务端按可见范围过滤） |
-| GET | `/tasks/{id}` | 详情 |
-| POST | `/tasks` | 新建（自动生成任务ID）；`main_task_id` 选填，不传默认 `MT_NONE` |
-| PATCH | `/tasks/{id}` | 编辑（可改 `main_task_id`） |
-| DELETE | `/tasks/{id}` | 删除（需 task.delete 权限） |
+| GET | `/tasks/{id}` | 详情（task.view 或 task.detail） |
+| POST | `/tasks` | 新建（自动生成任务ID）；`main_task_id` 选填，不传默认 `MT_NONE`；`note` 必填（写入第一条进展记录） |
+| PATCH | `/tasks/{id}` | 编辑（可改 `main_task_id`；`note` 字段被忽略 —— 进展只能追加） |
+| DELETE | `/tasks/{id}` | 删除（需 task.delete 权限；级联删除进展记录） |
+| GET | `/tasks/{id}/progress?page=&size=` | 进展记录倒序分页（默认 5 条；task.view 或 task.detail） |
+| POST | `/tasks/{id}/progress` | 追加进展记录 `{content}`（需 task.edit；task.note 同步刷新） |
 | GET | `/tasks/dept-stats?period=` | 部门任务完成度聚合（SQL GROUP BY） |
 | GET | `/tasks/import/template` | 下载任务导入模板（「任务分类」列对应主任务，不存在自动新建） |
 | POST | `/tasks/import` | multipart，返回 `{imported, errors[]}` |
 | GET | `/tasks/export` | 导出当前可见任务 xlsx |
 
-**列表/分组视图**：前端在「平铺列表」与「按部门分组」两种视图间切换。分组视图排序规则（round 16 #3 修正）——部门内先按人员 ID 升序（ownerId 缺失时退回责任人姓名），同人员按主任务 **ID 归类**升序（无主任务的 `MT_NONE` 排最后；按 ID 而非名称归类可避免同名不同 ID 被拆散），同规则下按创建时间倒序。
+**列表/分组视图**：前端在「平铺列表」与「按部门分组」两种视图间切换。分组视图排序规则（round 18 修正）——部门内按主任务 **ID 归类**升序（**同一主任务跨人员排在一起**，无主任务的 `MT_NONE` 排最后），同主任务内按创建时间倒序。round 16 的「人员 ID 排序」层级已移除：主任务优先于人员，保证同一主任务下的任务相邻（如 T20260016 与 T202601 同属「华东大区营收达成」必须相邻）。
 
 ### 6.5a 主任务字典（round 15 新增）
 

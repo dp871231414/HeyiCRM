@@ -1215,3 +1215,42 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round14.mjs
 - **提交**：round 16 拆两次提交 —— `cd90972`（p1：#1 任务描述必填 + #3 分组排序修复）；`da66eca`（#2 主任务扩展与下拉改造）。
 - **发布（已上线，2026-10-16）**：用户指令「部署上线」→ `workbuddy_sites_deploy`（目录 `backend/`、language=python、startCmd `bash start.sh`、domainPrefix `heyi-fleet-dashboard`，复用既有 app）。部署后内部校验通过；本地 `curl https://heyi-fleet-dashboard.app.workbuddy.host/api/health` 返回 **200**。
 - 发布前已移除本地 `app.db` 验证残留（`seed --reset` 不清 `main_task` 表，已手工清理验证产生的临时主任务），`frontend/dist` 已同步 `backend/static`。
+
+---
+
+## 25. Round 18 · 任务管理五项改进（2026-10-16）
+
+需求（用户原文要点）：①主任务下拉展示改「名称 责任人」、创建人仅存数据表、新增按钮常显右侧；②进展描述必填 + 列表「进展描述」列插入责任人前、状态列移到完成进度后；③新增「详情」按钮与 `task.detail` 权限（默认授予所有用户）；④编辑/详情界面进展记录时间轴（默认最近 5 条、下拉加载），编辑不可直改进展、只能追加；⑤分组视图排序改为「同一部门内同一主任务排在一起（跨人员），按创建时间倒序」。
+
+### 25.1 后端改动
+
+| 项 | 内容 |
+|---|---|
+| 新表 `task_progress` | id / task_id(FK,级联删) / content / created_by / created_at；create_all 自动建表 |
+| 进展描述必填 | `TaskCreate.note` min_length=1；导入校验「进展描述」不能为空（移出可选列）；模板说明同步 |
+| 进展记录接口 | `GET /tasks/{id}/progress`（倒序分页默认 5 条）、`POST /tasks/{id}/progress`（追加，task.note 同步刷新） |
+| 编辑不改进展 | `_apply_payload` 不再写 `task.note`；`TaskUpdate.note` 忽略 |
+| 级联删除 | 删除任务时同步删除其进展记录（避免孤儿记录被复用 ID 的新任务误继承） |
+| `task.detail` 权限 | 权限清单新增；seed 时补进**所有角色**（含自定义角色，`DEFAULT_PERMS_FOR_ALL`）；新建/更新角色时自动带上；`GET /tasks/{id}` 与 progress 接口改为 `require_any_perm(["task.view","task.detail"])` |
+| latestProgress | `TaskOut.latestProgress` = 最新一条记录内容（`_enrich` 批量取） |
+| 数据迁移（幂等） | `progressBackfilled`：已有任务 note 非空且无记录 → 转为首条进展（本地 14 条回填）；`mainTaskOwnersBackfilled`：非系统主任务责任人/部门为空 → 取其下最早任务回填（本地 14 条）。修复点：会话 `autoflush=False`，回填前需 `flush()` |
+
+### 25.2 前端改动
+
+- **下拉（#1）**：选项展示「名称 责任人」（`ownerName`），不再显示创建人；`+ 新增` 按钮常显在下拉选择框右侧（`task.edit` 可见）。
+- **列表（#2）**：插入「进展描述」列（最新一条，责任人之前）；「状态」列移到「完成进度」之后；列数 14 → 15（分组标题跨列同步）。
+- **详情（#3）**：操作列新增「详情」按钮（`task.detail`），只读弹窗展示编辑内全部字段 + 进展时间轴。
+- **进展记录（#4）**：新建时直填（必填，成为首条记录）；编辑时展示时间轴（倒序、默认 5 条、「加载更早记录」按钮）+ 「新增进展」输入行，追加后置顶插入并同步列表快照。
+- **排序（#5）**：分组视图部门内改为 主任务 ID（MT_NONE 置后）→ 创建时间倒序；移除人员排序层级，同主任务跨人员相邻。
+
+### 25.3 验证
+
+- **后端**：137 passed（上轮 131 → +6：进展必填/首条记录/编辑不改进展与追加/分页/task.detail 全角色/成员可见详情与进展）；`test_main_tasks._create_task`、`test_api`、`test_changes`、`test_accounts` 的任务请求体补 `note` 以满足新必填约束。
+- **本地联调（8012）**：note 空 → 422；新建带进展 → 首条记录（记录人陈志明）；PATCH 不改快照；追加 7 条后 page1=第8~4条、page2=第3/2/首条；admin 与普通成员（郑凯）均含 `task.detail`，成员可读进展（200）；删除任务后进展 404（级联）；主任务下拉返回 ownerName（华东大区营收达成→郑凯 等 14 条回填）；列表 latestProgress 正确。
+- **前端**：`npm run build` 通过（vue-tsc 类型检查）；dist 已同步 `backend/static`，bundle 含「新增进展」标记。
+- **排序仿真**：T20260016 与 T202601（同主任务、责任人不同）在分组视图同组相邻，组内按创建时间倒序。
+
+### 25.4 提交与发布
+
+- **提交**：本轮单次提交（见 git log round18）。
+- **发布**：按 round 14 约定需用户当轮确认；未收到「发布」指令前不部署。
