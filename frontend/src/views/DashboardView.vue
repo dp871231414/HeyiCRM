@@ -528,12 +528,20 @@ function gotonMetric(metricId: string, orgId: string) {
   router.push({ name: 'metrics' })
 }
 
+/**
+ * 经营驾驶舱指标下钻趋势的起点月份：固定从 2026-10 起展示，之前的月份不绘图。
+ * 10 月为本期汇报起点；如需调整汇报起点（如改为当前月或别的月份），改这里即可。
+ */
+const TREND_START_PERIOD = '2026-10'
+
 async function openDrilldown(row: MetricRow) {
   drill.value = row
   trend.value = null
   trendLoading.value = true
   try {
-    trend.value = await dashboardApi.trend(row.metricId, view.orgId)
+    const r = await dashboardApi.trend(row.metricId, view.orgId)
+    // 仅保留起点月份及之后的数据点（周期格式 YYYY-MM，字符串比较等价于时间先后）
+    trend.value = { ...r, points: r.points.filter((p) => p.period >= TREND_START_PERIOD) }
   } catch {
     trend.value = null
   } finally {
