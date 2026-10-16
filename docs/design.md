@@ -1459,12 +1459,12 @@ verdict = {
 
 | 维度 | 实现 |
 |---|---|
-| 列序交换 | 任务管理表头改为 `任务ID → 主任务 → 任务名称 → 进展描述 → …`；主任务列改用冻结类 `col-maintask`（`left:96px`），任务名称 `col-name` 偏移调至 `left:416px`（96+320） |
-| 固定列宽 | 三特殊列固定 `320/320/460px`；其余列保持既有 `w-[]` 固定宽度；表格 `min-w` 同步放大（任务 2600px / 项目 1960px） |
-| 省略号 + 悬停 | 特殊列内容包在 `.cell-c` 内：`title` 展示全文；默认单行 `text-overflow: ellipsis`；高/超高行高时切 `-webkit-line-clamp: var(--cell-lines)` 多行折行再省略 |
-| 行高 | 表格挂 `rh-{default,high,ultra}` 类：固定 `.td` 高度（44 / 88 / 132px ≈ 1X/2X/3X），高/超高置 `vertical-align:top` 让折行文本顶对齐；`--cell-lines` 控制截断行数（3 / 5） |
+| 列序交换 | 任务管理表头 `任务ID → 主任务 → 任务名称 → 进展描述 → …`；主任务列冻结类 `col-maintask`（`left:96px`），任务名称 `col-name` 冻结于 `left:309px`（96+213） |
+| 固定列宽（table-fixed） | 表格用 `table-fixed`（Round 20 修复：原先自动布局下长内容会把列撑开，固定与省略号都未真正生效）；三特殊列固定 `213/213/307px`（约 13/13/20 汉字，较最初 320/320/460 减 1/3）；其余列保持 `w-[]` 固定；表格总宽固定 `w-[2219px]` |
+| 省略号 + 悬停 | 特殊列内容包 `.cell-c`：`title` 展示全文；默认单行 `text-overflow: ellipsis`；高/超高行高切 `-webkit-line-clamp: var(--cell-lines)` 多行折行再省略。固定 `td` 宽度下 ellipsis 才真正触发（Round 20 修复） |
+| 行高 | 表格挂 `rh-{default,high,ultra}`：固定 `.td` 高度（44 / 88 / 132px ≈ 1X/2X/3X），高/超高 `vertical-align:top`；`--cell-lines` 控制截断行数（3 / 5） |
 
-项目管理（ProjectsView）复用同一套 `.cell-c` / `rh-*` 机制，逻辑完全一致：项目名称（20 汉字 / 320px）、项目描述（30 汉字 / 460px）固定列宽 + 省略号，筛选栏同样提供行高下拉。
+项目管理（ProjectsView）复用同一套 `.cell-c` / `rh-*` 机制：项目名称（20 汉字 / 320px）、项目描述（30 汉字 / 460px）固定列宽 + 省略号，筛选栏同样提供行高下拉。（注：本轮 Round 20 仅调整任务管理三列宽度；项目管理列宽维持 320/460 不变，待后续按需同步。）
 
 #### 注意点
 

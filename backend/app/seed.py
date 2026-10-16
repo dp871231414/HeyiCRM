@@ -27,6 +27,7 @@ from app.models import (
     MetricTarget,
     OperationLog,
     Organization,
+    ProjectProgress,
     Role,
     Task,
     TaskProgress,
@@ -153,11 +154,11 @@ TASKS = [
 
 ROLES = [
     dict(id="admin", name="系统管理员", description="全部菜单与操作权限，可管理账号与角色", scope="all", is_system=True,
-         permissions=["dashboard.view", "dashboard.config", "task.view", "task.detail", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.edit", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete"]),
+         permissions=["dashboard.view", "dashboard.config", "task.view", "task.detail", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.detail", "market.edit", "market.import", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete"]),
     dict(id="dept_head", name="部门负责人", description="本部门及下属部门的任务与指标全权", scope="dept_sub", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.detail", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import", "market.view", "market.edit"]),
+         permissions=["dashboard.view", "task.view", "task.detail", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import", "market.view", "market.detail", "market.edit", "market.import"]),
     dict(id="member", name="普通成员", description="仅维护本人任务与指标", scope="self", is_system=True,
-         permissions=["dashboard.view", "task.view", "task.detail", "task.edit", "metric.view", "metric.edit", "market.view", "market.edit"]),
+         permissions=["dashboard.view", "task.view", "task.detail", "task.edit", "metric.view", "metric.edit", "market.view", "market.detail", "market.edit"]),
 ]
 
 # 市场项目（商机）演示数据 · 覆盖全部六个阶段，让漏斗每一层都有数
@@ -245,6 +246,37 @@ def backfill_task_main_tasks(db: Session) -> int:
         else:
             t.main_task_id = MT_NONE_ID
     return len(nulls)
+
+
+def backfill_project_progress(db: Session) -> int:
+    """数据迁移：把已有市场项目的「进展快照」(progress) 转为该项目的第一条进展记录（幂等）。
+
+    仅处理「progress 非空且还没有任何进展记录」的项目；时间取项目更新时间，
+    记录人取项目创建人。返回回填条数。（新库 progress 默认空串，通常为 0。）
+    """
+    # 会话 autoflush=False：seed 同事务里刚 add 的项目尚未落库，先 flush 保证查询可见
+    db.flush()
+    projects = db.scalars(select(MarketProject).where(MarketProject.progress != "")).all()
+    if not projects:
+        return 0
+    has_records = {
+        pid
+        for (pid,) in db.execute(
+            select(ProjectProgress.project_id).where(ProjectProgress.project_id.in_([p.id for p in projects]))
+        ).all()
+    }
+    n = 0
+    for p in projects:
+        if p.id in has_records or not (p.progress or "").strip():
+            continue
+        db.add(
+            ProjectProgress(
+                project_id=p.id, content=p.progress, created_by=p.created_by,
+                created_at=p.updated_at or p.created_at,
+            )
+        )
+        n += 1
+    return n
 
 
 def backfill_task_progress(db: Session) -> int:
@@ -392,6 +424,9 @@ def seed(db: Session, reset: bool = False) -> dict:
     # 数据迁移：升级旧库时，把已有任务的「进展描述」转为第一条进展记录
     created["progressBackfilled"] = backfill_task_progress(db)
 
+    # 数据迁移：把已有市场项目的「进展快照」转为第一条进展记录
+    created["projectProgressBackfilled"] = backfill_project_progress(db)
+
     # 数据迁移：主任务责任人/部门为空时，取其下最早任务回填（下拉「名称 责任人」展示用）
     created["mainTaskOwnersBackfilled"] = backfill_main_task_owners(db)
 
@@ -434,6 +469,11 @@ def main() -> None:
         user_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(\"user\")")).fetchall()}
         if "preferences" not in user_existing:
             conn.execute(text("ALTER TABLE \"user\" ADD COLUMN preferences TEXT NOT NULL DEFAULT '{}'"))
+
+        # market_project.progress：本轮新增的项目进展冗余快照列，老库补 ALTER（默认空串）
+        mp_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(market_project)")).fetchall()}
+        if "progress" not in mp_existing:
+            conn.execute(text("ALTER TABLE market_project ADD COLUMN progress TEXT NOT NULL DEFAULT ''"))
     with SessionLocal() as db:
         created = seed(db, reset=reset)
     print(f"[seed] 完成（reset={reset}）: {created}")

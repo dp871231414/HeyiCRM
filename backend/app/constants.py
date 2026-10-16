@@ -27,7 +27,9 @@ PERM_GROUPS: list[dict] = [
         "label": "项目管理",
         "items": [
             {"key": "market.view", "label": "查看项目列表与详情", "type": "menu"},
+            {"key": "market.detail", "label": "查看项目详情", "type": "action"},
             {"key": "market.edit", "label": "新建 / 编辑项目", "type": "action"},
+            {"key": "market.import", "label": "批量导入项目", "type": "action"},
             {"key": "market.delete", "label": "删除项目", "type": "action"},
         ],
     },
@@ -86,7 +88,7 @@ PERM_GROUPS: list[dict] = [
 ALL_PERM_KEYS: set[str] = {item["key"] for g in PERM_GROUPS for item in g["items"]}
 
 # 所有用户默认拥有的权限点：升级新增权限时自动补进每个角色（含自定义角色，幂等）
-DEFAULT_PERMS_FOR_ALL: list[str] = ["task.detail"]
+DEFAULT_PERMS_FOR_ALL: list[str] = ["task.detail", "market.detail"]
 
 # 权限 key → 中文名（用于报错提示，让用户知道缺哪个权限）
 PERM_LABELS: dict[str, str] = {item["key"]: item["label"] for g in PERM_GROUPS for item in g["items"]}

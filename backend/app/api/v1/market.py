@@ -10,22 +10,38 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
+from urllib.parse import quote
 
+from app.config import settings
 from app.constants import MARKET_PROJECT_ID_PREFIX, MARKET_STAGE_VALUES, MARKET_STAGES
-from app.core.deps import require_perm
+from app.core.deps import require_any_perm, require_perm
 from app.db.session import get_db
-from app.models import MarketProject, Organization, User
+from app.models import MarketProject, Organization, ProjectProgress, User
+from app.schemas.common import ImportResult
 from app.schemas.project import (
     MarketProjectCreate,
     MarketProjectListOut,
     MarketProjectOut,
     MarketProjectUpdate,
+    ProjectProgressCreate,
+    ProjectProgressItem,
+    ProjectProgressListOut,
 )
 from app.services import scope as scope_svc
 from app.services.audit import write_log
+from app.services.importer import (
+    MARKET_PROJECT_COLUMNS,
+    MARKET_PROJECT_OPTIONAL_COLUMNS,
+    build_market_project_template,
+    export_market_projects,
+    import_market_projects,
+    parse_rows,
+    validate_market_project_rows,
+)
 from app.services.org_tree import market_tree_ids
 
 router = APIRouter(prefix="/market-projects", tags=["项目管理"])
@@ -34,6 +50,16 @@ _STAGE_LABELS = {s["stage"]: s["label"] for s in MARKET_STAGES}
 
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 500
+
+_SHEET_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _xlsx(content: bytes, filename: str) -> Response:
+    return Response(
+        content=content,
+        media_type=_SHEET_MIME,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 def next_project_id(db: Session) -> str:
@@ -53,6 +79,7 @@ def _to_dict(db: Session, p: MarketProject, creator_names: dict[str, str] | None
         "id": p.id,
         "name": p.name,
         "description": p.description or "",
+        "latestProgress": p.progress or "",
         "tractorDemand": int(p.tractor_demand or 0),
         "trailerDemand": int(p.trailer_demand or 0),
         "stage": int(p.stage),
@@ -86,6 +113,23 @@ def _enrich_owner_depts(db: Session, items: list[dict]) -> list[dict]:
         names = {oid: name for oid, name in db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(ids))).all()}
     for it in items:
         it["ownerDeptName"] = names.get(it.get("ownerDeptId"), "")
+    return items
+
+
+def _enrich_progress(db: Session, items: list[dict]) -> list[dict]:
+    """批量补齐「最新进展」快照（market_project.progress，冗余自最近一条 ProjectProgress）。"""
+    ids = {it["id"] for it in items}
+    latest: dict[str, str] = {}
+    if ids:
+        rows = db.execute(
+            select(ProjectProgress.project_id, ProjectProgress.id, ProjectProgress.content)
+            .where(ProjectProgress.project_id.in_(ids))
+            .order_by(ProjectProgress.id.asc())
+        ).all()
+        for pid, _rid, content in rows:
+            latest[pid] = content  # 升序遍历，后写覆盖 → 每项目留下最新一条
+    for it in items:
+        it["latestProgress"] = latest.get(it["id"], "")
     return items
 
 
@@ -143,17 +187,29 @@ def list_projects(
     total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     rows = list(db.scalars(q.order_by(MarketProject.id).limit(size).offset((page - 1) * size)).all())
     return {
-        "items": _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p) for p in rows])),
+        "items": _enrich_progress(
+            db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p) for p in rows]))
+        ),
         "total": total,
         "page": page,
         "size": size,
     }
 
 
+@router.get("/export")
+def market_project_export(db: Session = Depends(get_db), user: User = Depends(require_perm("market.view"))):
+    rows = list(db.scalars(_visible_query(db, user).order_by(MarketProject.id)).all())
+    return _xlsx(export_market_projects(db, rows), "市场项目清单.xlsx")
+
+
 @router.get("/{project_id}", response_model=MarketProjectOut)
-def get_project(project_id: str, db: Session = Depends(get_db), user: User = Depends(require_perm("market.view"))):
+def get_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_any_perm(["market.view", "market.detail"])),
+):
     p = _project_or_404(db, user, project_id)
-    return _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))[0]
+    return _enrich_progress(db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)])))[0]
 
 
 @router.post("", response_model=MarketProjectOut, status_code=201)
@@ -166,11 +222,17 @@ def create_project(
     pid = next_project_id(db)
     p = MarketProject(id=pid, created_by=user.id)
     _apply_payload(p, payload)
+    # 项目进展必填：写入项目快照（列表/导出用）并作为第一条进展记录
+    p.progress = payload.progress
     db.add(p)
+    db.flush()  # 先拿到 project_id 再写进展记录
+    db.add(ProjectProgress(project_id=pid, content=payload.progress, created_by=user.id))
     write_log(db, user, "create", "market_project", pid, {"name": p.name}, request)
     db.commit()
     db.refresh(p)
-    return _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))[0]
+    return _enrich_progress(
+        db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))
+    )[0]
 
 
 @router.patch("/{project_id}", response_model=MarketProjectOut)
@@ -183,10 +245,13 @@ def update_project(
 ):
     p = _project_or_404(db, user, project_id)
     _apply_payload(p, payload)
+    # 编辑不直接改进展快照（只能通过「新增进展」追加记录），此处保持 p.progress 不变
     write_log(db, user, "update", "market_project", project_id, {"name": p.name}, request)
     db.commit()
     db.refresh(p)
-    return _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))[0]
+    return _enrich_progress(
+        db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))
+    )[0]
 
 
 @router.delete("/{project_id}")
@@ -197,10 +262,112 @@ def delete_project(
     user: User = Depends(require_perm("market.delete")),
 ):
     p = _project_or_404(db, user, project_id)
+    # 级联删除进展记录，避免孤儿记录被后续新建项目（复用项目 ID）误继承
+    db.query(ProjectProgress).filter(ProjectProgress.project_id == p.id).delete()
     db.delete(p)
     write_log(db, user, "delete", "market_project", project_id, {"name": p.name}, request)
     db.commit()
     return {"ok": True, "msg": "已删除", "data": {"id": project_id}}
+
+
+# ------------------------------------------------------------------ 进展记录（时间轴）
+#
+# 规则：编辑界面不可直接改进展，只能「新增进展」追加记录；历史按时间倒序分页，
+# 前端默认展示最近 5 条、下拉加载更早记录。market_project.progress 始终冗余最新一条，供列表列/导出。
+
+
+@router.get("/{project_id}/progress", response_model=ProjectProgressListOut)
+def list_project_progress(
+    project_id: str,
+    page: int = 1,
+    size: int = Query(5, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_any_perm(["market.view", "market.detail"])),
+):
+    p = _project_or_404(db, user, project_id)
+    page = max(1, page)
+    q = select(ProjectProgress).where(ProjectProgress.project_id == p.id)
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    rows = list(
+        db.scalars(q.order_by(ProjectProgress.id.desc()).limit(size).offset((page - 1) * size)).all()
+    )
+    creator_ids = {r.created_by for r in rows if r.created_by}
+    creators: dict[str, str] = (
+        {uid: name for uid, name in db.execute(select(User.id, User.name).where(User.id.in_(creator_ids))).all()}
+        if creator_ids
+        else {}
+    )
+    return {
+        "items": [
+            ProjectProgressItem(
+                id=r.id,
+                content=r.content,
+                createdById=r.created_by or "",
+                createdByName=creators.get(r.created_by or "", ""),
+                createdAt=r.created_at.isoformat() if r.created_at else "",
+            )
+            for r in rows
+        ],
+        "total": total,
+        "page": page,
+        "size": size,
+    }
+
+
+@router.post("/{project_id}/progress", response_model=ProjectProgressItem, status_code=201)
+def add_project_progress(
+    project_id: str,
+    payload: ProjectProgressCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("market.edit")),
+):
+    p = _project_or_404(db, user, project_id)
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="进展内容不能为空")
+    record = ProjectProgress(project_id=p.id, content=content, created_by=user.id)
+    db.add(record)
+    p.progress = content  # 冗余快照同步为最新一条
+    db.flush()
+    write_log(db, user, "progress", "market_project", p.id, {"progress_id": record.id}, request)
+    db.commit()
+    db.refresh(record)
+    return ProjectProgressItem(
+        id=record.id,
+        content=record.content,
+        createdById=user.id,
+        createdByName=user.name,
+        createdAt=record.created_at.isoformat() if record.created_at else "",
+    )
+
+
+@router.get("/import/template")
+def market_project_template(db: Session = Depends(get_db), user: User = Depends(require_perm("market.import"))):
+    return _xlsx(build_market_project_template(db), "市场项目导入标准模板.xlsx")
+
+
+@router.post("/import", response_model=ImportResult)
+async def market_project_import(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("market.import")),
+):
+    raw = await file.read()
+    if len(raw) > settings.import_max_mb * 1024 * 1024:
+        raise HTTPException(status_code=422, detail=f"文件不能超过 {settings.import_max_mb}MB")
+    try:
+        rows = parse_rows(raw, MARKET_PROJECT_COLUMNS, settings.import_max_rows, optional=MARKET_PROJECT_OPTIONAL_COLUMNS)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    valid, errors = validate_market_project_rows(db, rows)
+    if errors:
+        return {"imported": 0, "errors": errors}
+    count = import_market_projects(db, valid, user)
+    write_log(db, user, "import", "market_project", "", {"count": count}, request)
+    db.commit()
+    return {"imported": count, "errors": []}
 
 
 @router.post("/reseed", status_code=200)

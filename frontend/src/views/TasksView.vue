@@ -66,19 +66,18 @@
       <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
       <div v-else-if="!tasks.length" class="p-10 text-center text-slate-400 text-sm">暂无任务</div>
       <div v-else class="overflow-x-auto">
-        <table :class="rowHeightClass" class="table-freeze table-fixed w-[2219px]">
+        <table :class="rowHeightClass" class="table-freeze table-fixed w-[2109px]">
           <thead>
             <tr class="border-b border-slate-200">
               <th class="th col-id w-[96px]">任务ID</th>
               <th class="th col-maintask w-[213px]">主任务</th>
               <th class="th col-name w-[213px]">任务名称</th>
-              <th class="th w-[307px]">进展描述</th>
-              <th class="th w-[100px]">责任人</th>
-              <th class="th w-[120px]">责任部门</th>
+              <th class="th w-[307px]">任务进展</th>
               <th class="th w-[100px] text-right">目标</th>
               <th class="th w-[110px] text-right">已完成</th>
               <th class="th w-[130px]">完成进度</th>
-              <th class="th w-[110px]">状态</th>
+              <th class="th w-[100px]">责任人</th>
+              <th class="th w-[120px]">责任部门</th>
               <th class="th w-[180px]">计划起止</th>
               <th class="th w-[100px]">创建人</th>
               <th class="th w-[140px]">创建时间</th>
@@ -122,8 +121,6 @@
                 <td class="td w-[307px]">
                   <div class="cell-c text-slate-600" :title="row.task.latestProgress || '—'">{{ row.task.latestProgress || '—' }}</div>
                 </td>
-                <td class="td">{{ row.task.owner }}</td>
-                <td class="td">{{ row.task.deptName }}</td>
                 <td class="td text-right font-mono">{{ fmt(row.task.target) }}<span class="text-[11px] text-slate-400 ml-0.5">{{ row.task.unit }}</span></td>
                 <td class="td text-right font-mono">{{ fmt(row.task.done) }}</td>
                 <td class="td">
@@ -134,7 +131,8 @@
                     <span class="text-xs font-bold text-slate-600 w-9 text-right">{{ row.task.progress }}%</span>
                   </div>
                 </td>
-                <td class="td"><StatusBadge :status="row.task.statusLevel" :text="row.task.statusLabel" /></td>
+                <td class="td">{{ row.task.owner }}</td>
+                <td class="td">{{ row.task.deptName }}</td>
                 <td class="td text-xs text-slate-500">{{ row.task.startDate }} ~ {{ row.task.endDate }}</td>
                 <td class="td text-slate-500">{{ row.task.createdByName || '—' }}</td>
                 <td class="td text-xs text-slate-500">{{ fmtTime(row.task.createdAt) }}</td>
@@ -297,13 +295,13 @@
           <label class="label">任务描述<span class="req">*</span></label>
           <textarea v-model="form.description" rows="2" class="input" placeholder="任务的背景、交付要求与关键说明" />
         </div>
-        <!-- 进展描述：新建时直接填写（必填，成为第一条进展记录）；编辑时只读，通过「新增进展」追加 -->
+        <!-- 任务进展：新建时直接填写（必填，成为第一条进展记录）；编辑时只读，通过「新增进展」追加 -->
         <div v-if="!form.id" class="md:col-span-2">
-          <label class="label">进展描述<span class="req">*</span><span class="text-slate-400 font-normal">（将作为第一条进展记录）</span></label>
+          <label class="label">任务进展<span class="req">*</span><span class="text-slate-400 font-normal">（将作为第一条进展记录）</span></label>
           <textarea v-model="form.note" rows="2" class="input" placeholder="当前进展说明" />
         </div>
         <div v-else class="md:col-span-2">
-          <label class="label">进展记录<span class="text-slate-400 font-normal">（不可直接修改，点击「新增进展」追加本次内容）</span></label>
+          <label class="label">任务进展<span class="text-slate-400 font-normal">（不可直接修改，点击「新增进展」追加本次内容）</span></label>
           <div class="flex items-center gap-2 mb-2">
             <input
               v-model.trim="progressInput"
@@ -394,7 +392,7 @@
           <p class="text-sm text-slate-700 whitespace-pre-wrap">{{ detailTask.description || '—' }}</p>
         </div>
         <div class="md:col-span-2">
-          <label class="label">进展记录（最近 {{ PROGRESS_PAGE_SIZE }} 条，倒序）</label>
+          <label class="label">任务进展（最近 {{ PROGRESS_PAGE_SIZE }} 条，倒序）</label>
           <div v-if="progressItems.length" class="max-h-56 overflow-y-auto border border-slate-200 rounded-lg px-3.5 py-2.5">
             <div v-for="(p, i) in progressItems" :key="p.id" class="flex gap-2.5">
               <div class="flex flex-col items-center shrink-0">
@@ -650,7 +648,7 @@ const rows = computed<TaskRow[]>(() => {
 })
 
 /** 表格列数（分组标题行需整行跨列） */
-const COL_COUNT = 15
+const COL_COUNT = 14
 
 /** ISO 时间 → 本地可读格式。后端返回带时区，须转本地时区展示 */
 function fmtTime(iso: string): string {
@@ -753,7 +751,7 @@ async function addProgress() {
     progressItems.value = [created, ...progressItems.value]
     progressTotal.value += 1
     progressInput.value = ''
-    // 列表「进展描述」列同步更新为最新一条
+    // 列表「任务进展」列同步更新为最新一条
     const t = tasks.value.find((x) => x.id === form.id)
     if (t) t.latestProgress = created.content
     app.toast('已添加进展')
@@ -876,8 +874,8 @@ async function save() {
   if (!form.endDate) return (formError.value = '请选择计划结束日期')
   if (form.endDate < form.startDate) return (formError.value = '计划结束日期不能早于开始日期')
   if (!form.description.trim()) return (formError.value = '任务描述不能为空')
-  // 进展描述必填（新建时填写，成为第一条进展记录；编辑时改为「新增进展」追加）
-  if (!form.id && !form.note.trim()) return (formError.value = '进展描述不能为空')
+  // 任务进展必填（新建时填写，成为第一条进展记录；编辑时改为「新增进展」追加）
+  if (!form.id && !form.note.trim()) return (formError.value = '任务进展不能为空')
 
   saving.value = true
   // 请求体使用后端约定的 snake_case 字段（见 docs/design.md §6.5）
@@ -894,7 +892,7 @@ async function save() {
     dept_id: form.deptId,
     owner: form.owner,
   }
-  if (!form.id) payload.note = form.note // 仅创建携带进展描述；编辑不可直接改进展
+  if (!form.id) payload.note = form.note // 仅创建携带任务进展；编辑不可直接改进展
   try {
     if (form.id) await taskApi.update(form.id, payload)
     else await taskApi.create(payload)

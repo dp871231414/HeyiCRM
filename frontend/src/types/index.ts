@@ -309,6 +309,8 @@ export interface MarketProjectItem {
   id: string
   name: string
   description: string
+  /** 最新一条进展的冗余快照（列表「项目进展」列展示用） */
+  latestProgress: string
   tractorDemand: number
   trailerDemand: number
   stage: MarketStage
@@ -320,6 +322,21 @@ export interface MarketProjectItem {
   createdByName: string
   createdAt: string
   updatedAt: string
+}
+
+/** 项目进展记录（时间轴，倒序分页） */
+export interface ProjectProgressItem {
+  id: number
+  content: string
+  createdById: string
+  createdByName: string
+  createdAt: string
+}
+export interface ProjectProgressListOut {
+  items: ProjectProgressItem[]
+  total: number
+  page: number
+  size: number
 }
 
 /** 市场部人员（项目管理负责人候选） */

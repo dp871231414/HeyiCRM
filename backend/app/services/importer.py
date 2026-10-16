@@ -20,8 +20,19 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.constants import SCOPES, TASK_ID_PREFIX
-from app.models import MainTask, MetricActual, MetricDef, Organization, Role, Task, TaskProgress, User
+from app.constants import MARKET_PROJECT_ID_PREFIX, MARKET_STAGE_VALUES, MARKET_STAGES, SCOPES, TASK_ID_PREFIX
+from app.models import (
+    MainTask,
+    MarketProject,
+    MetricActual,
+    MetricDef,
+    Organization,
+    ProjectProgress,
+    Role,
+    Task,
+    TaskProgress,
+    User,
+)
 
 # 系统默认主任务：导入时「任务分类」留空则归到它
 MT_NONE_ID = "MT_NONE"
@@ -39,7 +50,7 @@ TASK_COLUMNS = [
     "目标",
     "已完成",
     "数量单位",
-    "进展描述",
+    "任务进展",
     "计划开始日期",
     "计划结束日期",
     "责任部门",
@@ -181,7 +192,7 @@ TASK_TEMPLATE_NOTES = [
     ["目标", "必填。数字，非量化任务填 1"],
     ["已完成", "必填。数字，非量化任务未完成填 0、完成填 1"],
     ["数量单位", "选填。如 万元 / 台 / 项，留空则不显示单位"],
-    ["进展描述", "必填。当前进展说明，导入后作为该任务的第一条进展记录"],
+    ["任务进展", "必填。当前进展说明，导入后作为该任务的第一条进展记录"],
     ["计划开始日期", "必填，格式 2026-10-01"],
     ["计划结束日期", "必填，格式 2026-12-31，不能早于开始日期"],
     ["责任部门", "必填。组织名称或编码（见「组织清单」页）"],
@@ -410,8 +421,8 @@ def validate_task_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[
         if not (r.get("任务描述") or "").strip():
             row_errors.append({"field": "任务描述", "msg": "不能为空"})
 
-        if not (r.get("进展描述") or "").strip():
-            row_errors.append({"field": "进展描述", "msg": "不能为空"})
+        if not (r.get("任务进展") or "").strip():
+            row_errors.append({"field": "任务进展", "msg": "不能为空"})
 
         abn = r.get("是否异常", "")
         if abn and abn not in ("是", "否"):
@@ -572,7 +583,7 @@ def import_tasks(db: Session, rows: list[dict], user: User) -> int:
             target=Decimal(str(r["目标"])),
             done=Decimal(str(r["已完成"])),
             unit=r.get("数量单位", ""),
-            note=r.get("进展描述", ""),
+            note=r.get("任务进展", ""),
             start_date=datetime.strptime(r["计划开始日期"], "%Y-%m-%d").date(),
             end_date=datetime.strptime(r["计划结束日期"], "%Y-%m-%d").date(),
             dept_id=org.id,
@@ -581,9 +592,9 @@ def import_tasks(db: Session, rows: list[dict], user: User) -> int:
         )
         db.add(task)
         db.flush()
-        # 进展描述为导入必填项：同时写入第一条进展记录（与手工新建同一套规则）
-        if (r.get("进展描述") or "").strip():
-            db.add(TaskProgress(task_id=task.id, content=r["进展描述"].strip(), created_by=user.id))
+        # 任务进展为导入必填项：同时写入第一条进展记录（与手工新建同一套规则）
+        if (r.get("任务进展") or "").strip():
+            db.add(TaskProgress(task_id=task.id, content=r["任务进展"].strip(), created_by=user.id))
     return len(rows)
 
 
@@ -859,3 +870,289 @@ def validate_account_rows(db: Session, rows: list[dict]) -> tuple[list[dict], li
                 }
             )
     return valid, errors
+
+
+# ------------------------------------------------------------------ 市场项目导入 / 导出
+#
+# 列名与「项目管理」列表、编辑表单保持同一套叫法：项目名称 / 项目进展 / 项目描述 / 牵引车需求 /
+# 挂车需求 / 项目阶段 / 负责人 / 所属部门。其中「项目描述」列表不展示，但导入模板、导出、新增/编辑/详情仍展示，
+# 因此模板与导出都保留该列；「项目进展」为新增字段，导入后写入项目快照并生成第一条进展记录。
+
+_STAGE_LABEL_TO_VALUE = {s["label"]: s["stage"] for s in MARKET_STAGES}
+_STAGE_VALUE_TO_LABEL = {s["stage"]: s["label"] for s in MARKET_STAGES}
+
+MARKET_PROJECT_COLUMNS = [
+    "项目名称",
+    "项目进展",
+    "项目描述",
+    "牵引车需求",
+    "挂车需求",
+    "项目阶段",
+    "负责人",
+    "所属部门",
+]
+
+# 可选列：老版本模板（无「项目描述 / 所属部门」）仍可导入，缺失时按空值处理
+MARKET_PROJECT_OPTIONAL_COLUMNS = {"项目描述", "所属部门"}
+
+# 导出列 = 项目ID + 全部可填写列 + 系统列 —— 导出文件可直接当导入模板回灌
+MARKET_PROJECT_SYSTEM_EXPORT_COLUMNS = ["项目ID", "创建人", "创建时间", "更新时间"]
+MARKET_PROJECT_EXPORT_COLUMNS = ["项目ID"] + MARKET_PROJECT_COLUMNS + MARKET_PROJECT_SYSTEM_EXPORT_COLUMNS
+
+
+def _resolve_stage(raw: Any) -> int | None:
+    """把「项目阶段」解析为阶段值（10/25/50/75/90/100）。
+
+    允许填数字（25）或阶段名称（市场尽调），其余返回 None（由校验层报「不合法」）。
+    """
+    raw = (raw or "").strip()
+    if raw == "":
+        return None
+    if re.fullmatch(r"\d+", raw):
+        v = int(raw)
+    else:
+        v = _STAGE_LABEL_TO_VALUE.get(raw)
+    return v if v in MARKET_STAGE_VALUES else None
+
+
+def next_market_project_id(db: Session) -> str:
+    rows = db.scalars(select(MarketProject.id).where(MarketProject.id.like(f"{MARKET_PROJECT_ID_PREFIX}%"))).all()
+    max_seq = 0
+    for pid in rows:
+        m = re.fullmatch(rf"{MARKET_PROJECT_ID_PREFIX}(\d+)", pid or "")
+        if m:
+            max_seq = max(max_seq, int(m.group(1)))
+    return f"{MARKET_PROJECT_ID_PREFIX}{max_seq + 1:04d}"
+
+
+MARKET_PROJECT_TEMPLATE_NOTES = [
+    ["填写项", "说明"],
+    ["项目名称", "必填。市场项目名称"],
+    ["项目进展", "必填。当前项目进展说明，导入后作为该项目的第一条进展记录"],
+    ["项目描述", "选填。项目的背景与交付要求"],
+    ["牵引车需求", "必填。数字，单位辆，可填 0"],
+    ["挂车需求", "必填。数字，单位辆，可填 0"],
+    ["项目阶段", "必填。填 10/25/50/75/90/100 或阶段名称（项目导入/市场尽调/初审通过/联合评审通过/签约落地/交车投运）"],
+    ["负责人", "必填。必须是系统内已有账号姓名"],
+    ["所属部门", "选填。负责人直接所属部门，留空则按负责人自动带出"],
+    ["项目ID / 创建人 / 创建时间 / 更新时间", "由系统自动生成，不在模板中填写"],
+]
+
+
+def build_market_project_template(db: Session) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "项目数据"
+
+    _write_banner(
+        ws,
+        len(MARKET_PROJECT_COLUMNS),
+        "市场项目导入标准模板",
+        ["请勿修改第 4 行字段名称", "从第 5 行开始逐行填写", "灰色示例行可直接覆盖或删除"],
+    )
+    _style_header(ws, HEADER_ROW, MARKET_PROJECT_COLUMNS)
+    ws.append(
+        [
+            "华东物流园运力替换项目",
+            "已完成需求调研，进入方案设计",
+            "物流园 200 辆燃油重卡替换为新能源",
+            200,
+            120,
+            25,
+            "郑凯",
+            "市场部",
+        ]
+    )
+    _style_data_rows(ws, HEADER_ROW + 1, ws.max_row, len(MARKET_PROJECT_COLUMNS), sample_rows=1)
+
+    # 说明
+    _notes_sheet(wb, "填写说明", MARKET_PROJECT_TEMPLATE_NOTES)
+
+    # 组织清单（供「所属部门」下拉）
+    orgs = _notes_sheet(wb, "组织清单", [["编码", "名称"]])
+    for o in db.scalars(select(Organization).order_by(Organization.sort_order, Organization.id)).all():
+        orgs.append([o.id, o.name])
+    for r in range(2, orgs.max_row + 1):
+        for c in range(1, 3):
+            orgs.cell(row=r, column=c).border = _BORDER
+
+    dv_dept = DataValidation(type="list", formula1="=组织清单!$B$2:$B$200", allow_blank=True)
+    dv_dept.error = "所属部门需存在于组织清单"
+    ws.add_data_validation(dv_dept)
+    col_dept = get_column_letter(MARKET_PROJECT_COLUMNS.index("所属部门") + 1)
+    dv_dept.add(f"{col_dept}{HEADER_ROW + 1}:{col_dept}{HEADER_ROW + 2000}")
+
+    # 数据验证：负责人（引用账号清单）
+    dv_owner = DataValidation(type="list", formula1="=账号清单!$A$2:$A$300", allow_blank=True)
+    dv_owner.error = "负责人需是系统内已有账号姓名"
+    ws.add_data_validation(dv_owner)
+    col_owner = get_column_letter(MARKET_PROJECT_COLUMNS.index("负责人") + 1)
+    dv_owner.add(f"{col_owner}{HEADER_ROW + 1}:{col_owner}{HEADER_ROW + 2000}")
+
+    # 数据验证：项目阶段（数字或名称皆可）
+    dv_stage = DataValidation(
+        type="list",
+        formula1='"' + ",".join(str(v) for v in MARKET_STAGE_VALUES) + '"',
+        allow_blank=True,
+    )
+    dv_stage.error = "项目阶段只能填 10/25/50/75/90/100 或阶段名称"
+    ws.add_data_validation(dv_stage)
+    col_stage = get_column_letter(MARKET_PROJECT_COLUMNS.index("项目阶段") + 1)
+    dv_stage.add(f"{col_stage}{HEADER_ROW + 1}:{col_stage}{HEADER_ROW + 2000}")
+
+    # 账号清单（供负责人下拉）
+    users = _notes_sheet(wb, "账号清单", [["姓名", "部门"]])
+    for u in db.scalars(select(User).order_by(User.id)).all():
+        users.append([u.name, org_name_of(db, u.dept_id)])
+    for r in range(2, users.max_row + 1):
+        for c in range(1, 3):
+            users.cell(row=r, column=c).border = _BORDER
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def validate_market_project_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    errors: list[dict] = []
+    valid: list[dict] = []
+    org_ids = set(db.scalars(select(Organization.id)).all())
+    org_names = set(db.scalars(select(Organization.name)).all())
+    user_names = set(db.scalars(select(User.name)).all())
+
+    for i, r in enumerate(rows):
+        row_no = i + 2
+        row_errors: list[dict] = []
+
+        if not (r.get("项目名称") or "").strip():
+            row_errors.append({"field": "项目名称", "msg": "不能为空"})
+
+        if not (r.get("项目进展") or "").strip():
+            row_errors.append({"field": "项目进展", "msg": "不能为空"})
+
+        tractor_raw = r.get("牵引车需求", "")
+        if tractor_raw == "":
+            row_errors.append({"field": "牵引车需求", "msg": "不能为空"})
+        else:
+            try:
+                if float(tractor_raw) < 0:
+                    row_errors.append({"field": "牵引车需求", "msg": "必须为不小于 0 的数字"})
+            except ValueError:
+                row_errors.append({"field": "牵引车需求", "msg": "必须为数字"})
+
+        trailer_raw = r.get("挂车需求", "")
+        if trailer_raw == "":
+            row_errors.append({"field": "挂车需求", "msg": "不能为空"})
+        else:
+            try:
+                if float(trailer_raw) < 0:
+                    row_errors.append({"field": "挂车需求", "msg": "必须为不小于 0 的数字"})
+            except ValueError:
+                row_errors.append({"field": "挂车需求", "msg": "必须为数字"})
+
+        stage = _resolve_stage(r.get("项目阶段", ""))
+        if stage is None:
+            row_errors.append({"field": "项目阶段", "msg": "不合法，应为 10/25/50/75/90/100 或阶段名称"})
+
+        owner = (r.get("负责人") or "").strip()
+        if not owner:
+            row_errors.append({"field": "负责人", "msg": "不能为空"})
+        elif owner not in user_names:
+            row_errors.append({"field": "负责人", "msg": f"「{owner}」不是系统内已有账号姓名"})
+
+        dept = (r.get("所属部门") or "").strip()
+        if dept and dept not in org_ids and dept not in org_names:
+            row_errors.append({"field": "所属部门", "msg": f"「{dept}」不是有效的组织名称或编码"})
+
+        if row_errors:
+            for e in row_errors:
+                errors.append({"row": row_no, **e})
+        else:
+            valid.append(
+                {
+                    **r,
+                    "_row": row_no,
+                    "_stage": stage,  # 校验已解析，导入直接复用
+                    "_owner": owner,
+                }
+            )
+    return valid, errors
+
+
+def import_market_projects(db: Session, rows: list[dict], user: User) -> int:
+    for r in rows:
+        owner = r["_owner"]
+        u = db.scalar(select(User).where(User.name == owner))
+        dept_raw = (r.get("所属部门") or "").strip()
+        dept_id = None
+        if dept_raw:
+            org = db.scalar(select(Organization).where(Organization.id == dept_raw))
+            if not org:
+                org = db.scalar(select(Organization).where(Organization.name == dept_raw))
+            dept_id = org.id if org else None
+        # 所属部门留空 → 按负责人自动带出（与编辑表单一致）
+        if not dept_id and u:
+            dept_id = u.dept_id
+        pid = next_market_project_id(db)
+        progress = (r["项目进展"] or "").strip()
+        p = MarketProject(
+            id=pid,
+            name=(r["项目名称"] or "").strip(),
+            description=(r.get("项目描述") or "").strip(),
+            progress=progress,
+            tractor_demand=int(float(r["牵引车需求"])),
+            trailer_demand=int(float(r["挂车需求"])),
+            stage=int(r["_stage"]),
+            owner=owner,
+            owner_dept_id=dept_id,
+            created_by=user.id,
+        )
+        db.add(p)
+        db.flush()
+        # 项目进展为导入必填项：同时写入第一条进展记录（与手工新建同一套规则）
+        db.add(ProjectProgress(project_id=pid, content=progress, created_by=user.id))
+    return len(rows)
+
+
+def export_market_projects(db: Session, rows: list[MarketProject]) -> bytes:
+    """导出市场项目清单。
+
+    列与「项目管理」列表、编辑表单保持一致（业务列同名，另加项目ID与系统列），
+    因此导出文件本身即可作为导入模板回灌。
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "项目列表"
+    _write_banner(
+        ws,
+        len(MARKET_PROJECT_EXPORT_COLUMNS),
+        "市场项目清单",
+        [f"共 {len(rows)} 个项目", "带「系统」字样的列由系统生成，回灌导入时会被忽略"],
+    )
+    _style_header(ws, HEADER_ROW, MARKET_PROJECT_EXPORT_COLUMNS)
+
+    user_names = {u.id: u.name for u in db.scalars(select(User)).all()}
+    org_names = {o.id: o.name for o in db.scalars(select(Organization)).all()}
+    for p in rows:
+        ws.append(
+            [
+                p.id,
+                p.name,
+                p.progress or "",
+                p.description or "",
+                int(p.tractor_demand or 0),
+                int(p.trailer_demand or 0),
+                int(p.stage),
+                p.owner,
+                org_names.get(p.owner_dept_id or "", ""),
+                user_names.get(p.created_by or "", ""),
+                _fmt_dt(p.created_at.isoformat() if p.created_at else ""),
+                _fmt_dt(p.updated_at.isoformat() if p.updated_at else ""),
+            ]
+        )
+    if ws.max_row >= HEADER_ROW + 1:
+        _style_data_rows(ws, HEADER_ROW + 1, ws.max_row, len(MARKET_PROJECT_EXPORT_COLUMNS), sample_rows=0)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

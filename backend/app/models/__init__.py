@@ -3,7 +3,7 @@ from app.db.base import Base
 from app.models.log import MainTask, OperationLog, Task, TaskProgress
 from app.models.metric import MetricActual, MetricDef, MetricTarget
 from app.models.organization import Organization
-from app.models.project import FunnelConfig, MarketProject
+from app.models.project import FunnelConfig, MarketProject, ProjectProgress
 from app.models.user import Role, User
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     "Task",
     "MainTask",
     "MarketProject",
+    "ProjectProgress",
     "FunnelConfig",
     "Role",
     "User",

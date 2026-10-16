@@ -1282,3 +1282,26 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round14.mjs
 
 - **提交**：本轮单次提交（见 git log round19）。
 - **发布**：按 round 14 约定需用户当轮确认；未收到「发布」指令前不部署。
+
+## 27. Round 20 —— 任务列表三列宽度减 1/3 + 真正固定（table-fixed）
+
+### 27.1 需求（逐字）
+> 任务列表主任务、任务名称、进展描述列宽减少 1/3，并且固定（之前未实现固定和自动隐藏）
+
+### 27.2 根因
+- 表格此前为自动布局（`w-full min-w-[2600px]`，无 `table-fixed`）。自动布局下 `th` 的 `w-[...px]` 仅为建议宽度，长内容会把列撑开 → 「固定」未生效。
+- `.cell-c` 的 `overflow:hidden + text-overflow:ellipsis` 依赖父 `td` 有确定宽度；父 `td` 被内容撑开后 ellipsis 永不触发 → 「自动隐藏」未生效。
+
+### 27.3 改动
+- `TasksView.vue`：`<table>` 改用 `table-fixed` + 固定总宽 `w-[2219px]`（去掉 `w-full`/`min-w`）；三列 `th/td` 宽 320→213、460→307（减 1/3）。
+- `main.css`：`.col-name` 冻结偏移 `left:416→309px`、`.col-maintask`/`.col-name` `min-width:320→213px`，与缩减后的列宽对齐。
+- 后端：无改动。
+
+### 27.4 验证
+- 前端 `npm run build` 通过；构建产物 CSS 含 `table-layout:fixed`、`width:2219px`、`width:213px`、`width:307px`、`left:309px`、`min-width:213px`。
+- 本地 8012 联调：health / 首页 / CSS / tasks 均 200，任务 `total=14`、字段齐全。
+- 逻辑层面：`table-fixed` + 固定 `td` 宽度使 `.cell-c` 的 ellipsis 必然触发（超长自动隐藏、悬停 `title` 显示全文）。
+
+### 27.5 提交与发布
+- **提交**：`9befa6f`（2 files, +11/-11）。
+- **发布**：按 round 14 约定需用户当轮确认；本轮未说「发布」，不部署。

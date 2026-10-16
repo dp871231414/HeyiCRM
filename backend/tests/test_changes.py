@@ -1086,6 +1086,7 @@ def _mp_body(**over) -> dict:
         "trailer_demand": 5,
         "stage": 25,
         "owner": "郑凯",
+        "progress": "初始进展：已启动前期沟通",
     }
     body.update(over)
     return body
