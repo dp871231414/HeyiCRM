@@ -233,12 +233,12 @@ body {
 /* 主任务列（列序第二，紧邻任务ID）：冻结在 96px 处 */
 .col-maintask {
   left: 96px;
-  min-width: 320px;
+  min-width: 213px;
 }
-/* 任务名称列（列序第三）：固定 320px（约 20 个汉字），冻结在 96+320=416px 处 */
+/* 任务名称列（列序第三）：固定 213px（约 13 个汉字，较原 320px 减 1/3），冻结在 96+213=309px 处 */
 .col-name {
-  left: 416px;
-  min-width: 320px;
+  left: 309px;
+  min-width: 213px;
 }
 .col-ops {
   position: sticky;

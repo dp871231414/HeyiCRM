@@ -66,13 +66,13 @@
       <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
       <div v-else-if="!tasks.length" class="p-10 text-center text-slate-400 text-sm">暂无任务</div>
       <div v-else class="overflow-x-auto">
-        <table :class="rowHeightClass" class="table-freeze w-full min-w-[2600px]">
+        <table :class="rowHeightClass" class="table-freeze table-fixed w-[2219px]">
           <thead>
             <tr class="border-b border-slate-200">
               <th class="th col-id w-[96px]">任务ID</th>
-              <th class="th col-maintask w-[320px]">主任务</th>
-              <th class="th col-name w-[320px]">任务名称</th>
-              <th class="th w-[460px]">进展描述</th>
+              <th class="th col-maintask w-[213px]">主任务</th>
+              <th class="th col-name w-[213px]">任务名称</th>
+              <th class="th w-[307px]">进展描述</th>
               <th class="th w-[100px]">责任人</th>
               <th class="th w-[120px]">责任部门</th>
               <th class="th w-[100px]">创建人</th>
@@ -113,13 +113,13 @@
               <!-- 任务行 -->
               <tr v-else class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                 <td class="td col-id font-mono text-xs text-slate-500">{{ row.task.id }}</td>
-                <td class="td col-maintask w-[320px]">
+                <td class="td col-maintask w-[213px]">
                   <div class="cell-c text-slate-500" :title="row.task.mainTaskName || '空'">{{ row.task.mainTaskName || '空' }}</div>
                 </td>
-                <td class="td col-name w-[320px]">
+                <td class="td col-name w-[213px]">
                   <div class="cell-c font-semibold text-slate-800" :title="row.task.parent">{{ row.task.parent }}</div>
                 </td>
-                <td class="td w-[460px]">
+                <td class="td w-[307px]">
                   <div class="cell-c text-slate-600" :title="row.task.latestProgress || '—'">{{ row.task.latestProgress || '—' }}</div>
                 </td>
                 <td class="td">{{ row.task.owner }}</td>
