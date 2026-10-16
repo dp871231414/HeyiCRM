@@ -430,6 +430,10 @@ def main() -> None:
             conn.execute(text("ALTER TABLE main_task ADD COLUMN dept_id VARCHAR(16)"))
         if "updated_at" not in mt_existing:
             conn.execute(text("ALTER TABLE main_task ADD COLUMN updated_at TIMESTAMP"))
+        # user.preferences：用户级偏好（行高等），老库补 ALTER，默认值 '{}'
+        user_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(\"user\")")).fetchall()}
+        if "preferences" not in user_existing:
+            conn.execute(text("ALTER TABLE \"user\" ADD COLUMN preferences TEXT NOT NULL DEFAULT '{}'"))
     with SessionLocal() as db:
         created = seed(db, reset=reset)
     print(f"[seed] 完成（reset={reset}）: {created}")

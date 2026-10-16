@@ -1434,3 +1434,39 @@ verdict = {
 
 > 规律：**断言不要依赖会被改动的文案**。这类失败最浪费时间 ——
 > 看起来像功能挂了，实际是选择器过期。同理，界面上任何会变的文字都不适合做定位锚点。
+
+### 13.15 2026-10-16 · 列宽固定 + 省略号 + 行高偏好（任务 / 项目双页一致）
+
+#### 需求（用户原话拆解）
+
+1. **列序交换**：任务管理列表「主任务」「任务名称」两列互换，主任务在前。
+2. **固定列宽 + 省略号**：所有列固定宽度；其中「任务名称 / 主任务 / 进展描述」分别按 20 / 20 / 30 个汉字长度固定（≈ 320 / 320 / 460px），超出部分用「…」截断，鼠标悬停（`title`）展示完整内容。
+3. **行高设置（按账号记忆）**：筛选栏新增「行高」下拉 —— 默认 / 高（2X）/ 超高（3X）；选项按用户账号记忆，下次登录仍生效；选择后**所有行高**一次性调整，字体支持折行，仍未展示完整的部分用「…」截断。
+
+#### 后端：用户偏好持久化
+
+| 文件 | 改动 |
+|---|---|
+| `models/user.py` | `User.preferences` 新增 JSON 列（默认 `{}`，`nullable=False`） |
+| `services/serializers.py` | `user_brief` 序列化带入 `preferences` |
+| `schemas/auth.py` | `UserBrief.preferences`、新增 `PrefsOut` / `PrefsUpdate` |
+| `api/v1/auth.py` | 新增 `GET /auth/preferences`、`PUT /auth/preferences`（白名单：`rowHeight ∈ {default,high,ultra}`，其余键/值静默忽略，浅合并写入） |
+| `main.py` / `seed.py` | 老库 ALTER 补 `user.preferences` 列（TEXT，默认 `'{}'`） |
+
+前端「行高」选择器切换时调用 `auth.updatePreferences({ rowHeight })`：乐观更新本地 → `PUT /auth/preferences` 写回 → 登录 / `/auth/me` 自动回带，下次登录载入。
+
+#### 前端：列宽 / 省略号 / 行高
+
+| 维度 | 实现 |
+|---|---|
+| 列序交换 | 任务管理表头改为 `任务ID → 主任务 → 任务名称 → 进展描述 → …`；主任务列改用冻结类 `col-maintask`（`left:96px`），任务名称 `col-name` 偏移调至 `left:416px`（96+320） |
+| 固定列宽 | 三特殊列固定 `320/320/460px`；其余列保持既有 `w-[]` 固定宽度；表格 `min-w` 同步放大（任务 2600px / 项目 1960px） |
+| 省略号 + 悬停 | 特殊列内容包在 `.cell-c` 内：`title` 展示全文；默认单行 `text-overflow: ellipsis`；高/超高行高时切 `-webkit-line-clamp: var(--cell-lines)` 多行折行再省略 |
+| 行高 | 表格挂 `rh-{default,high,ultra}` 类：固定 `.td` 高度（44 / 88 / 132px ≈ 1X/2X/3X），高/超高置 `vertical-align:top` 让折行文本顶对齐；`--cell-lines` 控制截断行数（3 / 5） |
+
+项目管理（ProjectsView）复用同一套 `.cell-c` / `rh-*` 机制，逻辑完全一致：项目名称（20 汉字 / 320px）、项目描述（30 汉字 / 460px）固定列宽 + 省略号，筛选栏同样提供行高下拉。
+
+#### 注意点
+
+- `.cell-c` 与冻结列背景同步：高/超高行高时冻结列（`.col-id/.col-maintask/.col-name/.col-ops`）的 sticky 背景与 hover 底色规则已一并覆盖，避免「冻结列不变色」的割裂感。
+- 本地验证：`STATIC_DIR` 环境变量未设置时静态不挂载（默认空），`start.sh` / 部署环境会注入正确路径；联调用 `STATIC_DIR=.../backend/static` 显式指定。

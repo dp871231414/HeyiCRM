@@ -34,6 +34,15 @@
             分组视图
           </button>
         </div>
+        <!-- 行高设置：按账号记忆，下次登录仍生效；选择后所有行高一次性调整 -->
+        <div class="flex items-center gap-1.5 ml-2">
+          <span class="text-xs text-slate-400">行高</span>
+          <select v-model="rowHeightSel" class="input !w-32" @change="onRowHeightChange">
+            <option value="default">默认</option>
+            <option value="high">高（2X）</option>
+            <option value="ultra">超高（3X）</option>
+          </select>
+        </div>
         <button class="btn-ghost" @click="download(taskApi.exportUrl(), '重点任务清单.xlsx')">导出</button>
         <button v-if="auth.hasPerm('task.import')" class="btn-ghost" @click="importOpen = true">批量导入</button>
         <button v-if="auth.hasPerm('task.edit')" class="btn-primary" @click="openForm()">新建任务</button>
@@ -57,13 +66,13 @@
       <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
       <div v-else-if="!tasks.length" class="p-10 text-center text-slate-400 text-sm">暂无任务</div>
       <div v-else class="overflow-x-auto">
-        <table class="table-freeze w-full min-w-[1880px]">
+        <table :class="rowHeightClass" class="table-freeze w-full min-w-[2600px]">
           <thead>
             <tr class="border-b border-slate-200">
               <th class="th col-id w-[96px]">任务ID</th>
-              <th class="th col-name w-[220px]">任务名称</th>
-              <th class="th w-[140px]">主任务</th>
-              <th class="th w-[200px]">进展描述</th>
+              <th class="th col-maintask w-[320px]">主任务</th>
+              <th class="th col-name w-[320px]">任务名称</th>
+              <th class="th w-[460px]">进展描述</th>
               <th class="th w-[100px]">责任人</th>
               <th class="th w-[120px]">责任部门</th>
               <th class="th w-[100px]">创建人</th>
@@ -104,11 +113,15 @@
               <!-- 任务行 -->
               <tr v-else class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                 <td class="td col-id font-mono text-xs text-slate-500">{{ row.task.id }}</td>
-                <td class="td col-name">
-                  <div class="font-semibold text-slate-800 truncate" :title="row.task.parent">{{ row.task.parent }}</div>
+                <td class="td col-maintask w-[320px]">
+                  <div class="cell-c text-slate-500" :title="row.task.mainTaskName || '空'">{{ row.task.mainTaskName || '空' }}</div>
                 </td>
-                <td class="td text-slate-500">{{ row.task.mainTaskName || '空' }}</td>
-                <td class="td text-slate-600"><span class="line-clamp-2" :title="row.task.latestProgress">{{ row.task.latestProgress || '—' }}</span></td>
+                <td class="td col-name w-[320px]">
+                  <div class="cell-c font-semibold text-slate-800" :title="row.task.parent">{{ row.task.parent }}</div>
+                </td>
+                <td class="td w-[460px]">
+                  <div class="cell-c text-slate-600" :title="row.task.latestProgress || '—'">{{ row.task.latestProgress || '—' }}</div>
+                </td>
                 <td class="td">{{ row.task.owner }}</td>
                 <td class="td">{{ row.task.deptName }}</td>
                 <td class="td text-slate-500">{{ row.task.createdByName || '—' }}</td>
@@ -490,6 +503,14 @@ const MT_NONE_ID = 'MT_NONE'
 
 const auth = useAuthStore()
 const app = useAppStore()
+
+/** 行高：绑定账号偏好（default/high/ultra），切换后写入后端、下次登录仍生效 */
+const rowHeightSel = ref<'default' | 'high' | 'ultra'>((auth.rowHeight as 'default' | 'high' | 'ultra') || 'default')
+const rowHeightClass = computed(() => `rh-${rowHeightSel.value}`)
+function onRowHeightChange() {
+  // 乐观更新已在 v-model 生效；后台失败不影响界面，仅下次同步
+  auth.updatePreferences({ rowHeight: rowHeightSel.value }).catch(() => {})
+}
 
 const tasks = ref<TaskItem[]>([])
 const total = ref(0)

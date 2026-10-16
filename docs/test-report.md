@@ -1254,3 +1254,31 @@ cd tools && BASE_URL=http://127.0.0.1:8000 node verify-round14.mjs
 
 - **提交**：本轮单次提交（见 git log round18）。
 - **发布**：按 round 14 约定需用户当轮确认；未收到「发布」指令前不部署。
+
+## 26. Round 19 · 列宽固定 + 省略号 + 行高偏好（任务 / 项目双页一致）
+
+### 26.1 后端改动
+
+- `User.preferences`（JSON，默认 `{}`）：新增用户级偏好字段，按账号记忆。
+- `serializers.user_brief` 回带 `preferences`；`schemas.auth` 新增 `PrefsOut` / `PrefsUpdate`，`UserBrief` 补 `preferences`。
+- `api/v1/auth.py`：新增 `GET/PUT /auth/preferences`，白名单 `rowHeight ∈ {default,high,ultra}`（非法键/值静默忽略，浅合并）。
+- `main.py` / `seed.py`：老库 ALTER 补 `user.preferences` 列。
+- 新增 `tests/test_preferences.py`（4 例：默认空 / 更新持久化 / 非法值忽略 / 按账号隔离）。
+
+### 26.2 前端改动
+
+- **列序交换**：任务管理表头改为 `任务ID → 主任务 → 任务名称 → 进展描述 → …`；主任务列改用冻结类 `col-maintask`（left:96px），任务名称 `col-name` 偏移调至 416px。
+- **固定列宽 + 省略号**：任务名称 / 主任务 / 进展描述固定 320/320/460px；特殊列内容包 `.cell-c`，默认单行省略、悬停 `title` 显示全文；高/超高行高下 `-webkit-line-clamp` 折行再省略。表 `min-w` 放大（任务 2600px / 项目 1960px）。
+- **行高偏好**：表格挂 `rh-{default,high,ultra}`（44/88/132px ≈ 1X/2X/3X），筛选栏新增「行高」下拉，切换调 `auth.updatePreferences({rowHeight})` 并写入后端；登录 / `/auth/me` 回带、下次登录生效。项目管理复用同一套机制。
+- `api/index.ts` 新增 `prefsApi`；`stores/auth` 新增 `preferences` / `rowHeight` / `updatePreferences`；`types` 的 `UserBrief` 补 `preferences`。
+
+### 26.3 验证
+
+- **后端**：141 passed（137 + 4 偏好测试）。
+- **前端**：`npm run build` 通过；构建产物 CSS 含 `.cell-c` / `.rh-high` / `.rh-ultra` / `.rh-default` / `.col-maintask` / `.col-name`；dist 已同步 `backend/static`。
+- **本地联调（8012）**：登录 → `/auth/me` 回带 `preferences={}`；`PUT rowHeight=high` → `{rowHeight:high}`；再次 `GET` 持久化；任务列表字段 `parent` / `mainTaskName` / `latestProgress` 均返回；`STATIC_DIR` 指定后首页 200、CSS 200、SPA 深链 `/tasks` 200。
+
+### 26.4 提交与发布
+
+- **提交**：本轮单次提交（见 git log round19）。
+- **发布**：按 round 14 约定需用户当轮确认；未收到「发布」指令前不部署。

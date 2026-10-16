@@ -43,6 +43,13 @@ export const authApi = {
   me: () => http.get<MeResult>('/auth/me').then((r) => r.data),
 }
 
+/* ---------------- 用户偏好（按账号记忆） ---------------- */
+export const prefsApi = {
+  get: () => http.get<{ preferences: Record<string, unknown> }>('/auth/preferences').then((r) => r.data),
+  update: (preferences: Record<string, unknown>) =>
+    http.put<{ preferences: Record<string, unknown> }>('/auth/preferences', { preferences }).then((r) => r.data),
+}
+
 /* ---------------- 组织 ---------------- */
 export const orgApi = {
   list: (flat = 1) => http.get<OrgNode[]>('/orgs', { params: { flat } }).then((r) => r.data),

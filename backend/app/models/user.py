@@ -39,6 +39,8 @@ class User(Base):
     scope: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # active / disabled
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    # 用户级偏好（JSON）：如行高 rowHeight=default|high|ultra，按账号记忆、下次登录仍生效
+    preferences: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

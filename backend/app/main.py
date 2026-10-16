@@ -57,6 +57,13 @@ async def lifespan(_: FastAPI):
             conn.execute(text("ALTER TABLE main_task ADD COLUMN updated_at TIMESTAMP"))
             logger.info("已为 main_task 补列 updated_at")
 
+        # user.preferences：用户级偏好（行高等），老库补 ALTER，默认值 '{}'
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(\"user\")")).fetchall()}
+        if "preferences" not in existing:
+            conn.execute(text("ALTER TABLE \"user\" ADD COLUMN preferences TEXT NOT NULL DEFAULT '{}'"))
+            logger.info("已为 user 补列 preferences")
+
+
     yield
 
 

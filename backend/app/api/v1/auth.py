@@ -12,12 +12,16 @@ from app.core.deps import COOKIE_NAME, get_current_user, get_user_perms
 from app.core.security import create_access_token, verify_password
 from app.db.session import get_db
 from app.models import User
-from app.schemas.auth import LoginIn, LoginOut, MeOut
+from app.schemas.auth import LoginIn, LoginOut, MeOut, PrefsOut, PrefsUpdate
 from app.services import scope as scope_svc
 from app.services.audit import write_log
 from app.services.serializers import user_brief
 
 router = APIRouter(prefix="/auth", tags=["鉴权"])
+
+# 偏好允许的键与取值（前端写入时只接受这些，避免脏数据）
+ALLOWED_PREF_KEYS = {"rowHeight"}
+ROW_HEIGHT_VALUES = {"default", "high", "ultra"}
 
 
 @router.post("/login", response_model=LoginOut)
@@ -66,3 +70,26 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
         # 可见组织集合 · 供任务模块的边界判断使用；驾驶舱与指标维护不按数据范围过滤
         "visibleOrgs": scope_svc.visible_org_ids(db, user),
     }
+
+
+@router.get("/preferences", response_model=PrefsOut)
+def get_preferences(user: User = Depends(get_current_user)):
+    """读取当前账号的偏好设置（行高、视图等），随账号记忆。"""
+    return {"preferences": dict(user.preferences or {})}
+
+
+@router.put("/preferences", response_model=PrefsOut)
+def update_preferences(payload: PrefsUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """更新当前账号的偏好设置（浅合并），按账号记忆、下次登录仍生效。"""
+    current = dict(user.preferences or {})
+    for key, value in (payload.preferences or {}).items():
+        if key not in ALLOWED_PREF_KEYS:
+            continue
+        # 行高取值做白名单校验
+        if key == "rowHeight" and value not in ROW_HEIGHT_VALUES:
+            continue
+        current[key] = value
+    user.preferences = current
+    db.commit()
+    db.refresh(user)
+    return {"preferences": current}

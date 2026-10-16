@@ -193,11 +193,13 @@ body {
 }
 
 .table-freeze .col-id,
+.table-freeze .col-maintask,
 .table-freeze .col-name,
 .table-freeze .col-ops {
   background: #fff;
 }
 .table-freeze thead .col-id,
+.table-freeze thead .col-maintask,
 .table-freeze thead .col-name,
 .table-freeze thead .col-ops {
   z-index: 3;
@@ -210,30 +212,82 @@ body {
 }
 .table-freeze tbody tr:hover,
 .table-freeze tbody tr:hover .col-id,
+.table-freeze tbody tr:hover .col-maintask,
 .table-freeze tbody tr:hover .col-name,
 .table-freeze tbody tr:hover .col-ops {
   background: #f5f8ff;
 }
 
 .col-id,
+.col-maintask,
 .col-name {
   position: sticky;
   z-index: 2;
 }
 .col-id {
   left: 0;
-  /* 表格自动布局会把 w-[96px] 压到实际约 87px，与 col-name 的 left 偏移之间
+  /* 表格自动布局会把 w-[96px] 压到实际约 87px，与 col-maintask 的 left 偏移之间
      露出约 8px 空隙（实测确认，会透视到滚动内容）。锁住最小宽度即与偏移量对齐。 */
   min-width: 96px;
 }
-.col-name {
+/* 主任务列（列序第二，紧邻任务ID）：冻结在 96px 处 */
+.col-maintask {
   left: 96px;
+  min-width: 320px;
+}
+/* 任务名称列（列序第三）：固定 320px（约 20 个汉字），冻结在 96+320=416px 处 */
+.col-name {
+  left: 416px;
+  min-width: 320px;
 }
 .col-ops {
   position: sticky;
   right: 0;
   z-index: 2;
   box-shadow: -6px 0 12px -8px rgba(15, 23, 42, 0.18);
+}
+
+/* ===== 行高（按账号记忆，登陆后仍生效） =====
+   default 默认；high 2X；ultra 3X。高/超高模式下字体折行，超出部分按行数用（…）截断。
+   固定行高统一作用于所有行（含短内容列），切换后整表行高一次性调整。 */
+.rh-default .td {
+  height: 2.75rem; /* 约 44px，单行 */
+}
+.rh-high .td {
+  height: 5.5rem; /* 约 88px，2X */
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  vertical-align: top;
+}
+.rh-ultra .td {
+  height: 8.25rem; /* 约 132px，3X */
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  vertical-align: top;
+}
+.rh-high {
+  --cell-lines: 3;
+}
+.rh-ultra {
+  --cell-lines: 5;
+}
+
+/* 特殊列（任务名称 / 主任务 / 进展描述 / 项目描述等）：固定宽度 + 省略号。
+   默认单行省略；高/超高行高时折行、最多显示 --cell-lines 行再省略。悬停由 title 展示完整内容。 */
+.cell-c {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rh-high .cell-c,
+.rh-ultra .cell-c {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--cell-lines, 3);
 }
 
 /* 分组视图的小标题：横向滚动时部门名与统计数字保持可见（行背景仍铺满整行） */

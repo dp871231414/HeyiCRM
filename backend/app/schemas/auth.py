@@ -1,6 +1,8 @@
 """鉴权相关模型。"""
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +21,8 @@ class UserBrief(BaseModel):
     roleName: str
     scope: str
     status: str
+    # 用户级偏好（行高、视图等），按账号记忆
+    preferences: dict[str, Any] = {}
 
 
 class LoginOut(BaseModel):
@@ -32,3 +36,12 @@ class MeOut(BaseModel):
     user: UserBrief
     perms: list[str]
     visibleOrgs: list[str] = []
+
+
+class PrefsOut(BaseModel):
+    preferences: dict[str, Any] = {}
+
+
+class PrefsUpdate(BaseModel):
+    # 仅接受合法键的偏好项，写入时与已有偏好做浅合并
+    preferences: dict[str, Any] = {}

@@ -10,6 +10,15 @@
       <button class="btn-ghost" @click="applyFilters">查询</button>
 
       <div class="ml-auto flex items-center gap-2">
+        <!-- 行高设置：按账号记忆，下次登录仍生效 -->
+        <div class="flex items-center gap-1.5">
+          <span class="text-xs text-slate-400">行高</span>
+          <select v-model="rowHeightSel" class="input !w-32" @change="onRowHeightChange">
+            <option value="default">默认</option>
+            <option value="high">高（2X）</option>
+            <option value="ultra">超高（3X）</option>
+          </select>
+        </div>
         <button v-if="auth.hasPerm('market.edit')" class="btn-ghost" @click="confirmReseed = true">重新生成</button>
         <button v-if="auth.hasPerm('market.edit')" class="btn-primary" @click="openForm()">新建项目</button>
       </div>
@@ -28,12 +37,12 @@
       <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">加载中…</div>
       <div v-else-if="!projects.length" class="p-10 text-center text-slate-400 text-sm">暂无项目</div>
       <div v-else class="overflow-x-auto">
-        <table class="w-full min-w-[1240px]">
+        <table :class="rowHeightClass" class="w-full min-w-[1960px]">
           <thead>
             <tr class="border-b border-slate-200">
               <th class="th w-[90px]">项目ID</th>
-              <th class="th w-[220px]">项目名称</th>
-              <th class="th">项目描述</th>
+              <th class="th w-[320px]">项目名称</th>
+              <th class="th w-[460px]">项目描述</th>
               <th class="th w-[110px] text-right">牵引车需求</th>
               <th class="th w-[100px] text-right">挂车需求</th>
               <th class="th w-[150px]">项目阶段</th>
@@ -48,11 +57,11 @@
           <tbody>
             <tr v-for="p in projects" :key="p.id" class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
               <td class="td font-mono text-xs text-slate-500">{{ p.id }}</td>
-              <td class="td">
-                <div class="font-semibold text-slate-800 truncate" :title="p.name">{{ p.name }}</div>
+              <td class="td w-[320px]">
+                <div class="cell-c font-semibold text-slate-800" :title="p.name">{{ p.name }}</div>
               </td>
-              <td class="td text-slate-500">
-                <div class="max-w-[260px] truncate" :title="p.description">{{ p.description || '—' }}</div>
+              <td class="td w-[460px]">
+                <div class="cell-c text-slate-500" :title="p.description || '—'">{{ p.description || '—' }}</div>
               </td>
               <td class="td text-right font-mono">{{ p.tractorDemand }}<span class="text-[11px] text-slate-400 ml-0.5">辆</span></td>
               <td class="td text-right font-mono">{{ p.trailerDemand }}<span class="text-[11px] text-slate-400 ml-0.5">辆</span></td>
@@ -169,6 +178,13 @@ import { MARKET_STAGE_LABELS, type MarketOwner, type MarketProjectItem, type Mar
 
 const auth = useAuthStore()
 const app = useAppStore()
+
+/** 行高：绑定账号偏好（default/high/ultra），切换后写入后端、下次登录仍生效 */
+const rowHeightSel = ref<'default' | 'high' | 'ultra'>((auth.rowHeight as 'default' | 'high' | 'ultra') || 'default')
+const rowHeightClass = computed(() => `rh-${rowHeightSel.value}`)
+function onRowHeightChange() {
+  auth.updatePreferences({ rowHeight: rowHeightSel.value }).catch(() => {})
+}
 
 const STAGES: MarketStage[] = [10, 25, 50, 75, 90, 100]
 

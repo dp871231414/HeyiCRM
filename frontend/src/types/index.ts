@@ -33,6 +33,8 @@ export interface UserBrief {
   roleName: string
   scope: ScopeKey
   status: string
+  /** 用户级偏好（行高、视图等），按账号记忆、下次登录仍生效 */
+  preferences?: Record<string, unknown>
 }
 
 export interface LoginResult {

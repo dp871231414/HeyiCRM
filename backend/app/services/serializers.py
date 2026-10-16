@@ -28,6 +28,7 @@ def user_brief(db: Session, user: User) -> dict:
         "roleName": role.name if role else "",
         "scope": effective_scope(db, user),
         "status": user.status,
+        "preferences": dict(user.preferences or {}),
     }
 
 
