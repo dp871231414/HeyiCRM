@@ -122,7 +122,7 @@
           <input :value="form.ownerDeptName" class="input bg-slate-50" disabled placeholder="选择责任人后自动带出" />
         </div>
 
-        <!-- 车头需求：子列表（车辆型号 / 电池度数 / 数量） -->
+        <!-- 车头需求：子列表（车辆型号 / 电池度数 / 数量），列头展示字段名，下方为可增删的表格 -->
         <div class="md:col-span-2">
           <div class="flex items-center justify-between mb-2">
             <label class="label !mb-0">车头需求<span class="text-slate-400 font-normal">（车辆型号取自数据字典）</span></label>
@@ -131,20 +131,38 @@
           <div v-if="!form.tractorRequirements.length" class="text-xs text-slate-400 py-2 text-center border border-dashed border-slate-200 rounded-lg">
             暂无车头需求，点击「添加一行」录入
           </div>
-          <div v-else class="space-y-2">
-            <div v-for="(row, i) in form.tractorRequirements" :key="i" class="flex items-center gap-2">
-              <select v-model="row.model" class="input flex-1 min-w-0" :class="row.model ? '' : 'text-slate-400'">
-                <option value="">请选择车辆型号</option>
-                <option v-for="m in vehicleModels" :key="m" :value="m">{{ m }}</option>
-              </select>
-              <input v-model.trim="row.battery" class="input w-28 shrink-0" placeholder="电池度数" />
-              <input v-model.number="row.qty" type="number" min="0" class="input w-20 shrink-0" placeholder="数量" />
-              <button class="btn-ghost btn-sm shrink-0" @click="form.tractorRequirements.splice(i, 1)">删除</button>
-            </div>
-          </div>
+          <table v-else class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="text-left text-slate-500 bg-slate-50">
+                <th class="py-1.5 px-2 font-medium border border-slate-200">车辆型号</th>
+                <th class="py-1.5 px-2 font-medium border border-slate-200">电池度数</th>
+                <th class="py-1.5 px-2 font-medium border border-slate-200 w-24">数量</th>
+                <th class="py-1.5 px-2 font-medium border border-slate-200 w-16 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, i) in form.tractorRequirements" :key="i">
+                <td class="py-1 px-2 border border-slate-200">
+                  <select v-model="row.model" class="input w-full" :class="row.model ? '' : 'text-slate-400'">
+                    <option value="">请选择</option>
+                    <option v-for="m in vehicleModels" :key="m" :value="m">{{ m }}</option>
+                  </select>
+                </td>
+                <td class="py-1 px-2 border border-slate-200">
+                  <input v-model.trim="row.battery" class="input w-full" placeholder="电池度数" />
+                </td>
+                <td class="py-1 px-2 border border-slate-200">
+                  <input v-model.number="row.qty" type="number" min="0" class="input w-full" placeholder="数量" />
+                </td>
+                <td class="py-1 px-2 border border-slate-200 text-center">
+                  <button class="btn-ghost btn-sm" @click="form.tractorRequirements.splice(i, 1)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <!-- 挂车需求：子列表（挂车型号 / 电池度数 / 数量） -->
+        <!-- 挂车需求：子列表（挂车型号 / 电池度数 / 数量），列头展示字段名，下方为可增删的表格 -->
         <div class="md:col-span-2">
           <div class="flex items-center justify-between mb-2">
             <label class="label !mb-0">挂车需求<span class="text-slate-400 font-normal">（挂车型号取自数据字典）</span></label>
@@ -153,17 +171,35 @@
           <div v-if="!form.trailerRequirements.length" class="text-xs text-slate-400 py-2 text-center border border-dashed border-slate-200 rounded-lg">
             暂无挂车需求，点击「添加一行」录入
           </div>
-          <div v-else class="space-y-2">
-            <div v-for="(row, i) in form.trailerRequirements" :key="i" class="flex items-center gap-2">
-              <select v-model="row.model" class="input flex-1 min-w-0" :class="row.model ? '' : 'text-slate-400'">
-                <option value="">请选择挂车型号</option>
-                <option v-for="m in trailerModels" :key="m" :value="m">{{ m }}</option>
-              </select>
-              <input v-model.trim="row.battery" class="input w-28 shrink-0" placeholder="电池度数" />
-              <input v-model.number="row.qty" type="number" min="0" class="input w-20 shrink-0" placeholder="数量" />
-              <button class="btn-ghost btn-sm shrink-0" @click="form.trailerRequirements.splice(i, 1)">删除</button>
-            </div>
-          </div>
+          <table v-else class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="text-left text-slate-500 bg-slate-50">
+                <th class="py-1.5 px-2 font-medium border border-slate-200">挂车型号</th>
+                <th class="py-1.5 px-2 font-medium border border-slate-200">电池度数</th>
+                <th class="py-1.5 px-2 font-medium border border-slate-200 w-24">数量</th>
+                <th class="py-1.5 px-2 font-medium border border-slate-200 w-16 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, i) in form.trailerRequirements" :key="i">
+                <td class="py-1 px-2 border border-slate-200">
+                  <select v-model="row.model" class="input w-full" :class="row.model ? '' : 'text-slate-400'">
+                    <option value="">请选择</option>
+                    <option v-for="m in trailerModels" :key="m" :value="m">{{ m }}</option>
+                  </select>
+                </td>
+                <td class="py-1 px-2 border border-slate-200">
+                  <input v-model.trim="row.battery" class="input w-full" placeholder="电池度数" />
+                </td>
+                <td class="py-1 px-2 border border-slate-200">
+                  <input v-model.number="row.qty" type="number" min="0" class="input w-full" placeholder="数量" />
+                </td>
+                <td class="py-1 px-2 border border-slate-200 text-center">
+                  <button class="btn-ghost btn-sm" @click="form.trailerRequirements.splice(i, 1)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div class="md:col-span-2">
