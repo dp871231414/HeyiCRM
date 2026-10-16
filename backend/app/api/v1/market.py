@@ -20,7 +20,14 @@ from app.config import settings
 from app.constants import MARKET_PROJECT_ID_PREFIX, MARKET_STAGE_VALUES, MARKET_STAGES
 from app.core.deps import require_any_perm, require_perm
 from app.db.session import get_db
-from app.models import MarketProject, Organization, ProjectProgress, User
+from app.models import (
+    MarketProject,
+    Organization,
+    ProjectProgress,
+    ProjectTractorRequirement,
+    ProjectTrailerRequirement,
+    User,
+)
 from app.schemas.common import ImportResult
 from app.schemas.project import (
     MarketProjectCreate,
@@ -133,6 +140,54 @@ def _enrich_progress(db: Session, items: list[dict]) -> list[dict]:
     return items
 
 
+def _req_item(r) -> dict:
+    return {"id": r.id, "model": r.model or "", "battery": r.battery or "", "qty": int(r.qty or 0)}
+
+
+def _enrich_requirements(db: Session, items: list[dict]) -> list[dict]:
+    """批量补齐车头 / 挂车需求明细子列表（供编辑/详情表单预填，列表也一并带出）。
+
+    列表「车头数量 / 挂车数量」仍是 market_project 上的汇总快照，这里额外带出明细。
+    """
+    ids = {it["id"] for it in items}
+    if not ids:
+        return items
+    t_rows = db.scalars(
+        select(ProjectTractorRequirement)
+        .where(ProjectTractorRequirement.project_id.in_(ids))
+        .order_by(ProjectTractorRequirement.id)
+    ).all()
+    tr_rows = db.scalars(
+        select(ProjectTrailerRequirement)
+        .where(ProjectTrailerRequirement.project_id.in_(ids))
+        .order_by(ProjectTrailerRequirement.id)
+    ).all()
+    t_map: dict[str, list[dict]] = {}
+    tr_map: dict[str, list[dict]] = {}
+    for r in t_rows:
+        t_map.setdefault(r.project_id, []).append(_req_item(r))
+    for r in tr_rows:
+        tr_map.setdefault(r.project_id, []).append(_req_item(r))
+    for it in items:
+        it["tractorRequirements"] = t_map.get(it["id"], [])
+        it["trailerRequirements"] = tr_map.get(it["id"], [])
+    return items
+
+
+def _reconcile_requirements(db: Session, project_id: str, items: list, model_cls) -> None:
+    """项目需求明细子列表整份替换：先删后插（编辑界面可增删多行）。"""
+    db.query(model_cls).filter(model_cls.project_id == project_id).delete()
+    for x in items or []:
+        db.add(
+            model_cls(
+                project_id=project_id,
+                model=(x.model or "").strip(),
+                battery=(x.battery or "").strip(),
+                qty=int(x.qty or 0),
+            )
+        )
+
+
 def _visible_query(db: Session, user: User):
     q = select(MarketProject)
     cond = scope_svc.visible_market_project_filter(db, user)
@@ -160,11 +215,12 @@ def _apply_payload(p: MarketProject, payload) -> None:
     if not p.name:
         raise HTTPException(status_code=422, detail="项目名称不能为空")
     p.description = payload.description or ""
-    p.tractor_demand = int(payload.tractor_demand or 0)
-    p.trailer_demand = int(payload.trailer_demand or 0)
     p.stage = int(payload.stage)
     p.owner = payload.owner.strip()
     p.owner_dept_id = payload.owner_dept_id or None
+    # 车头 / 挂车需求数 = 明细子列表「数量」汇总（列表 / 驾驶舱展示汇总值，保持与 funnel.py 口径一致）
+    p.tractor_demand = sum(int(x.qty or 0) for x in (payload.tractorRequirements or []))
+    p.trailer_demand = sum(int(x.qty or 0) for x in (payload.trailerRequirements or []))
 
 
 @router.get("", response_model=MarketProjectListOut)
@@ -187,8 +243,11 @@ def list_projects(
     total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
     rows = list(db.scalars(q.order_by(MarketProject.id).limit(size).offset((page - 1) * size)).all())
     return {
-        "items": _enrich_progress(
-            db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p) for p in rows]))
+        "items": _enrich_requirements(
+            db,
+            _enrich_progress(
+                db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p) for p in rows]))
+            ),
         ),
         "total": total,
         "page": page,
@@ -209,7 +268,9 @@ def get_project(
     user: User = Depends(require_any_perm(["market.view", "market.detail"])),
 ):
     p = _project_or_404(db, user, project_id)
-    return _enrich_progress(db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)])))[0]
+    return _enrich_requirements(
+        db, _enrich_progress(db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)])))
+    )[0]
 
 
 @router.post("", response_model=MarketProjectOut, status_code=201)
@@ -225,13 +286,15 @@ def create_project(
     # 项目进展必填：写入项目快照（列表/导出用）并作为第一条进展记录
     p.progress = payload.progress
     db.add(p)
-    db.flush()  # 先拿到 project_id 再写进展记录
+    db.flush()  # 先拿到 project_id 再写进展记录与需求明细
     db.add(ProjectProgress(project_id=pid, content=payload.progress, created_by=user.id))
+    _reconcile_requirements(db, pid, payload.tractorRequirements, ProjectTractorRequirement)
+    _reconcile_requirements(db, pid, payload.trailerRequirements, ProjectTrailerRequirement)
     write_log(db, user, "create", "market_project", pid, {"name": p.name}, request)
     db.commit()
     db.refresh(p)
-    return _enrich_progress(
-        db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))
+    return _enrich_requirements(
+        db, _enrich_progress(db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)])))
     )[0]
 
 
@@ -246,11 +309,13 @@ def update_project(
     p = _project_or_404(db, user, project_id)
     _apply_payload(p, payload)
     # 编辑不直接改进展快照（只能通过「新增进展」追加记录），此处保持 p.progress 不变
+    _reconcile_requirements(db, p.id, payload.tractorRequirements, ProjectTractorRequirement)
+    _reconcile_requirements(db, p.id, payload.trailerRequirements, ProjectTrailerRequirement)
     write_log(db, user, "update", "market_project", project_id, {"name": p.name}, request)
     db.commit()
     db.refresh(p)
-    return _enrich_progress(
-        db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)]))
+    return _enrich_requirements(
+        db, _enrich_progress(db, _enrich_owner_depts(db, _enrich_creators(db, [_to_dict(db, p)])))
     )[0]
 
 
@@ -262,8 +327,10 @@ def delete_project(
     user: User = Depends(require_perm("market.delete")),
 ):
     p = _project_or_404(db, user, project_id)
-    # 级联删除进展记录，避免孤儿记录被后续新建项目（复用项目 ID）误继承
+    # 级联删除进展记录与需求明细，避免孤儿记录被后续新建项目（复用项目 ID）误继承
     db.query(ProjectProgress).filter(ProjectProgress.project_id == p.id).delete()
+    db.query(ProjectTractorRequirement).filter(ProjectTractorRequirement.project_id == p.id).delete()
+    db.query(ProjectTrailerRequirement).filter(ProjectTrailerRequirement.project_id == p.id).delete()
     db.delete(p)
     write_log(db, user, "delete", "market_project", project_id, {"name": p.name}, request)
     db.commit()
@@ -393,6 +460,8 @@ def reseed_projects(
     # 1) 清空现有项目（含其审计引用由数据库外键置空处理）
     #    会话 autoflush=False，DELETE 已立即执行；此处再 flush 一次，确保后续 next_project_id
     #    读到的「最大已用 ID」是清空后的状态，而不残留旧号段。
+    db.execute(delete(ProjectTractorRequirement))
+    db.execute(delete(ProjectTrailerRequirement))
     db.execute(delete(MarketProject))
     db.flush()
 
@@ -429,6 +498,10 @@ def reseed_projects(
         # 立即 flush：让下一轮 next_project_id 读到本行已写入的 ID（会话 autoflush=False，
         # 不清空也会因读不到刚插入的行而重复生成 MP0001，导致主键冲突）。
         db.flush()
+        # 需求明细：按汇总值各补一行（型号留空，数量=汇总值），保证列表汇总与明细一致，
+        # 编辑表单预填时也带得出数据。
+        db.add(ProjectTractorRequirement(project_id=pid, model="", battery="", qty=tractor))
+        db.add(ProjectTrailerRequirement(project_id=pid, model="", battery="", qty=trailer))
         created += 1
 
     db.commit()

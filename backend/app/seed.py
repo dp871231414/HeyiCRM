@@ -29,6 +29,8 @@ from app.models import (
     Organization,
     ProjectProgress,
     Role,
+    SysDict,
+    SysDictItem,
     Task,
     TaskProgress,
     User,
@@ -154,7 +156,7 @@ TASKS = [
 
 ROLES = [
     dict(id="admin", name="系统管理员", description="全部菜单与操作权限，可管理账号与角色", scope="all", is_system=True,
-         permissions=["dashboard.view", "dashboard.config", "task.view", "task.detail", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.detail", "market.edit", "market.import", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete"]),
+         permissions=["dashboard.view", "dashboard.config", "task.view", "task.detail", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.detail", "market.edit", "market.import", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete", "sys.config.view", "sys.config.edit"]),
     dict(id="dept_head", name="部门负责人", description="本部门及下属部门的任务与指标全权", scope="dept_sub", is_system=True,
          permissions=["dashboard.view", "task.view", "task.detail", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import", "market.view", "market.detail", "market.edit", "market.import"]),
     dict(id="member", name="普通成员", description="仅维护本人任务与指标", scope="self", is_system=True,
@@ -171,6 +173,13 @@ MARKET_PROJECTS = [
     dict(name="城配新能源示范项目", description="城市配送试点导入", tractor=25, trailer=0, stage=10, owner="周涛"),
     dict(name="冷链干线车队扩充项目", description="冷链干线增补运力", tractor=45, trailer=45, stage=25, owner="郑凯"),
     dict(name="煤炭运输长协项目", description="年度长协运力框架", tractor=100, trailer=100, stage=50, owner="王建国"),
+]
+
+# 系统配置 · 数据字典预设（首次初始化时写入；支持后续在「系统配置 → 数据字典」中修改）
+# code 为固定编码，前端按 code 取车辆型号 / 挂车型号，填充项目需求子列表下拉项。
+SYS_DICTS = [
+    dict(code="vehicle_model", name="车辆型号", items=["6*4牵引车", "4*2牵引车", "矿卡", "自卸车"]),
+    dict(code="trailer_model", name="挂车型号", items=["侧翻挂", "高栏挂", "后翻挂"]),
 ]
 
 USERS = [
@@ -368,11 +377,24 @@ def seed(db: Session, reset: bool = False) -> dict:
                 created["roles_synced"] += 1
 
     # 新增权限点默认授予所有用户：缺哪个补哪个（含自定义角色），幂等
+    # 注意：会话 autoflush=False，上面刚 add 的角色尚未落库，先 flush 再查询，否则查不到、补不了默认权限
+    db.flush()
     for role in db.scalars(select(Role)).all():
         missing = [p for p in DEFAULT_PERMS_FOR_ALL if p not in (role.permissions or [])]
         if missing:
             role.permissions = list(role.permissions or []) + missing
             created.setdefault("perms_granted", {}).setdefault(role.id, []).extend(missing)
+
+    # 数据字典（车辆型号 / 挂车型号等）：仅当字典表为空时写入预设值，
+    # 用户后续在「系统配置 → 数据字典」中的修改不会被覆盖（除非全库重置）。
+    if not db.scalar(select(SysDict).limit(1)):
+        for d in SYS_DICTS:
+            sd = SysDict(code=d["code"], name=d["name"])
+            db.add(sd)
+            db.flush()
+            for i, v in enumerate(d["items"]):
+                db.add(SysDictItem(dict_id=sd.id, value=v, sort=i))
+        created["dicts"] = len(SYS_DICTS)
 
     # 是否「首次初始化」：库里连一个账号都没有。
     # 演示数据只在首次初始化时灌入 —— 否则管理员清空任务后，服务重启会把数据"复活"。

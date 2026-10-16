@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -41,6 +41,43 @@ class MarketProject(Base):
     )
 
 
+class ProjectTractorRequirement(Base):
+    """项目车头需求明细 · 子列表。
+
+    - 一条项目可有多个车头需求行（车辆型号 / 电池度数 / 数量）；
+    - 列表「车头数量」= 各明细行数量汇总，冗余存于 market_project.tractor_demand（供驾驶舱漏斗复用）；
+    - 删除项目时一并级联删除。
+    """
+
+    __tablename__ = "project_tractor_requirement"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("market_project.id"), nullable=False, index=True
+    )
+    model: Mapped[str] = mapped_column(String(64), default="", nullable=False)  # 车辆型号（取自数据字典）
+    battery: Mapped[str] = mapped_column(String(32), default="", nullable=False)  # 电池度数
+    qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 数量（辆）
+
+
+class ProjectTrailerRequirement(Base):
+    """项目挂车需求明细 · 子列表（结构同车头需求）。"""
+
+    __tablename__ = "project_trailer_requirement"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("market_project.id"), nullable=False, index=True
+    )
+    model: Mapped[str] = mapped_column(String(64), default="", nullable=False)  # 挂车型号（取自数据字典）
+    battery: Mapped[str] = mapped_column(String(32), default="", nullable=False)  # 电池度数
+    qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 数量（辆）
+
+
 class ProjectProgress(Base):
     """项目进展记录 · 时间轴（参考 TaskProgress）。
 
@@ -74,3 +111,44 @@ class FunnelConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class SysDict(Base):
+    """系统配置 · 数据字典（一级）。
+
+    code 为可选固定编码，供前端按编码取字典（如车辆型号 = vehicle_model），无编码时仅按 id 维护。
+    """
+
+    __tablename__ = "sys_dict"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    code: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)  # 字典名称
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    items: Mapped[list["SysDictItem"]] = relationship(
+        "SysDictItem", back_populates="dict", cascade="all, delete-orphan"
+    )
+
+
+class SysDictItem(Base):
+    """系统配置 · 数据字典枚举值（二级）。"""
+
+    __tablename__ = "sys_dict_item"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    dict_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("sys_dict.id"),
+        nullable=False,
+        index=True,
+    )
+    value: Mapped[str] = mapped_column(String(128), nullable=False)  # 枚举值
+    sort: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 排序（升序）
+    dict: Mapped["SysDict"] = relationship("SysDict", back_populates="items")

@@ -83,12 +83,20 @@ PERM_GROUPS: list[dict] = [
             {"key": "account.delete", "label": "删除账号", "type": "action", "group": "批量操作"},
         ],
     },
+    {
+        "menu": "system",
+        "label": "系统配置",
+        "items": [
+            {"key": "sys.config.view", "label": "查看系统配置（数据字典）", "type": "menu"},
+            {"key": "sys.config.edit", "label": "维护数据字典", "type": "action"},
+        ],
+    },
 ]
 
 ALL_PERM_KEYS: set[str] = {item["key"] for g in PERM_GROUPS for item in g["items"]}
 
 # 所有用户默认拥有的权限点：升级新增权限时自动补进每个角色（含自定义角色，幂等）
-DEFAULT_PERMS_FOR_ALL: list[str] = ["task.detail", "market.detail"]
+DEFAULT_PERMS_FOR_ALL: list[str] = ["task.detail", "market.detail", "sys.config.view"]
 
 # 权限 key → 中文名（用于报错提示，让用户知道缺哪个权限）
 PERM_LABELS: dict[str, str] = {item["key"]: item["label"] for g in PERM_GROUPS for item in g["items"]}
@@ -105,6 +113,7 @@ PAGE_PERM: dict[str, str] = {
     "metrics": "metric.view",
     "accounts": "account.view",
     "market": "market.view",
+    "system": "sys.config.view",
 }
 
 # 市场项目阶段（漏斗层级）· stage 即标题中的百分比

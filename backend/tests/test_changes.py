@@ -1082,8 +1082,6 @@ def _mp_body(**over) -> dict:
     body = {
         "name": "变更测试项目",
         "description": "回归测试用",
-        "tractor_demand": 10,
-        "trailer_demand": 5,
         "stage": 25,
         "owner": "郑凯",
         "progress": "初始进展：已启动前期沟通",
@@ -1104,7 +1102,12 @@ def test_market_project_crud_and_auto_fields(client, admin_headers):
 
     r = client.patch(
         f"/api/v1/market-projects/{p['id']}",
-        json=_mp_body(name="变更测试项目-改", stage=90, tractor_demand=66, trailer_demand=33),
+        json=_mp_body(
+            name="变更测试项目-改",
+            stage=90,
+            tractorRequirements=[{"model": "6*4牵引车", "battery": "400", "qty": 66}],
+            trailerRequirements=[{"model": "侧翻挂", "battery": "200", "qty": 33}],
+        ),
         headers=admin_headers,
     )
     assert r.status_code == 200, r.text
@@ -1122,7 +1125,11 @@ def test_market_project_stage_validation(client, admin_headers):
     """阶段必须是 10/25/50/75/90/100 之一；需求数不能为负。"""
     r = client.post("/api/v1/market-projects", json=_mp_body(stage=33), headers=admin_headers)
     assert r.status_code == 422
-    r = client.post("/api/v1/market-projects", json=_mp_body(tractor_demand=-1), headers=admin_headers)
+    r = client.post(
+        "/api/v1/market-projects",
+        json=_mp_body(tractorRequirements=[{"model": "x", "battery": "y", "qty": -1}]),
+        headers=admin_headers,
+    )
     assert r.status_code == 422
 
 

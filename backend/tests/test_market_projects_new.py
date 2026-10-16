@@ -50,8 +50,6 @@ def _mp_body(**over) -> dict:
         "name": "验证项目",
         "description": "回归测试用",
         "progress": "初始进展：已立项",
-        "tractor_demand": 10,
-        "trailer_demand": 5,
         "stage": 25,
         "owner": "郑凯",
     }
@@ -135,7 +133,7 @@ def test_market_progress_requires_content(client, admin_headers):
 def test_market_import_success(client, admin_headers):
     """导入成功写入项目，并把「项目进展」作为第一条进展记录。"""
     rows = [
-        ["华东物流园替换", "已完成需求调研", "200 辆燃油重卡替换", 200, 120, 25, "郑凯", "市场部"],
+        ["华东物流园替换", "已完成需求调研", "200 辆燃油重卡替换", 25, "郑凯", "市场部"],
     ]
     resp = client.post(
         "/api/v1/market-projects/import",
@@ -158,7 +156,7 @@ def test_market_import_success(client, admin_headers):
 
 def test_market_import_rejects_bad_owner(client, admin_headers):
     rows = [
-        ["X项目", "进展", "描述", 1, 1, 25, "不存在的人", ""],
+        ["X项目", "进展", "描述", 25, "不存在的人", ""],
     ]
     resp = client.post(
         "/api/v1/market-projects/import",

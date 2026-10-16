@@ -305,6 +305,17 @@ export type DeptTaskFilter = 'all' | 'year' | 'month' | 'open'
 /** 项目阶段即漏斗层级：10 项目导入 / 25 市场尽调 / 50 初审通过 / 75 联合评审通过 / 90 签约落地 / 100 交车投运 */
 export type MarketStage = 10 | 25 | 50 | 75 | 90 | 100
 
+/** 车头 / 挂车需求明细行（子列表）。创建时 id 不传；返回时带 id。 */
+export interface ProjectRequirementItem {
+  id?: number
+  /** 车辆型号 / 挂车型号（取自数据字典） */
+  model: string
+  /** 电池度数 */
+  battery: string
+  /** 数量（辆） */
+  qty: number
+}
+
 export interface MarketProjectItem {
   id: string
   name: string
@@ -313,6 +324,10 @@ export interface MarketProjectItem {
   latestProgress: string
   tractorDemand: number
   trailerDemand: number
+  /** 车头需求明细子列表（编辑/详情展示用；列表「车头数量」为各行 qty 汇总） */
+  tractorRequirements: ProjectRequirementItem[]
+  /** 挂车需求明细子列表 */
+  trailerRequirements: ProjectRequirementItem[]
   stage: MarketStage
   stageLabel: string
   owner: string
@@ -402,4 +417,19 @@ export interface TrendResult {
 export interface ApiError {
   detail: string
   code?: string
+}
+
+/* ---------------- 系统配置 · 数据字典 ---------------- */
+
+export interface SysDictItem {
+  id: number
+  value: string
+  sort: number
+}
+
+export interface SysDict {
+  id: number
+  code: string | null
+  name: string
+  items: SysDictItem[]
 }

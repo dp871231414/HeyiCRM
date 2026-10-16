@@ -885,8 +885,6 @@ MARKET_PROJECT_COLUMNS = [
     "项目名称",
     "项目进展",
     "项目描述",
-    "牵引车需求",
-    "挂车需求",
     "项目阶段",
     "负责人",
     "所属部门",
@@ -895,9 +893,24 @@ MARKET_PROJECT_COLUMNS = [
 # 可选列：老版本模板（无「项目描述 / 所属部门」）仍可导入，缺失时按空值处理
 MARKET_PROJECT_OPTIONAL_COLUMNS = {"项目描述", "所属部门"}
 
-# 导出列 = 项目ID + 全部可填写列 + 系统列 —— 导出文件可直接当导入模板回灌
+# 导出列 = 项目ID + 全部可填写列（不含车辆需求明细，导入模板也不含） + 汇总值 + 系统列。
+# 与导入模板刻意不同：导入只填项目信息，车辆需求（车头/挂车）在系统里补充；
+# 导出额外给出「车头数量 / 挂车数量」汇总值（= 明细数量合计），与列表 / 驾驶舱口径一致。
 MARKET_PROJECT_SYSTEM_EXPORT_COLUMNS = ["项目ID", "创建人", "创建时间", "更新时间"]
-MARKET_PROJECT_EXPORT_COLUMNS = ["项目ID"] + MARKET_PROJECT_COLUMNS + MARKET_PROJECT_SYSTEM_EXPORT_COLUMNS
+MARKET_PROJECT_EXPORT_COLUMNS = [
+    "项目ID",
+    "项目名称",
+    "项目进展",
+    "项目描述",
+    "项目阶段",
+    "负责人",
+    "所属部门",
+    "车头数量",
+    "挂车数量",
+    "创建人",
+    "创建时间",
+    "更新时间",
+]
 
 
 def _resolve_stage(raw: Any) -> int | None:
@@ -930,11 +943,10 @@ MARKET_PROJECT_TEMPLATE_NOTES = [
     ["项目名称", "必填。市场项目名称"],
     ["项目进展", "必填。当前项目进展说明，导入后作为该项目的第一条进展记录"],
     ["项目描述", "选填。项目的背景与交付要求"],
-    ["牵引车需求", "必填。数字，单位辆，可填 0"],
-    ["挂车需求", "必填。数字，单位辆，可填 0"],
     ["项目阶段", "必填。填 10/25/50/75/90/100 或阶段名称（项目导入/市场尽调/初审通过/联合评审通过/签约落地/交车投运）"],
     ["负责人", "必填。必须是系统内已有账号姓名"],
     ["所属部门", "选填。负责人直接所属部门，留空则按负责人自动带出"],
+    ["车头需求 / 挂车需求", "不在导入模板内。导入后请在系统「编辑项目」中补充车辆型号、电池度数与数量"],
     ["项目ID / 创建人 / 创建时间 / 更新时间", "由系统自动生成，不在模板中填写"],
 ]
 
@@ -948,7 +960,7 @@ def build_market_project_template(db: Session) -> bytes:
         ws,
         len(MARKET_PROJECT_COLUMNS),
         "市场项目导入标准模板",
-        ["请勿修改第 4 行字段名称", "从第 5 行开始逐行填写", "灰色示例行可直接覆盖或删除"],
+        ["请勿修改第 4 行字段名称", "从第 5 行开始逐行填写", "灰色示例行可直接覆盖或删除", "车辆需求请在系统编辑中补充"],
     )
     _style_header(ws, HEADER_ROW, MARKET_PROJECT_COLUMNS)
     ws.append(
@@ -956,8 +968,6 @@ def build_market_project_template(db: Session) -> bytes:
             "华东物流园运力替换项目",
             "已完成需求调研，进入方案设计",
             "物流园 200 辆燃油重卡替换为新能源",
-            200,
-            120,
             25,
             "郑凯",
             "市场部",
@@ -1030,26 +1040,6 @@ def validate_market_project_rows(db: Session, rows: list[dict]) -> tuple[list[di
         if not (r.get("项目进展") or "").strip():
             row_errors.append({"field": "项目进展", "msg": "不能为空"})
 
-        tractor_raw = r.get("牵引车需求", "")
-        if tractor_raw == "":
-            row_errors.append({"field": "牵引车需求", "msg": "不能为空"})
-        else:
-            try:
-                if float(tractor_raw) < 0:
-                    row_errors.append({"field": "牵引车需求", "msg": "必须为不小于 0 的数字"})
-            except ValueError:
-                row_errors.append({"field": "牵引车需求", "msg": "必须为数字"})
-
-        trailer_raw = r.get("挂车需求", "")
-        if trailer_raw == "":
-            row_errors.append({"field": "挂车需求", "msg": "不能为空"})
-        else:
-            try:
-                if float(trailer_raw) < 0:
-                    row_errors.append({"field": "挂车需求", "msg": "必须为不小于 0 的数字"})
-            except ValueError:
-                row_errors.append({"field": "挂车需求", "msg": "必须为数字"})
-
         stage = _resolve_stage(r.get("项目阶段", ""))
         if stage is None:
             row_errors.append({"field": "项目阶段", "msg": "不合法，应为 10/25/50/75/90/100 或阶段名称"})
@@ -1100,8 +1090,8 @@ def import_market_projects(db: Session, rows: list[dict], user: User) -> int:
             name=(r["项目名称"] or "").strip(),
             description=(r.get("项目描述") or "").strip(),
             progress=progress,
-            tractor_demand=int(float(r["牵引车需求"])),
-            trailer_demand=int(float(r["挂车需求"])),
+            tractor_demand=0,
+            trailer_demand=0,
             stage=int(r["_stage"]),
             owner=owner,
             owner_dept_id=dept_id,
@@ -1140,11 +1130,11 @@ def export_market_projects(db: Session, rows: list[MarketProject]) -> bytes:
                 p.name,
                 p.progress or "",
                 p.description or "",
-                int(p.tractor_demand or 0),
-                int(p.trailer_demand or 0),
                 int(p.stage),
                 p.owner,
                 org_names.get(p.owner_dept_id or "", ""),
+                int(p.tractor_demand or 0),
+                int(p.trailer_demand or 0),
                 user_names.get(p.created_by or "", ""),
                 _fmt_dt(p.created_at.isoformat() if p.created_at else ""),
                 _fmt_dt(p.updated_at.isoformat() if p.updated_at else ""),

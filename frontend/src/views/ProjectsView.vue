@@ -29,8 +29,8 @@
     <!-- 汇总 -->
     <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500 px-1">
       <span>共 <b class="text-slate-800">{{ total }}</b> 个项目</span>
-      <span>车头需求 <b class="text-brand-600">{{ sumOf('tractorDemand') }}</b> 辆</span>
-      <span>挂车需求 <b class="text-brand-600">{{ sumOf('trailerDemand') }}</b> 辆</span>
+      <span>车头数量 <b class="text-brand-600">{{ sumOf('tractorDemand') }}</b> 辆</span>
+      <span>挂车数量 <b class="text-brand-600">{{ sumOf('trailerDemand') }}</b> 辆</span>
     </div>
 
     <!-- 表格 -->
@@ -45,8 +45,8 @@
               <th class="th col-pname w-[213px]">项目名称</th>
               <th class="th w-[307px]">项目进展</th>
               <th class="th w-[150px]">项目阶段</th>
-              <th class="th w-[110px] text-right">车头需求</th>
-              <th class="th w-[100px] text-right">挂车需求</th>
+              <th class="th w-[110px] text-right">车头数量</th>
+              <th class="th w-[100px] text-right">挂车数量</th>
               <th class="th w-[90px]">责任人</th>
               <th class="th w-[120px]">所属部门</th>
               <th class="th w-[90px]">创建人</th>
@@ -121,14 +121,51 @@
           <label class="label">所属部门<span class="text-slate-400 font-normal">（选责任人后自动带出）</span></label>
           <input :value="form.ownerDeptName" class="input bg-slate-50" disabled placeholder="选择责任人后自动带出" />
         </div>
-        <div>
-          <label class="label">车头需求数（辆）</label>
-          <input v-model.number="form.tractorDemand" type="number" min="0" class="input" placeholder="如：30" />
+
+        <!-- 车头需求：子列表（车辆型号 / 电池度数 / 数量） -->
+        <div class="md:col-span-2">
+          <div class="flex items-center justify-between mb-2">
+            <label class="label !mb-0">车头需求<span class="text-slate-400 font-normal">（车辆型号取自数据字典）</span></label>
+            <button class="btn-ghost btn-sm" @click="form.tractorRequirements.push({ model: '', battery: '', qty: 0 })">+ 添加一行</button>
+          </div>
+          <div v-if="!form.tractorRequirements.length" class="text-xs text-slate-400 py-2 text-center border border-dashed border-slate-200 rounded-lg">
+            暂无车头需求，点击「添加一行」录入
+          </div>
+          <div v-else class="space-y-2">
+            <div v-for="(row, i) in form.tractorRequirements" :key="i" class="flex items-center gap-2">
+              <select v-model="row.model" class="input flex-1 min-w-0" :class="row.model ? '' : 'text-slate-400'">
+                <option value="">请选择车辆型号</option>
+                <option v-for="m in vehicleModels" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <input v-model.trim="row.battery" class="input w-28 shrink-0" placeholder="电池度数" />
+              <input v-model.number="row.qty" type="number" min="0" class="input w-20 shrink-0" placeholder="数量" />
+              <button class="btn-ghost btn-sm shrink-0" @click="form.tractorRequirements.splice(i, 1)">删除</button>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="label">挂车需求数（辆）</label>
-          <input v-model.number="form.trailerDemand" type="number" min="0" class="input" placeholder="如：15" />
+
+        <!-- 挂车需求：子列表（挂车型号 / 电池度数 / 数量） -->
+        <div class="md:col-span-2">
+          <div class="flex items-center justify-between mb-2">
+            <label class="label !mb-0">挂车需求<span class="text-slate-400 font-normal">（挂车型号取自数据字典）</span></label>
+            <button class="btn-ghost btn-sm" @click="form.trailerRequirements.push({ model: '', battery: '', qty: 0 })">+ 添加一行</button>
+          </div>
+          <div v-if="!form.trailerRequirements.length" class="text-xs text-slate-400 py-2 text-center border border-dashed border-slate-200 rounded-lg">
+            暂无挂车需求，点击「添加一行」录入
+          </div>
+          <div v-else class="space-y-2">
+            <div v-for="(row, i) in form.trailerRequirements" :key="i" class="flex items-center gap-2">
+              <select v-model="row.model" class="input flex-1 min-w-0" :class="row.model ? '' : 'text-slate-400'">
+                <option value="">请选择挂车型号</option>
+                <option v-for="m in trailerModels" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <input v-model.trim="row.battery" class="input w-28 shrink-0" placeholder="电池度数" />
+              <input v-model.number="row.qty" type="number" min="0" class="input w-20 shrink-0" placeholder="数量" />
+              <button class="btn-ghost btn-sm shrink-0" @click="form.trailerRequirements.splice(i, 1)">删除</button>
+            </div>
+          </div>
         </div>
+
         <div class="md:col-span-2">
           <label class="label">项目描述<span class="text-slate-400 font-normal">（选填）</span></label>
           <textarea v-model="form.description" rows="3" class="input" />
@@ -203,12 +240,38 @@
           <p class="text-sm text-slate-700">{{ detailProject.ownerDeptName || '—' }}</p>
         </div>
         <div>
-          <label class="label">车头需求</label>
-          <p class="text-sm text-slate-700">{{ detailProject.tractorDemand }} 辆</p>
+          <label class="label">车头数量 / 挂车数量</label>
+          <p class="text-sm text-slate-700">{{ detailProject.tractorDemand }} 辆 / {{ detailProject.trailerDemand }} 辆</p>
         </div>
-        <div>
-          <label class="label">挂车需求</label>
-          <p class="text-sm text-slate-700">{{ detailProject.trailerDemand }} 辆</p>
+        <div class="md:col-span-2">
+          <label class="label">车头需求明细</label>
+          <div v-if="detailProject.tractorRequirements.length" class="space-y-1.5">
+            <div
+              v-for="r in detailProject.tractorRequirements"
+              :key="r.id"
+              class="flex items-center gap-2 text-sm text-slate-700"
+            >
+              <span class="chip bg-brand-50 text-brand-700 border border-brand-100">{{ r.model || '未填型号' }}</span>
+              <span class="text-slate-400">电池 {{ r.battery || '—' }}</span>
+              <span class="font-semibold">{{ r.qty }} 辆</span>
+            </div>
+          </div>
+          <p v-else class="text-xs text-slate-400">暂无车头需求明细</p>
+        </div>
+        <div class="md:col-span-2">
+          <label class="label">挂车需求明细</label>
+          <div v-if="detailProject.trailerRequirements.length" class="space-y-1.5">
+            <div
+              v-for="r in detailProject.trailerRequirements"
+              :key="r.id"
+              class="flex items-center gap-2 text-sm text-slate-700"
+            >
+              <span class="chip bg-brand-50 text-brand-700 border border-brand-100">{{ r.model || '未填型号' }}</span>
+              <span class="text-slate-400">电池 {{ r.battery || '—' }}</span>
+              <span class="font-semibold">{{ r.qty }} 辆</span>
+            </div>
+          </div>
+          <p v-else class="text-xs text-slate-400">暂无挂车需求明细</p>
         </div>
         <div class="md:col-span-2">
           <label class="label">项目描述</label>
@@ -294,7 +357,8 @@
     <ModalDialog :open="importOpen" title="批量导入" width="lg" @close="importOpen = false">
       <div class="space-y-4">
         <p class="text-sm text-slate-500">
-          先下载标准模板填写，再上传。模板中「项目描述」列仍保留（列表不展示，但导入 / 导出 / 详情仍展示）。
+          先下载标准模板填写，再上传。模板仅含项目信息（项目名称 / 进展 / 描述 / 阶段 / 责任人 / 所属部门），
+          <b>车头需求、挂车需求不在导入范围内</b>，导入后请在系统「编辑项目」中补充车辆型号、电池度数与数量。
         </p>
         <div class="flex flex-wrap items-center gap-3">
           <button class="btn-ghost" @click="download(marketApi.templateUrl(), '市场项目导入标准模板.xlsx')">下载模板</button>
@@ -337,13 +401,20 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 
-import { downloadFile, marketApi, metaApi } from '@/api'
+import { dictApi, downloadFile, marketApi, metaApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { MARKET_STAGE_LABELS } from '@/types'
-import type { ImportResult, MarketOwner, MarketProjectItem, MarketStage, ProjectProgressItem } from '@/types'
+import type {
+  ImportResult,
+  MarketOwner,
+  MarketProjectItem,
+  MarketStage,
+  ProjectProgressItem,
+  ProjectRequirementItem,
+} from '@/types'
 
 const auth = useAuthStore()
 const app = useAppStore()
@@ -378,6 +449,9 @@ const keyword = ref('')
 const stageFilter = ref<number | ''>('')
 /** 责任人候选：仅市场部及其下属部门内的启用账号 */
 const marketOwners = ref<MarketOwner[]>([])
+/** 数据字典：车辆型号 / 挂车型号下拉项 */
+const vehicleModels = ref<string[]>([])
+const trailerModels = ref<string[]>([])
 
 const PAGE_SIZE = 50
 const page = ref(1)
@@ -408,8 +482,8 @@ const form = reactive({
   owner: '',
   ownerDeptId: '',
   ownerDeptName: '',
-  tractorDemand: 0,
-  trailerDemand: 0,
+  tractorRequirements: [] as ProjectRequirementItem[],
+  trailerRequirements: [] as ProjectRequirementItem[],
 })
 const deleteTarget = ref<MarketProjectItem | null>(null)
 const confirmReseed = ref(false)
@@ -537,8 +611,8 @@ function openForm(p?: MarketProjectItem) {
       owner: p.owner,
       ownerDeptId: p.ownerDeptId ?? owner?.deptId ?? '',
       ownerDeptName: p.ownerDeptName || owner?.deptName || '',
-      tractorDemand: p.tractorDemand,
-      trailerDemand: p.trailerDemand,
+      tractorRequirements: (p.tractorRequirements || []).map((r) => ({ ...r })),
+      trailerRequirements: (p.trailerRequirements || []).map((r) => ({ ...r })),
     })
     // 编辑模式加载进展记录（新建无需）；progressOwnerId 供 addProgress 使用
     progressOwnerId.value = p.id
@@ -555,8 +629,8 @@ function openForm(p?: MarketProjectItem) {
       owner: first?.name ?? auth.user?.name ?? '',
       ownerDeptId: first?.deptId ?? MARKET_DEPT_ID,
       ownerDeptName: first?.deptName ?? '',
-      tractorDemand: 0,
-      trailerDemand: 0,
+      tractorRequirements: [],
+      trailerRequirements: [],
     })
     progressOwnerId.value = ''
     resetProgress()
@@ -574,22 +648,25 @@ function onOwnerChange() {
 async function save() {
   formError.value = ''
   if (!form.name) return (formError.value = '项目名称不能为空')
-  if (!(form.tractorDemand >= 0) || !(form.trailerDemand >= 0)) return (formError.value = '需求数不能为负')
   if (!form.owner) return (formError.value = '请选择责任人')
   if (!form.ownerDeptId) return (formError.value = '请选择市场部及下属部门的责任人')
+  // 需求明细：每条数量不可为负
+  for (const r of [...form.tractorRequirements, ...form.trailerRequirements]) {
+    if (!(r.qty >= 0)) return (formError.value = '需求数量不能为负')
+  }
   // 进展必填（新建时填写，成为第一条进展记录；编辑不可直接改进展，只能「新增进展」）
   if (!form.id && !form.progress.trim()) return (formError.value = '项目进展不能为空')
 
   saving.value = true
-  // 请求体使用后端约定的 snake_case 字段
+  // 请求体使用后端约定的 snake_case 字段；车头/挂车需求以明细子列表提交，汇总由后端计算
   const payload: Record<string, unknown> = {
     name: form.name,
     description: form.description,
-    tractor_demand: form.tractorDemand,
-    trailer_demand: form.trailerDemand,
     stage: form.stage,
     owner: form.owner,
     owner_dept_id: form.ownerDeptId,
+    tractorRequirements: form.tractorRequirements.map((r) => ({ model: r.model, battery: r.battery, qty: Number(r.qty) || 0 })),
+    trailerRequirements: form.trailerRequirements.map((r) => ({ model: r.model, battery: r.battery, qty: Number(r.qty) || 0 })),
   }
   if (!form.id) payload.progress = form.progress // 仅创建携带项目进展；编辑不可直接改进展
   try {
@@ -649,12 +726,24 @@ async function onImport(e: Event) {
   }
 }
 
+/** 加载数据字典下拉项（车辆型号 / 挂车型号） */
+async function loadDictModels() {
+  try {
+    const [veh, tra] = await Promise.all([dictApi.list('vehicle_model'), dictApi.list('trailer_model')])
+    vehicleModels.value = (veh[0]?.items || []).map((i) => i.value)
+    trailerModels.value = (tra[0]?.items || []).map((i) => i.value)
+  } catch {
+    /* 字典未配置时下拉为空，仍可手动录入 */
+  }
+}
+
 onMounted(async () => {
   try {
     marketOwners.value = await metaApi.marketOwners()
   } catch {
     /* 忽略字典加载失败 */
   }
+  await loadDictModels()
   await load()
 })
 </script>

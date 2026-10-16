@@ -1,0 +1,36 @@
+"""系统配置 · 数据字典相关模型。"""
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class SysDictItemIn(BaseModel):
+    """字典枚举值（新增 / 编辑时携带）。"""
+
+    value: str = Field(min_length=1, max_length=128, description="枚举值")
+    sort: int = Field(default=0, description="排序（升序）")
+
+
+class SysDictCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=64, description="字典名称")
+    code: str | None = Field(default=None, max_length=64, description="固定编码（前端按编码取值，可选）")
+    items: list[SysDictItemIn] = Field(default_factory=list, description="字典枚举值列表")
+
+
+class SysDictUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=64, description="字典名称")
+    code: str | None = Field(default=None, max_length=64, description="固定编码（可选）")
+    items: list[SysDictItemIn] = Field(default_factory=list, description="字典枚举值列表（整份替换）")
+
+
+class SysDictItemOut(BaseModel):
+    id: int
+    value: str
+    sort: int
+
+
+class SysDictOut(BaseModel):
+    id: int
+    code: str | None = None
+    name: str
+    items: list[SysDictItemOut] = []

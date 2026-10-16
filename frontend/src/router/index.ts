@@ -12,6 +12,7 @@ export const PAGE_PERM: Record<string, string> = {
   metrics: 'metric.view',
   accounts: 'account.view',
   market: 'market.view',
+  dict: 'sys.config.view',
 }
 
 const router = createRouter({
@@ -57,6 +58,12 @@ const router = createRouter({
           name: 'accounts',
           component: () => import('@/views/AccountsView.vue'),
           meta: { title: '账号管理', perm: 'account.view' },
+        },
+        {
+          path: 'dict',
+          name: 'dict',
+          component: () => import('@/views/SysDictView.vue'),
+          meta: { title: '数据字典', perm: 'sys.config.view' },
         },
         {
           path: 'forbidden',

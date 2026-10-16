@@ -20,21 +20,59 @@
       </div>
 
       <nav class="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
-        <router-link
-          v-for="item in menus"
-          :key="item.name"
-          :to="{ name: item.name }"
-          class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ease-out"
-          :class="
-            route.name === item.name
-              ? 'bg-gradient-to-r from-brand-600 to-brand-400 text-white shadow-btn'
-              : 'text-slate-600 hover:bg-brand-50/70 hover:text-brand-700'
-          "
-          :title="collapsed ? item.label : ''"
-        >
-          <span class="w-4 text-center shrink-0" v-html="item.icon" />
-          <span v-if="!collapsed">{{ item.label }}</span>
-        </router-link>
+        <template v-for="item in menus" :key="item.name || item.label">
+          <!-- 含子菜单的分组（如 系统配置 → 数据字典） -->
+          <div v-if="item.children" class="space-y-1">
+            <button
+              type="button"
+              class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ease-out text-slate-600 hover:bg-brand-50/70 hover:text-brand-700"
+              :title="collapsed ? item.label : ''"
+              @click="groupOpen[item.label] = !groupOpen[item.label]"
+            >
+              <span class="w-4 text-center shrink-0" v-html="item.icon" />
+              <span v-if="!collapsed" class="flex-1 text-left">{{ item.label }}</span>
+              <svg
+                v-if="!collapsed"
+                class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200"
+                :class="groupOpen[item.label] ? 'rotate-90' : ''"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              >
+                <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <div v-show="!collapsed && groupOpen[item.label]" class="pl-4 space-y-1">
+              <router-link
+                v-for="c in item.children"
+                :key="c.name"
+                :to="{ name: c.name }"
+                class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ease-out"
+                :class="
+                  route.name === c.name
+                    ? 'bg-gradient-to-r from-brand-600 to-brand-400 text-white shadow-btn'
+                    : 'text-slate-600 hover:bg-brand-50/70 hover:text-brand-700'
+                "
+              >
+                <span class="w-4 text-center shrink-0" v-html="c.icon" />
+                <span>{{ c.label }}</span>
+              </router-link>
+            </div>
+          </div>
+          <!-- 普通菜单 -->
+          <router-link
+            v-else
+            :to="{ name: item.name }"
+            class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ease-out"
+            :class="
+              route.name === item.name
+                ? 'bg-gradient-to-r from-brand-600 to-brand-400 text-white shadow-btn'
+                : 'text-slate-600 hover:bg-brand-50/70 hover:text-brand-700'
+            "
+            :title="collapsed ? item.label : ''"
+          >
+            <span class="w-4 text-center shrink-0" v-html="item.icon" />
+            <span v-if="!collapsed">{{ item.label }}</span>
+          </router-link>
+        </template>
       </nav>
 
       <div v-if="!collapsed" class="px-4 py-3 border-t border-slate-200 text-[11px] text-slate-400">
@@ -104,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { metricApi } from '@/api'
@@ -121,6 +159,10 @@ const router = useRouter()
 const collapsed = computed(() => app.sidebarCollapsed)
 const title = computed(() => (route.meta.title as string) || '')
 const menuOpen = ref(false)
+/** 含子菜单的分组展开状态（默认展开） */
+const groupOpen = reactive<Record<string, boolean>>({
+  系统配置: true,
+})
 const SCOPE_TEXT: Record<string, string> = {
   self: '本人',
   dept: '本部门',
@@ -140,16 +182,44 @@ const ICONS: Record<string, string> = {
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20h18" stroke-linecap="round"/><path d="M6 16l4-6 3 4 5-8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   accounts:
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20c1.2-3.6 4-5.4 7.5-5.4S18.3 16.4 19.5 20" stroke-linecap="round"/></svg>',
+  system:
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linejoin="round"/></svg>',
+  dict:
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>',
 }
 
-const ALL_MENUS = [
+type MenuItem = {
+  name?: string
+  label: string
+  perm: string
+  icon: string
+  children?: { name: string; label: string; perm: string; icon: string }[]
+}
+
+const ALL_MENUS: MenuItem[] = [
   { name: 'dashboard', label: '经营驾驶舱', perm: 'dashboard.view', icon: ICONS.dashboard },
   { name: 'tasks', label: '任务管理', perm: 'task.view', icon: ICONS.tasks },
   { name: 'market', label: '项目管理', perm: 'market.view', icon: ICONS.market },
   { name: 'metrics', label: '指标维护', perm: 'metric.view', icon: ICONS.metrics },
   { name: 'accounts', label: '账号管理', perm: 'account.view', icon: ICONS.accounts },
+  {
+    label: '系统配置',
+    perm: 'sys.config.view',
+    icon: ICONS.system,
+    children: [{ name: 'dict', label: '数据字典', perm: 'sys.config.view', icon: ICONS.dict }],
+  },
 ]
-const menus = computed(() => ALL_MENUS.filter((m) => auth.hasPerm(m.perm)))
+const menus = computed<MenuItem[]>(() => {
+  const mapped = ALL_MENUS.map((m): MenuItem | null => {
+    if (m.children) {
+      const kids = m.children.filter((c) => auth.hasPerm(c.perm))
+      if (!kids.length || !auth.hasPerm(m.perm)) return null
+      return { ...m, children: kids }
+    }
+    return auth.hasPerm(m.perm) ? m : null
+  })
+  return mapped.filter((m): m is MenuItem => m !== null)
+})
 
 async function loadContext() {
   if (!auth.token) return
