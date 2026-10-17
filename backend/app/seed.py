@@ -20,7 +20,7 @@ from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.models import (
-    MainTask,
+    TaskGroup,
     MarketProject,
     MetricActual,
     MetricDef,
@@ -36,9 +36,9 @@ from app.models import (
     User,
 )
 
-# 系统默认主任务：任务未选择主任务时默认关联它（始终存在，id 固定不可变）
-MT_NONE_ID = "MT_NONE"
-MT_NONE_NAME = "空"
+# 系统默认任务组：任务未选择任务组时默认关联它（始终存在，id 固定不可变）
+TG_NONE_ID = "TG_NONE"
+TG_NONE_NAME = "空"
 
 SEED_PASSWORD = os.getenv("SEED_PASSWORD", "123456")
 
@@ -208,52 +208,52 @@ def _d(s: str) -> date:
     return date.fromisoformat(s)
 
 
-# ---------------------------------------------------------------- 主任务（原「任务分类」）
+# ---------------------------------------------------------------- 任务组（原「任务分类」）
 
 
-def next_main_task_id(db: Session) -> str:
-    """生成下一个主任务 ID：MT + 4 位自增序号（系统默认 MT_NONE 不参与序号）。"""
-    rows = db.scalars(select(MainTask.id)).all()
+def next_task_group_id(db: Session) -> str:
+    """生成下一个任务组 ID：TG + 4 位自增序号（系统默认 TG_NONE 不参与序号）。"""
+    rows = db.scalars(select(TaskGroup.id)).all()
     max_seq = 0
     for mid in rows:
-        m = re.fullmatch(r"MT(\d+)", mid or "")
+        m = re.fullmatch(r"TG(\d+)", mid or "")
         if m:
             max_seq = max(max_seq, int(m.group(1)))
-    return f"MT{max_seq + 1:04d}"
+    return f"TG{max_seq + 1:04d}"
 
 
-def get_or_create_main_task(db: Session, name: str, created_by: str | None = None) -> MainTask:
-    """按名称取主任务，不存在则新建（名称唯一）。"""
-    existing = db.scalar(select(MainTask).where(MainTask.name == name))
+def get_or_create_task_group(db: Session, name: str, created_by: str | None = None) -> TaskGroup:
+    """按名称取任务组，不存在则新建（名称唯一）。"""
+    existing = db.scalar(select(TaskGroup).where(TaskGroup.name == name))
     if existing:
         return existing
-    mt = MainTask(id=next_main_task_id(db), name=name, created_by=created_by)
+    mt = TaskGroup(id=next_task_group_id(db), name=name, created_by=created_by)
     db.add(mt)
     db.flush()
     return mt
 
 
-def ensure_main_task_none(db: Session) -> None:
-    """确保系统默认主任务「空」(MT_NONE) 存在。"""
-    if not db.scalar(select(MainTask).where(MainTask.id == MT_NONE_ID)):
-        db.add(MainTask(id=MT_NONE_ID, name=MT_NONE_NAME, created_by=None, is_system=True))
+def ensure_task_group_none(db: Session) -> None:
+    """确保系统默认任务组「空」(TG_NONE) 存在。"""
+    if not db.scalar(select(TaskGroup).where(TaskGroup.id == TG_NONE_ID)):
+        db.add(TaskGroup(id=TG_NONE_ID, name=TG_NONE_NAME, created_by=None, is_system=True))
         db.flush()
 
 
-def backfill_task_main_tasks(db: Session) -> int:
-    """数据迁移：把 main_task_id 为空的任务按原 title 回填主任务（幂等，仅处理空值）。
+def backfill_task_task_groups(db: Session) -> int:
+    """数据迁移：把 task_group_id 为空的任务按原 title 回填任务组（幂等，仅处理空值）。
 
-    升级旧库时，已有任务没有主任务关联；这里以原「任务分类」文本对应到主任务，
+    升级旧库时，已有任务没有任务组关联；这里以原「任务分类」文本对应到任务组，
     文本为空则归到系统默认「空」。返回回填条数。
     """
-    nulls = db.scalars(select(Task).where(Task.main_task_id.is_(None))).all()
+    nulls = db.scalars(select(Task).where(Task.task_group_id.is_(None))).all()
     if not nulls:
         return 0
     for t in nulls:
         if t.title:
-            t.main_task_id = get_or_create_main_task(db, t.title, created_by=t.created_by).id
+            t.task_group_id = get_or_create_task_group(db, t.title, created_by=t.created_by).id
         else:
-            t.main_task_id = MT_NONE_ID
+            t.task_group_id = TG_NONE_ID
     return len(nulls)
 
 
@@ -319,19 +319,19 @@ def backfill_task_progress(db: Session) -> int:
     return n
 
 
-def backfill_main_task_owners(db: Session) -> int:
-    """数据迁移：主任务责任人为空时，取其下最早创建的任务的责任人/部门回填（幂等）。
+def backfill_task_group_owners(db: Session) -> int:
+    """数据迁移：任务组责任人为空时，取其下最早创建的任务的责任人/部门回填（幂等）。
 
     与「首次被任务选用时回填」同一语义 —— 对升级前已存在的任务，视最早那条为首次选用。
     """
     db.flush()
-    mts = db.scalars(select(MainTask).where(MainTask.is_system.is_(False), MainTask.owner_id.is_(None))).all()
+    mts = db.scalars(select(TaskGroup).where(TaskGroup.is_system.is_(False), TaskGroup.owner_id.is_(None))).all()
     if not mts:
         return 0
     n = 0
     for mt in mts:
         first = db.scalar(
-            select(Task).where(Task.main_task_id == mt.id).order_by(Task.id.asc()).limit(1)
+            select(Task).where(Task.task_group_id == mt.id).order_by(Task.id.asc()).limit(1)
         )
         if not first:
             continue
@@ -419,19 +419,19 @@ def seed(db: Session, reset: bool = False) -> dict:
                 created["actuals"] += 1
 
     # 任务同样只在首次初始化时灌入（见上：清空后不应被重启"复活"）
-    ensure_main_task_none(db)
+    ensure_task_group_none(db)
     if first_init and not db.scalar(select(Task).limit(1)):
-        # 演示任务各自的「任务分类」对应为主任务（按名称建表），建立 名称→id 映射
+        # 演示任务各自的「任务分类」对应为任务组（按名称建表），建立 名称→id 映射
         title_to_mt: dict[str, str] = {}
         for t in TASKS:
             title = t["title"]
             if title and title not in title_to_mt:
-                title_to_mt[title] = get_or_create_main_task(db, title, created_by="U001").id
+                title_to_mt[title] = get_or_create_task_group(db, title, created_by="U001").id
         for t in TASKS:
-            mt_id = title_to_mt.get(t["title"]) or MT_NONE_ID
+            mt_id = title_to_mt.get(t["title"]) or TG_NONE_ID
             db.add(
                 Task(
-                    id=t["id"], parent=t["parent"], title=t["title"], main_task_id=mt_id,
+                    id=t["id"], parent=t["parent"], title=t["title"], task_group_id=mt_id,
                     description=t["description"],
                     abnormal=t["abnormal"], target=Decimal(str(t["target"])), done=Decimal(str(t["done"])),
                     unit=t["unit"], note=t["note"], start_date=_d(t["start"]), end_date=_d(t["end"]),
@@ -440,8 +440,8 @@ def seed(db: Session, reset: bool = False) -> dict:
             )
             created["tasks"] += 1
 
-    # 数据迁移：升级旧库时，把 main_task_id 为空的任务按原「任务分类」回填主任务
-    created["mainTasksBackfilled"] = backfill_task_main_tasks(db)
+    # 数据迁移：升级旧库时，把 task_group_id 为空的任务按原「任务分类」回填任务组
+    created["taskGroupsBackfilled"] = backfill_task_task_groups(db)
 
     # 数据迁移：升级旧库时，把已有任务的「进展描述」转为第一条进展记录
     created["progressBackfilled"] = backfill_task_progress(db)
@@ -449,8 +449,8 @@ def seed(db: Session, reset: bool = False) -> dict:
     # 数据迁移：把已有市场项目的「进展快照」转为第一条进展记录
     created["projectProgressBackfilled"] = backfill_project_progress(db)
 
-    # 数据迁移：主任务责任人/部门为空时，取其下最早任务回填（下拉「名称 责任人」展示用）
-    created["mainTaskOwnersBackfilled"] = backfill_main_task_owners(db)
+    # 数据迁移：任务组责任人/部门为空时，取其下最早任务回填（下拉「名称 责任人」展示用）
+    created["taskGroupOwnersBackfilled"] = backfill_task_group_owners(db)
 
     # 市场项目同理：只在首次初始化时灌入演示数据
     if first_init and not db.scalar(select(MarketProject).limit(1)):
@@ -476,22 +476,26 @@ def main() -> None:
     from sqlalchemy import text
 
     with engine.begin() as conn:
-        existing = {r[1] for r in conn.execute(text("PRAGMA table_info(task)")).fetchall()}
-        if "main_task_id" not in existing:
-            conn.execute(text("ALTER TABLE task ADD COLUMN main_task_id VARCHAR(32)"))
-        # 主任务新增 责任人/责任部门/更新时间 字段，老库补 ALTER（与 main.py 启动期保持一致）
-        mt_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(main_task)")).fetchall()}
-        if "owner_id" not in mt_existing:
-            conn.execute(text("ALTER TABLE main_task ADD COLUMN owner_id VARCHAR(16)"))
-        if "dept_id" not in mt_existing:
-            conn.execute(text("ALTER TABLE main_task ADD COLUMN dept_id VARCHAR(16)"))
-        if "updated_at" not in mt_existing:
-            conn.execute(text("ALTER TABLE main_task ADD COLUMN updated_at TIMESTAMP"))
+        tables = {r[0] for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+        # 迁移：主任务 -> 任务组（create_all 可能已建空 task_group，先处理旧 main_task）
+        if "main_task" in tables:
+            if "task_group" in tables:
+                conn.execute(text("DROP TABLE task_group"))
+            conn.execute(text("ALTER TABLE main_task RENAME TO task_group"))
+        if "task" in tables:
+            tcols = {r[1] for r in conn.execute(text("PRAGMA table_info(task)")).fetchall()}
+            if "main_task_id" in tcols and "task_group_id" not in tcols:
+                conn.execute(text("ALTER TABLE task RENAME COLUMN main_task_id TO task_group_id"))
+        # task_group 缺失字段补 ALTER（责任人/责任部门/更新时间）
+        if "task_group" in tables:
+            gcols = {r[1] for r in conn.execute(text("PRAGMA table_info(task_group)")).fetchall()}
+            for col, ddl in [("owner_id", "VARCHAR(16)"), ("dept_id", "VARCHAR(16)"), ("updated_at", "TIMESTAMP")]:
+                if col not in gcols:
+                    conn.execute(text(f"ALTER TABLE task_group ADD COLUMN {col} {ddl}"))
         # user.preferences：用户级偏好（行高等），老库补 ALTER，默认值 '{}'
         user_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(\"user\")")).fetchall()}
         if "preferences" not in user_existing:
             conn.execute(text("ALTER TABLE \"user\" ADD COLUMN preferences TEXT NOT NULL DEFAULT '{}'"))
-
         # market_project.progress：本轮新增的项目进展冗余快照列，老库补 ALTER（默认空串）
         mp_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(market_project)")).fetchall()}
         if "progress" not in mp_existing:

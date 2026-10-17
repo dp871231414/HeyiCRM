@@ -199,9 +199,9 @@ export interface TaskItem {
   id: string
   parent: string
   title: string | null
-  /** 主任务（原「任务分类」）：下拉选择，单独建表 */
-  mainTaskId: string
-  mainTaskName: string
+  /** 任务组（原「任务分类」）：下拉选择，单独建表 */
+  taskGroupId: string
+  taskGroupName: string
   description: string
   abnormal: boolean
   target: number
@@ -227,15 +227,15 @@ export interface TaskItem {
   updatedAt: string
 }
 
-/** 主任务（下拉选项）。系统默认「空」始终存在，任务未选主任务时默认关联它。
- * 责任人/责任部门在主任务首次被任务选用时由该任务回填（ownerId/ownerName/deptId/deptName）。 */
-export interface MainTask {
+/** 任务组（下拉选项）。系统默认「空」始终存在，任务未选任务组时默认关联它。
+ * 责任人/责任部门在任务组首次被任务选用时由该任务回填（ownerId/ownerName/deptId/deptName）。 */
+export interface TaskGroup {
   id: string
   name: string
   createdAt: string
   createdBy: string
   createdByName: string
-  /** 责任人（主任务首次被任务选用时回填） */
+  /** 责任人（任务组首次被任务选用时回填） */
   ownerId: string
   ownerName: string
   /** 责任部门 */

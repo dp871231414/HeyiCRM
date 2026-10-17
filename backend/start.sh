@@ -20,7 +20,13 @@ python -c "import fastapi, uvicorn, sqlalchemy; print('[start] deps ok')" || ech
 #   SEED_RESET=1：先清空业务表再重新灌入，用于把演示环境恢复到初始状态
 # 例如部署时以 `SEED_RESET=1 sh start.sh` 启动一次即可完成重置，之后正常启动即可。
 if [ "${SEED_RESET}" = "1" ]; then
-  echo "[start] SEED_RESET=1 → 清空并重建种子数据"
+  echo "[start] SEED_RESET=1 → 硬重置：删除数据库文件后从零重建"
+  # 硬重置：直接删除库文件，规避旧库行级删除在某些沙箱下中断导致库处于
+  # 半清空（如用户表被删但重建失败）的异常态；删文件后由 seed 全新建表灌入。
+  DB_FILE=$(echo "${DATABASE_URL:-sqlite:///./app.db}" | sed -E 's#^sqlite:///(//)?##')
+  if [ -n "${DB_FILE}" ]; then
+    rm -f "${DB_FILE}" && echo "[start] 已删除旧库文件 ${DB_FILE}"
+  fi
   python -m app.seed --reset || echo "[start] reset skipped or failed (non-fatal)"
 else
   python -m app.seed || echo "[start] seed skipped or failed (non-fatal)"

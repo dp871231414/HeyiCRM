@@ -25,43 +25,42 @@ async def lifespan(_: FastAPI):
     from app.db.session import engine
     import app.models  # noqa: F401  注册模型
 
+    from sqlalchemy import text
+
+    # 迁移：主任务 -> 任务组（在 create_all 之前执行，避免新建空 task_group 与旧 main_task 共存）
+    with engine.begin() as conn:
+        tables = {r[0] for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+        if "main_task" in tables:
+            if "task_group" in tables:
+                conn.execute(text("DROP TABLE task_group"))
+            conn.execute(text("ALTER TABLE main_task RENAME TO task_group"))
+        if "task" in tables:
+            tcols = {r[1] for r in conn.execute(text("PRAGMA table_info(task)")).fetchall()}
+            if "main_task_id" in tcols and "task_group_id" not in tcols:
+                conn.execute(text("ALTER TABLE task RENAME COLUMN main_task_id TO task_group_id"))
+
     Base.metadata.create_all(bind=engine)
     logger.info("数据库表已就绪")
 
-    # 兼容已上线但模型后续新增列的旧库：market_project.owner_dept_id 是后来补的字段，
-    # 旧库（dev.db / 线上 app.db）建表时还没有它。这里在启动时为缺失列做一次 ALTER，
-    # 避免查询该列报 "no such column"。全新库由 create_all 直接带列，跳过。
-    from sqlalchemy import text
-
     with engine.begin() as conn:
+        # market_project 补列（原逻辑保留）
         existing = {row[1] for row in conn.execute(text("PRAGMA table_info(market_project)")).fetchall()}
         if "owner_dept_id" not in existing:
             conn.execute(text("ALTER TABLE market_project ADD COLUMN owner_dept_id VARCHAR(16)"))
             logger.info("已为 market_project 补列 owner_dept_id")
-
-        # market_project.progress：本轮新增的项目进展冗余快照列，老库补 ALTER（默认空串）
         if "progress" not in existing:
             conn.execute(text("ALTER TABLE market_project ADD COLUMN progress TEXT NOT NULL DEFAULT ''"))
             logger.info("已为 market_project 补列 progress")
-
-        # task.main_task_id：本轮新增的「主任务」外键列，老库同样补 ALTER
-        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(task)")).fetchall()}
-        if "main_task_id" not in existing:
-            conn.execute(text("ALTER TABLE task ADD COLUMN main_task_id VARCHAR(32)"))
-            logger.info("已为 task 补列 main_task_id")
-
-        # main_task.owner_id / dept_id / updated_at：本轮为主任务新增「责任人与责任部门」字段，老库补 ALTER
-        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(main_task)")).fetchall()}
-        if "owner_id" not in existing:
-            conn.execute(text("ALTER TABLE main_task ADD COLUMN owner_id VARCHAR(16)"))
-            logger.info("已为 main_task 补列 owner_id")
-        if "dept_id" not in existing:
-            conn.execute(text("ALTER TABLE main_task ADD COLUMN dept_id VARCHAR(16)"))
-            logger.info("已为 main_task 补列 dept_id")
-        if "updated_at" not in existing:
-            conn.execute(text("ALTER TABLE main_task ADD COLUMN updated_at TIMESTAMP"))
-            logger.info("已为 main_task 补列 updated_at")
-
+        # task_group 缺失字段补 ALTER（责任人/责任部门/更新时间），老库兼容
+        tg_exists = conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_group'")
+        ).fetchone()
+        if tg_exists:
+            gcols = {r[1] for r in conn.execute(text("PRAGMA table_info(task_group)")).fetchall()}
+            for col, ddl in [("owner_id", "VARCHAR(16)"), ("dept_id", "VARCHAR(16)"), ("updated_at", "TIMESTAMP")]:
+                if col not in gcols:
+                    conn.execute(text(f"ALTER TABLE task_group ADD COLUMN {col} {ddl}"))
+                    logger.info(f"已为 task_group 补列 {col}")
         # user.preferences：用户级偏好（行高等），老库补 ALTER，默认值 '{}'
         existing = {row[1] for row in conn.execute(text("PRAGMA table_info(\"user\")")).fetchall()}
         if "preferences" not in existing:

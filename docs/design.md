@@ -1,8 +1,8 @@
 # 合一重卡生态经营看板 · 技术设计（design）
 
-> 版本：v2.2 · 2026-10-17
+> 版本：v2.3 · 2026-10-17
 > 上游：`docs/proposal.md`（需求编号 A/O/R/U/M/T/D/I/K/S/X）
-> 说明：本文回答「用什么技术、模块如何协作、如何部署」。技术栈已锁定，本文严格遵守现状（SQLite 单文件库 + 单端口同源托管），并并入 Round 23 的系统配置·数据字典、项目管理车头/挂车需求子列表两项改造，以及 Round 24 的下载中心（X-1~X-6）。**v2.2 调整导出口径（导出仅返回下载中心记录 JSON，不再即时下载）并移除「重新生成」入口（原 `POST /market-projects/reseed`）。**
+> 说明：本文回答「用什么技术、模块如何协作、如何部署」。技术栈已锁定，本文严格遵守现状（SQLite 单文件库 + 单端口同源托管），并并入 Round 23 的系统配置·数据字典、项目管理车头/挂车需求子列表两项改造，以及 Round 24 的下载中心（X-1~X-6）。v2.2 调整导出口径（导出仅返回下载中心记录 JSON，不再即时下载）并移除「重新生成」入口（原 `POST /market-projects/reseed`）。**v2.3 菜单归并 + 字段全栈重命名：前端「账号管理」「下载中心」移入「系统配置」二级菜单；任务管理「主任务」全栈更名为「任务组」——模型 `MainTask`→`TaskGroup`（表 `main_task`→`task_group`）、`Task.main_task_id`→`task_group_id`、`services/importer.py` 与 `services/achievement.py` 的 `MT_NONE_ID`/`MT(\d+)`→`TG_NONE_ID`/`TG(\d+)`、API 路由 `/main-tasks`→`/task-groups`（文件 `main_tasks.py`→`task_groups.py`，router 同步）、前端 `api/index.ts` 与 `TasksView.vue` 的 `mainTask*`/`MT_NONE_ID`→`taskGroup*`/`TG_NONE_ID`；演示库经 `SEED_RESET=1`（start.sh 现已支持硬重置：删库文件后重建）重置为 `TG` 前缀 ID。**
 
 ---
 
@@ -154,8 +154,8 @@
 |---|---|---|
 | id | varchar(32) PK | T202601… |
 | parent | varchar(128) | 任务名称 |
-| title | varchar(128) nullable | **冗余字段** = 主任务名称（兼容旧查询/导出） |
-| main_task_id | varchar(32) FK→main_task.id | 关联主任务；空时回落 `MT_NONE` |
+| title | varchar(128) nullable | **冗余字段** = 任务组名称（兼容旧查询/导出） |
+| task_group_id | varchar(32) FK→task_group.id | 关联任务组；空时回落 `TG_NONE` |
 | description / abnormal / target / done / unit / note | text/bool/numeric… | 任务描述 / 异常标记 / 目标 / 已完成 / 单位 / **最新进展冗余快照** |
 | start_date / end_date | date | 计划起止 |
 | dept_id | varchar(16) FK | 责任部门 |
@@ -164,15 +164,15 @@
 
 **计算列（不落库）**：完成进度 = round(done/target×100)；剩余天数与逾期/临期判定；健康度 = 时间判定 ⊕ 人工异常。
 
-### 5.5 `main_task` 主任务字典
+### 5.5 `task_group` 任务组字典
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | varchar(32) PK | `MT` + 4 位序号；**创建后不可变** |
-| name | varchar(128) unique | 主任务名称（可改） |
+| name | varchar(128) unique | 任务组名称（可改） |
 | created_by / created_at / updated_at | | 审计 |
 | owner_id / dept_id | FK user / FK org | 责任人/部门（首次被任务选用时回填，人工维护后不覆盖） |
-| is_system | bool | 系统内置 `MT_NONE`（名称「空」） |
+| is_system | bool | 系统内置 `TG_NONE`（名称「空」） |
 
 ### 5.6 `user` / `role`
 
@@ -320,7 +320,7 @@
 | GET | `/users/import/template` / POST `/users/import` | 批量导入（任一行出错整批不写） |
 | GET | `/users/{id}/impact` / DELETE | 删除前预检六类引用；禁止删自己与最后管理员 |
 
-### 6.4 指标 / 任务 / 主任务
+### 6.4 指标 / 任务 / 任务组
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -328,7 +328,7 @@
 | PUT | `/metrics/targets` `/metrics/actuals` | upsert |
 | GET | `/tasks` `/tasks/{id}` `/tasks/{id}/progress` | 列表（按范围过滤）/ 详情 / 进展时间轴 |
 | POST/PATCH/DELETE | `/tasks` `/tasks/{id}` | 新建（自动 ID、进展必填）/ 编辑（进展只追加）/ 删除（级联进展） |
-| GET/POST/PATCH | `/main-tasks` `/main-tasks/{id}` | 主任务字典（改名 ID 不变） |
+| GET/POST/PATCH | `/task-groups` `/task-groups/{id}` | 任务组字典（改名 ID 不变） |
 
 ### 6.5 项目管理 / 系统配置（Round 23）
 
@@ -438,7 +438,7 @@
 │   │   ├── config.py            # 环境变量配置（is_sqlite 分支）
 │   │   ├── db/{base,session}.py
 │   │   ├── core/{security,deps}.py
-│   │   ├── models/              # organization/metric/task/main_task/user/role/
+│   │   ├── models/              # organization/metric/task/task_group/user/role/
 │   │   │                       #   market_project + 需求明细 + 进展 + 字典 + funnel_config + download_record
 │   │   ├── schemas/             # Pydantic v2
 │   │   ├── services/            # achievement/scope/summary/importer/audit/download
@@ -472,7 +472,7 @@
 | R-1~R-4 角色权限 | `roles` / `PERM_GROUPS` | §5.6, §6.3, §9 |
 | U-1~U-5 账号管理 | `users` | §5.6, §6.3, §9 |
 | M-1~M-15 指标维护 | `metrics` / `achievement` / `importer` | §5.2–5.4, §6.4, §8 |
-| T-1~T-12 任务管理 | `tasks` / `importer` / `main_task` | §5.4–5.5, §6.4, §7 |
+| T-1~T-12 任务管理 | `tasks` / `importer` / `task_group` | §5.4–5.5, §6.4, §7 |
 | D-1~D-43 经营驾驶舱 | `dashboard` / `summary` / `achievement` | §4, §5.2, §6.6, §10 |
 | I-1~I-6 数据导入 | `importer` | §4, §6.4–6.5, §8 |
 | **K-1~K-7 项目管理车头/挂车需求子列表** | `market-projects` / `project_*_requirement` | §5.7, §6.5 |
@@ -491,12 +491,13 @@
 - **2026-10-13 · 数据权限边界（D-15~17）**：仅任务模块按可见范围隔离；驾驶舱与指标维护只按角色权限（全公司口径），因全公司与项目公司非递归汇总关系。
 - **2026-10-14 · 市场项目模块（D-30~33）**：新增市场项目与驾驶舱漏斗；漏斗口径由累计改为「当前阶段」，销量预测按阶段概率加权；条形图式漏斗造型。
 - **2026-10-15 · 市场部锁定 + 漏斗按二级部门筛选 + 负责人限定 + 重生成（D-40~43）**：D01 锁定；漏斗 `dept_id` 过滤；负责人下拉仅市场子树；`reseed` 确定性造数（修复 autoflush 下 ID 重复）。
-- **2026-10-15 · 主任务字典（round15/16）**：任务分类升级为独立 `main_task` 表，责任人/部门首次选用时回填；分组视图按主任务 ID 归类。
+- **2026-10-15 · 任务组字典（round15/16）**：任务分类升级为独立 `task_group` 表，责任人/部门首次选用时回填；分组视图按任务组 ID 归类。
 - **2026-10-16 · 任务进展时间轴（round18）**：`task_progress` 表，编辑只追加；`task.detail` 全角色可见。
 - **2026-10-16 · 列宽固定 + 省略号 + 行高偏好（round19/20）**：用户偏好持久化；`table-fixed` + `.cell-c` 真正固定列宽与省略号。
 - **2026-10-17 · Round 23 系统配置·数据字典 + 项目管理车头/挂车需求子列表（K/S）**：新增 `sys_dict`/`sys_dict_item`（种子预设车型）；`project_tractor_requirement`/`project_trailer_requirement` 明细表 + `tractor_demand`/`trailer_demand` 汇总快照；编辑表单改为列头表格；项目导入模板精简为 6 列（不含车辆需求，车辆需求在系统内补充）；导出含汇总列。详见 `proposal.md` §5.8–5.10。
 - **2026-10-17 · Round 24 下载中心（X-1~X-6）**：新增 `download_record` 表与 `services/download.py`；`tasks/export`、`market-projects/export` 改为「先落盘建记录再返回文件」；新增 `GET /downloads`（列表）、`GET /downloads/{id}/file`（下载）、`DELETE /downloads/{id}`（删除），均按 `created_by` 隔离（仅本人可见可操作）；菜单权限 `download.view` 纳入 `DEFAULT_PERMS_FOR_ALL`；前端新增「下载中心」菜单与 `DownloadsView` 列表页，导出后 toast 引导去下载中心。需求文档同步去掉「典型人员」虚拟角色列（`proposal.md` v3.1）。后端测试 149 → **153 passed**（新增 `test_downloads.py` 4 项）。详见 `proposal.md` §3.13、§5.13。
 - **2026-10-17 · Round 26 导出口径收紧 + 移除重新生成**：`tasks/export`、`market-projects/export` 改为「落盘建记录后只返回 `DownloadRecordOut`，不再返回文件流」，前端导出后跳转下载中心由用户取文件；删除 `POST /market-projects/reseed` 及前端「重新生成」按钮（演示重置改由部署侧 `SEED_RESET=1` 完成）。测试随语义改写，当前 **152 passed**。
+- **2026-10-17 · Round 27 菜单归并 + 任务组全栈重命名**：前端 `AppLayout.vue` 的「账号管理」「下载中心」由与「系统配置」平级的顶级菜单移入其 `children`（与「数据字典」并列），权限点 `account.view`/`download.view` 不变；任务管理「主任务」全栈更名为「任务组」——模型 `MainTask`→`TaskGroup`（表 `main_task`→`task_group`）、`Task.main_task_id`→`task_group_id`、`importer`/`achievement` 的 `MT_NONE_ID`/`MT(\d+)`→`TG_NONE_ID`/`TG(\d+)`、API `/main-tasks`→`/task-groups`（模块 `main_tasks.py`→`task_groups.py`，`router.py` 同步改引用）、前端 `api/index.ts`/`TasksView.vue` 的 `mainTask*`/`MT_NONE_ID`→`taskGroup*`/`TG_NONE_ID`、种子与测试（`test_main_tasks.py`→`test_task_groups.py`）同步；启动迁移（`app/main.py` lifespan 与 `app/seed.py` main）均处理 `main_task`→`task_group` 的 RENAME。演示库经 `SEED_RESET=1 bash start.sh` 硬重置（start.sh 在 `SEED_RESET=1` 时先删库文件再重建）统一为 `TG` 前缀 ID。后端测试仍为 **152 passed**（纯重命名，无新增用例）。
 
 ---
 

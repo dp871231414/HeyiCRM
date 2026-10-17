@@ -203,13 +203,15 @@ const ALL_MENUS: MenuItem[] = [
   { name: 'tasks', label: '任务管理', perm: 'task.view', icon: ICONS.tasks },
   { name: 'market', label: '项目管理', perm: 'market.view', icon: ICONS.market },
   { name: 'metrics', label: '指标维护', perm: 'metric.view', icon: ICONS.metrics },
-  { name: 'accounts', label: '账号管理', perm: 'account.view', icon: ICONS.accounts },
-  { name: 'downloads', label: '下载中心', perm: 'download.view', icon: ICONS.download },
   {
     label: '系统配置',
     perm: 'sys.config.view',
     icon: ICONS.system,
-    children: [{ name: 'dict', label: '数据字典', perm: 'sys.config.view', icon: ICONS.dict }],
+    children: [
+      { name: 'dict', label: '数据字典', perm: 'sys.config.view', icon: ICONS.dict },
+      { name: 'accounts', label: '账号管理', perm: 'account.view', icon: ICONS.accounts },
+      { name: 'downloads', label: '下载中心', perm: 'download.view', icon: ICONS.download },
+    ],
   },
 ]
 const menus = computed<MenuItem[]>(() => {

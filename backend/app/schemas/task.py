@@ -8,9 +8,9 @@ class TaskOut(BaseModel):
     id: str
     parent: str
     title: str | None = None
-    # 主任务（原「任务分类」）：下拉选择，单独建表；不选择时默认关联系统「空」
-    mainTaskId: str = ""
-    mainTaskName: str = ""
+    # 任务组（原「任务分类」）：下拉选择，单独建表；不选择时默认关联系统「空」
+    taskGroupId: str = ""
+    taskGroupName: str = ""
     description: str = ""
     abnormal: bool = False
     target: float
@@ -38,7 +38,7 @@ class TaskOut(BaseModel):
 
 class TaskCreate(BaseModel):
     parent: str = Field(min_length=1, max_length=128, description="任务名称")
-    main_task_id: str | None = Field(default=None, description="主任务ID；不传则默认关联系统「空」")
+    task_group_id: str | None = Field(default=None, description="任务组ID；不传则默认关联系统「空」")
     description: str = ""
     abnormal: bool = False
     target: float = Field(gt=0)
@@ -54,7 +54,7 @@ class TaskCreate(BaseModel):
 
 class TaskUpdate(BaseModel):
     parent: str = Field(min_length=1, max_length=128)
-    main_task_id: str | None = Field(default=None, description="主任务ID；不传则默认关联系统「空」")
+    task_group_id: str | None = Field(default=None, description="任务组ID；不传则默认关联系统「空」")
     description: str = ""
     abnormal: bool = False
     target: float = Field(gt=0)

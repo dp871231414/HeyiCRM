@@ -1,7 +1,7 @@
 # 测试报告 · 合一重卡生态经营看板
 
-- 报告日期：2026-10-17（v3.2，基于最新方案重新生成）
-- 被测版本：`main`（含 Round 23：系统配置·数据字典、项目管理车头/挂车需求子列表；Round 24：下载中心；Round 26：导出口径收紧 + 移除重新生成）
+- 报告日期：2026-10-17（v3.3，基于最新方案重新生成）
+- 被测版本：`main`（含 Round 23：系统配置·数据字典、项目管理车头/挂车需求子列表；Round 24：下载中心；Round 26：导出口径收紧 + 移除重新生成；Round 27：菜单归并 + 任务组全栈重命名）
 - 测试环境：macOS / Python 3.13.12（`/Users/gavin/.workbuddy/binaries/python/envs/fleet`）/ Node 22.22.2-6 / Chromium（Playwright）
 - 后端运行：`uvicorn app.main:app`（SQLite 单文件库 `app.db`；`DATABASE_URL` 可切 PostgreSQL）
 - 前端运行：`vite build` 产物静态托管于 `backend/static`，与 API 同源
@@ -39,7 +39,7 @@ cd backend && PYTHONPATH=. /Users/gavin/.workbuddy/binaries/python/envs/fleet/bi
 | `tests/test_changes.py` | 任务时间字段与创建人、权限可配置、周期范围、模板一致性、模板样式、解析容错、漏斗口径、汇总一致性 | 56 |
 | `tests/test_accounts.py` | 账号必选范围校验、模板下载、导入成功/整批回滚、scope 两种写法、状态默认值、六类删除拦截、引用计数 | 10 |
 | `tests/test_achievement.py` | 正向/逆向指标达成率、零目标绝对值判定、红黄绿灯阈值、回款率、时间进度与跑赢/落后 | 7 |
-| `tests/test_main_tasks.py` | 主任务字典列表/新增/改名（ID 不变）/默认 MT_NONE/回填责任人部门 | 9 |
+| `tests/test_task_groups.py` | 任务组字典列表/新增/改名（ID 不变）/默认 TG_NONE/回填责任人部门 | 9 |
 | `tests/test_market_dept.py` | 市场部锁定、子部门、负责人限定、漏斗按部门筛选（基于种子数据，不再依赖 reseed 确定性造数） | 4 |
 | `tests/test_market_projects_new.py` | 市场项目 CRUD、阶段校验、范围隔离、菜单权限、漏斗口径与预测 | 6 |
 | `tests/test_task_progress.py` | 任务进展时间轴：必填/首条记录/编辑不改进展与追加/分页/全角色可见 | 6 |
@@ -58,7 +58,7 @@ cd backend && PYTHONPATH=. /Users/gavin/.workbuddy/binaries/python/envs/fleet/bi
 
 - **达成率/状态口径**：`progress_tone(rate, time_progress)` 五档（done/ahead/near/risk/none）；整体结论 `verdict` 复用同函数。
 - **回款率口径**：按子指标存在性判定 `hasCollection`；回款率 = 累计回款/累计收入；目标 95%。
-- **接口层**：登录鉴权、令牌校验、组织树、指标看板、任务/主任务 CRUD、角色权限、账号管理、跨范围越权拒绝（403）。
+- **接口层**：登录鉴权、令牌校验、组织树、指标看板、任务/任务组 CRUD、角色权限、账号管理、跨范围越权拒绝（403）。
 - **令牌解析健壮性**：Authorization 头有效、头被网关替换时 Cookie 兜底放行、无有效凭证时拒绝。
 - **模板/导出契约**：任务与项目导入模板列、样式（说明栏/表头背景/冻结窗格）、导出列与列表对齐、可回灌。
 
@@ -105,7 +105,7 @@ dist/assets/SysDictView-BhRa27iA.js                  6.22 kB │ gzip:   2.54 kB
 | `/api/v1/orgs` | GET | 200 | 组织扁平树 |
 | `/api/v1/permissions` | GET | 200 | 权限目录（含 `sys.config.view/edit`） |
 | `/api/v1/roles` | GET | 200 | 角色列表 |
-| `/api/v1/tasks` | GET | 200 | 分页任务列表（含 `mainTaskId`/`latestProgress`） |
+| `/api/v1/tasks` | GET | 200 | 分页任务列表（含 `taskGroupId`/`latestProgress`） |
 | `/api/v1/market-projects` | GET | 200 | 市场项目列表（含 `tractorRequirements`/`trailerRequirements` 明细） |
 | `/api/v1/system/dicts?code=vehicle_model` | GET | 200 | 数据字典按 code 取值（车型下拉数据源） |
 | `/api/v1/downloads` | GET | 200 | 下载中心列表（仅本人导出记录，按时间倒序） |
@@ -223,7 +223,8 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login -H 'Content-Type: applic
 
 ## 十、变更追溯
 
-- 本文档随 proposal v3.2 / design v2.2 同步刷新，反映 Round 23（系统配置·数据字典、项目管理需求子列表）+ Round 24（下载中心）+ Round 26（导出口径收紧 + 移除重新生成）后的真实测试状态。
+- 本文档随 proposal v3.3 / design v2.3 同步刷新，反映 Round 23（系统配置·数据字典、项目管理需求子列表）+ Round 24（下载中心）+ Round 26（导出口径收紧 + 移除重新生成）+ Round 27（菜单归并 + 任务组全栈重命名）后的真实测试状态。
 - Round 24 新增下载中心：导出端点改为「先落盘建记录再返回文件」（X-1），记录按 `created_by` 隔离（X-4）；后端新增 `test_downloads.py` 4 项。
 - Round 26：导出端点改为「只返回下载中心记录 JSON，不再即时返回文件流」，漏斗/导出测试改用种子数据（移除 `reseed` 依赖）；当前后端 **152 passed**。
+- Round 27：纯重命名——任务管理「主任务」全栈更名为「任务组」（表/字段/API/前端变量/种子/测试/文档一致改为 `task_group`/`task_group_id`/`/task-groups`/`TG` 前缀 ID），菜单上「账号管理」「下载中心」归并到「系统配置」二级菜单。无新增测试用例，后端仍为 **152 passed**；`test_main_tasks.py` 重命名为 `test_task_groups.py`。
 - 历史逐轮变更（Round 1–22）的测试记录已并入 `design.md` §13 精选变更日志；旧版 test-report（72/92/116/149 等阶段性数字）以本版 **152 passed** 为准。

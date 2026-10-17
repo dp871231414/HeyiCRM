@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.constants import MARKET_PROJECT_ID_PREFIX, MARKET_STAGE_VALUES, MARKET_STAGES, SCOPES, TASK_ID_PREFIX
 from app.models import (
-    MainTask,
+    TaskGroup,
     MarketProject,
     MetricActual,
     MetricDef,
@@ -34,8 +34,8 @@ from app.models import (
     User,
 )
 
-# 系统默认主任务：导入时「任务分类」留空则归到它
-MT_NONE_ID = "MT_NONE"
+# 系统默认任务组：导入时「任务分类」留空则归到它
+TG_NONE_ID = "TG_NONE"
 
 # ------------------------------------------------------------------ 模板列定义
 #
@@ -540,27 +540,27 @@ def next_task_id(db: Session) -> str:
     return f"{prefix}{max_seq + 1:04d}"
 
 
-def next_main_task_id(db: Session) -> str:
-    """生成下一个主任务 ID：MT + 4 位自增序号（系统默认 MT_NONE 不参与序号）。"""
-    rows = db.scalars(select(MainTask.id)).all()
+def next_task_group_id(db: Session) -> str:
+    """生成下一个任务组 ID：TG + 4 位自增序号（系统默认 TG_NONE 不参与序号）。"""
+    rows = db.scalars(select(TaskGroup.id)).all()
     max_seq = 0
     for mid in rows:
-        m = re.fullmatch(r"MT(\d+)", mid or "")
+        m = re.fullmatch(r"TG(\d+)", mid or "")
         if m:
             max_seq = max(max_seq, int(m.group(1)))
-    return f"MT{max_seq + 1:04d}"
+    return f"TG{max_seq + 1:04d}"
 
 
-def _resolve_main_task(db: Session, name: str, user: User) -> MainTask:
-    """按名称解析主任务：命中则返回，否则以导入者身份新建（「任务分类」即主任务名）。"""
+def _resolve_task_group(db: Session, name: str, user: User) -> TaskGroup:
+    """按名称解析任务组：命中则返回，否则以导入者身份新建（「任务分类」即任务组名）。"""
     name = (name or "").strip()
     if not name:
-        mt = db.get(MainTask, MT_NONE_ID)
+        mt = db.get(TaskGroup, TG_NONE_ID)
         return mt  # 系统默认「空」必定存在（seed 已建）
-    existing = db.scalar(select(MainTask).where(MainTask.name == name))
+    existing = db.scalar(select(TaskGroup).where(TaskGroup.name == name))
     if existing:
         return existing
-    mt = MainTask(id=next_main_task_id(db), name=name, created_by=user.id)
+    mt = TaskGroup(id=next_task_group_id(db), name=name, created_by=user.id)
     db.add(mt)
     db.flush()
     return mt
@@ -572,12 +572,12 @@ def import_tasks(db: Session, rows: list[dict], user: User) -> int:
         org = db.scalar(select(Organization).where(Organization.id == dept_raw))
         if not org:
             org = db.scalar(select(Organization).where(Organization.name == dept_raw))
-        mt = _resolve_main_task(db, r.get("任务分类", ""), user)
+        mt = _resolve_task_group(db, r.get("任务分类", ""), user)
         task = Task(
             id=next_task_id(db),
             parent=r["任务名称"],
             title=mt.name if mt else None,
-            main_task_id=mt.id if mt else MT_NONE_ID,
+            task_group_id=mt.id if mt else TG_NONE_ID,
             description=r.get("任务描述", ""),
             abnormal=r.get("是否异常") == "是",
             target=Decimal(str(r["目标"])),
@@ -649,16 +649,16 @@ def export_tasks(db: Session, rows: list[Task]) -> bytes:
     _style_header(ws, HEADER_ROW, TASK_EXPORT_COLUMNS)
 
     user_names = {u.id: u.name for u in db.scalars(select(User)).all()}
-    # 主任务名解析（按 ID → 名称），「空」输出为空串以便回灌时重新归到默认
-    mt_ids = {t.main_task_id for t in rows if t.main_task_id}
+    # 任务组名解析（按 ID → 名称），「空」输出为空串以便回灌时重新归到默认
+    mt_ids = {t.task_group_id for t in rows if t.task_group_id}
     mt_names = (
-        {mid: name for mid, name in db.execute(select(MainTask.id, MainTask.name).where(MainTask.id.in_(mt_ids))).all()}
+        {mid: name for mid, name in db.execute(select(TaskGroup.id, TaskGroup.name).where(TaskGroup.id.in_(mt_ids))).all()}
         if mt_ids
         else {}
     )
     for t in rows:
         d = task_to_dict(t)
-        main_name = mt_names.get(t.main_task_id, "") if t.main_task_id else ""
+        main_name = mt_names.get(t.task_group_id, "") if t.task_group_id else ""
         ws.append(
             [
                 d["id"],

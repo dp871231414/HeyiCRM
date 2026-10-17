@@ -70,7 +70,7 @@
           <thead>
             <tr class="border-b border-slate-200">
               <th class="th col-id w-[96px]">任务ID</th>
-              <th class="th col-maintask w-[213px]">主任务</th>
+              <th class="th col-maintask w-[213px]">任务组</th>
               <th class="th col-name w-[213px]">任务名称</th>
               <th class="th w-[307px]">任务进展</th>
               <th class="th w-[100px] text-right">目标</th>
@@ -113,7 +113,7 @@
               <tr v-else class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                 <td class="td col-id font-mono text-xs text-slate-500">{{ row.task.id }}</td>
                 <td class="td col-maintask w-[213px]">
-                  <div class="cell-c text-slate-500" :title="row.task.mainTaskName || '空'">{{ row.task.mainTaskName || '空' }}</div>
+                  <div class="cell-c text-slate-500" :title="row.task.taskGroupName || '空'">{{ row.task.taskGroupName || '空' }}</div>
                 </td>
                 <td class="td col-name w-[213px]">
                   <div class="cell-c font-semibold text-slate-800" :title="row.task.parent">{{ row.task.parent }}</div>
@@ -172,42 +172,42 @@
           <input v-model.trim="form.parent" class="input" placeholder="如：完成全年营收目标 10.2 亿" />
         </div>
         <div>
-          <label class="label">主任务<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」，展示「名称 责任人」）</span></label>
-          <div v-if="addingMainTask" class="flex items-center gap-2">
+          <label class="label">任务组<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」，展示「名称 责任人」）</span></label>
+          <div v-if="addingTaskGroup" class="flex items-center gap-2">
             <input
-              v-model.trim="newMainTaskName"
+              v-model.trim="newTaskGroupName"
               class="input"
-              placeholder="输入新主任务名称"
-              @keyup.enter="confirmAddMainTask"
+              placeholder="输入新任务组名称"
+              @keyup.enter="confirmAddTaskGroup"
             />
-            <button class="btn-ghost" :disabled="addingMainTaskBusy" @click="confirmAddMainTask">
-              {{ addingMainTaskBusy ? '创建中…' : '确定' }}
+            <button class="btn-ghost" :disabled="addingTaskGroupBusy" @click="confirmAddTaskGroup">
+              {{ addingTaskGroupBusy ? '创建中…' : '确定' }}
             </button>
-            <button class="btn-ghost" @click="addingMainTask = false">取消</button>
+            <button class="btn-ghost" @click="addingTaskGroup = false">取消</button>
           </div>
           <div v-else class="flex items-center gap-2">
             <div class="relative flex-1 min-w-0">
               <button
                 type="button"
                 class="input flex items-center justify-between w-full text-left"
-                @click="mtDropdownOpen = !mtDropdownOpen"
+                @click="tgDropdownOpen = !tgDropdownOpen"
               >
-                <span class="truncate">{{ selectedMainTaskLabel || '请选择主任务' }}</span>
+                <span class="truncate">{{ selectedTaskGroupLabel || '请选择任务组' }}</span>
                 <span class="text-slate-400 ml-2">▾</span>
               </button>
               <!-- 点击空白处关闭下拉 -->
-              <div v-if="mtDropdownOpen" class="fixed inset-0 z-10" @click="mtDropdownOpen = false" />
+              <div v-if="tgDropdownOpen" class="fixed inset-0 z-10" @click="tgDropdownOpen = false" />
               <div
-                v-if="mtDropdownOpen"
+                v-if="tgDropdownOpen"
                 class="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-64 overflow-auto"
               >
                 <button
-                  v-for="m in mainTasks"
+                  v-for="m in taskGroups"
                   :key="m.id"
                   type="button"
                   class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
-                  :class="form.mainTaskId === m.id ? 'bg-brand-50' : ''"
-                  @click="selectMainTask(m.id)"
+                  :class="form.taskGroupId === m.id ? 'bg-brand-50' : ''"
+                  @click="selectTaskGroup(m.id)"
                 >
                   <span class="flex-1 min-w-0 truncate">
                     <template v-if="renamingId === m.id">
@@ -222,7 +222,7 @@
                     </template>
                     <template v-else>
                       <span>{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</span>
-                      <!-- 展示主任务责任人（回填自首个关联任务）；创建人仅存数据表不在此体现 -->
+                      <!-- 展示任务组责任人（回填自首个关联任务）；创建人仅存数据表不在此体现 -->
                       <span v-if="m.ownerName" class="text-slate-400 text-xs"> {{ m.ownerName }}</span>
                     </template>
                   </span>
@@ -234,7 +234,7 @@
                     v-else-if="auth.hasPerm('task.edit') && !m.isSystem"
                     type="button"
                     class="text-slate-400 hover:text-brand-600 shrink-0"
-                    title="修改主任务名称"
+                    title="修改任务组名称"
                     @click.stop="startRename(m)"
                   >
                     ✎
@@ -242,8 +242,8 @@
                 </button>
               </div>
             </div>
-            <!-- 新增主任务：常显在下拉选择框右侧 -->
-            <button v-if="auth.hasPerm('task.edit')" class="btn-ghost whitespace-nowrap shrink-0" @click="addingMainTask = true">
+            <!-- 新增任务组：常显在下拉选择框右侧 -->
+            <button v-if="auth.hasPerm('task.edit')" class="btn-ghost whitespace-nowrap shrink-0" @click="addingTaskGroup = true">
               + 新增
             </button>
           </div>
@@ -352,8 +352,8 @@
           <p class="text-sm text-slate-800 font-semibold">{{ detailTask.parent }}</p>
         </div>
         <div>
-          <label class="label">主任务</label>
-          <p class="text-sm text-slate-700">{{ detailTask.mainTaskName || '空' }}</p>
+          <label class="label">任务组</label>
+          <p class="text-sm text-slate-700">{{ detailTask.taskGroupName || '空' }}</p>
         </div>
         <div>
           <label class="label">责任人</label>
@@ -444,7 +444,7 @@
     <ModalDialog :open="importOpen" title="批量导入" width="lg" @close="importOpen = false">
       <div class="space-y-4">
         <p class="text-sm text-slate-500">
-          先下载标准模板填写，再上传。模板中「任务分类」列会对应到主任务（主任务不存在时自动新建）。
+          先下载标准模板填写，再上传。模板中「任务分类」列会对应到任务组（任务组不存在时自动新建）。
         </p>
         <div class="flex flex-wrap items-center gap-3">
           <button class="btn-ghost" @click="download(taskApi.templateUrl(), '重点任务导入标准模板.xlsx')">下载模板</button>
@@ -488,17 +488,17 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { downloadFile, mainTaskApi, metaApi, taskApi } from '@/api'
+import { downloadFile, taskGroupApi, metaApi, taskApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import type { ImportResult, MainTask, TaskItem, TaskProgressItem } from '@/types'
+import type { ImportResult, TaskGroup, TaskItem, TaskProgressItem } from '@/types'
 import { fmt } from '@/utils/format'
 
-/** 系统默认主任务 ID（与后端 MT_NONE 约定一致）：任务未选主任务时默认关联它 */
-const MT_NONE_ID = 'MT_NONE'
+/** 系统默认任务组 ID（与后端 TG_NONE 约定一致）：任务未选任务组时默认关联它 */
+const TG_NONE_ID = 'TG_NONE'
 
 const auth = useAuthStore()
 const app = useAppStore()
@@ -520,32 +520,32 @@ const deptFilter = ref('')
 const statusFilter = ref('')
 const orgs = ref<{ id: string; name: string; depth: number }[]>([])
 const owners = ref<{ id: string; name: string }[]>([])
-/** 主任务（原任务分类）下拉选项 */
-const mainTasks = ref<MainTask[]>([])
-/** 新增主任务内联输入 */
-const addingMainTask = ref(false)
-const addingMainTaskBusy = ref(false)
-const newMainTaskName = ref('')
-/** 主任务自定义下拉：展开状态 + 内联改名 */
-const mtDropdownOpen = ref(false)
+/** 任务组（原任务分类）下拉选项 */
+const taskGroups = ref<TaskGroup[]>([])
+/** 新增任务组内联输入 */
+const addingTaskGroup = ref(false)
+const addingTaskGroupBusy = ref(false)
+const newTaskGroupName = ref('')
+/** 任务组自定义下拉：展开状态 + 内联改名 */
+const tgDropdownOpen = ref(false)
 const renamingId = ref('')
 const renameValue = ref('')
 const renamingBusy = ref(false)
 
-/** 当前选中主任务的展示文案：名称 + 责任人（如「注册新公司 胡国海」），系统默认「空」标记。
- *  按需求展示主任务责任人（回填字段）；创建人仅存数据表，不在前端体现。 */
-const selectedMainTaskLabel = computed(() => {
-  const m = mainTasks.value.find((x) => x.id === form.mainTaskId)
+/** 当前选中任务组的展示文案：名称 + 责任人（如「注册新公司 胡国海」），系统默认「空」标记。
+ *  按需求展示任务组责任人（回填字段）；创建人仅存数据表，不在前端体现。 */
+const selectedTaskGroupLabel = computed(() => {
+  const m = taskGroups.value.find((x) => x.id === form.taskGroupId)
   if (!m) return ''
   return `${m.name}${m.isSystem ? '（默认）' : ''}${m.ownerName ? ` ${m.ownerName}` : ''}`
 })
 
-function selectMainTask(id: string) {
-  form.mainTaskId = id
-  mtDropdownOpen.value = false
+function selectTaskGroup(id: string) {
+  form.taskGroupId = id
+  tgDropdownOpen.value = false
 }
 
-function startRename(m: MainTask) {
+function startRename(m: TaskGroup) {
   renamingId.value = m.id
   renameValue.value = m.name
 }
@@ -553,17 +553,17 @@ function cancelRename() {
   renamingId.value = ''
   renameValue.value = ''
 }
-async function confirmRename(m: MainTask) {
+async function confirmRename(m: TaskGroup) {
   const name = renameValue.value.trim()
   if (!name) {
-    app.toast('主任务名称不能为空', 'error')
+    app.toast('任务组名称不能为空', 'error')
     return
   }
   renamingBusy.value = true
   try {
-    const updated = await mainTaskApi.rename(m.id, name)
-    const idx = mainTasks.value.findIndex((x) => x.id === m.id)
-    if (idx >= 0) mainTasks.value[idx] = { ...mainTasks.value[idx], ...updated }
+    const updated = await taskGroupApi.rename(m.id, name)
+    const idx = taskGroups.value.findIndex((x) => x.id === m.id)
+    if (idx >= 0) taskGroups.value[idx] = { ...taskGroups.value[idx], ...updated }
     cancelRename()
   } catch (e) {
     app.toast((e as Error).message, 'error')
@@ -615,15 +615,15 @@ const rows = computed<TaskRow[]>(() => {
   }
   const out: TaskRow[] = []
   for (const [k, items] of buckets) {
-    // 分组视图排序：部门内 → 主任务（按不可变 mainTaskId 归类，同一主任务跨人员排在一起，无主任务 MT_NONE 置后）
-    //   → 创建时间倒序（同主任务内新任务在上）。
-    // 关键点：主任务优先于人员 —— 同一主任务下的任务必须相邻（如 T20260016 与 T202601 同属
+    // 分组视图排序：部门内 → 任务组（按不可变 taskGroupId 归类，同一任务组跨人员排在一起，无任务组 TG_NONE 置后）
+    //   → 创建时间倒序（同任务组内新任务在上）。
+    // 关键点：任务组优先于人员 —— 同一任务组下的任务必须相邻（如 T20260016 与 T202601 同属
     // 「华东大区营收达成」，即使责任人不相同也要排在一起）；人员维度不再参与排序。
     const sorted = [...items].sort((a, b) => {
-      const ae = a.mainTaskId === MT_NONE_ID ? 1 : 0
-      const be = b.mainTaskId === MT_NONE_ID ? 1 : 0
+      const ae = a.taskGroupId === TG_NONE_ID ? 1 : 0
+      const be = b.taskGroupId === TG_NONE_ID ? 1 : 0
       if (ae !== be) return ae - be
-      if (a.mainTaskId !== b.mainTaskId) return (a.mainTaskId || '') < (b.mainTaskId || '') ? -1 : 1
+      if (a.taskGroupId !== b.taskGroupId) return (a.taskGroupId || '') < (b.taskGroupId || '') ? -1 : 1
       const at = new Date(a.createdAt).getTime() || 0
       const bt = new Date(b.createdAt).getTime() || 0
       return bt - at
@@ -667,7 +667,7 @@ const formError = ref('')
 const form = reactive({
   id: '',
   parent: '',
-  mainTaskId: '',
+  taskGroupId: '',
   description: '',
   abnormal: false,
   target: 1,
@@ -680,9 +680,9 @@ const form = reactive({
   owner: '',
 })
 
-/** 系统默认主任务 ID（用于新建任务未选主任务时回填） */
-function defaultMainTaskId(): string {
-  return mainTasks.value.find((m) => m.isSystem)?.id ?? MT_NONE_ID
+/** 系统默认任务组 ID（用于新建任务未选任务组时回填） */
+function defaultTaskGroupId(): string {
+  return taskGroups.value.find((m) => m.isSystem)?.id ?? TG_NONE_ID
 }
 
 const deleteTarget = ref<TaskItem | null>(null)
@@ -844,7 +844,7 @@ function openForm(t?: TaskItem) {
     Object.assign(form, {
       id: t.id,
       parent: t.parent,
-      mainTaskId: t.mainTaskId || defaultMainTaskId(),
+      taskGroupId: t.taskGroupId || defaultTaskGroupId(),
       description: t.description,
       abnormal: t.abnormal,
       target: Number(t.target),
@@ -860,7 +860,7 @@ function openForm(t?: TaskItem) {
     Object.assign(form, {
       id: '',
       parent: '',
-      mainTaskId: defaultMainTaskId(),
+      taskGroupId: defaultTaskGroupId(),
       description: '',
       abnormal: false,
       target: 1,
@@ -893,7 +893,7 @@ async function save() {
   // 请求体使用后端约定的 snake_case 字段（见 docs/design.md §6.5）
   const payload: Record<string, unknown> = {
     parent: form.parent,
-    main_task_id: form.mainTaskId || null,
+    task_group_id: form.taskGroupId || null,
     description: form.description,
     abnormal: form.abnormal,
     target: form.target,
@@ -918,24 +918,24 @@ async function save() {
   }
 }
 
-/** 新增主任务：调接口创建，刷新下拉并自动选中 */
-async function confirmAddMainTask() {
-  const name = newMainTaskName.value.trim()
+/** 新增任务组：调接口创建，刷新下拉并自动选中 */
+async function confirmAddTaskGroup() {
+  const name = newTaskGroupName.value.trim()
   if (!name) {
-    formError.value = '主任务名称不能为空'
+    formError.value = '任务组名称不能为空'
     return
   }
-  addingMainTaskBusy.value = true
+  addingTaskGroupBusy.value = true
   try {
-    const created = await mainTaskApi.create(name)
-    mainTasks.value = [...mainTasks.value, created].sort((a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name))
-    form.mainTaskId = created.id
-    newMainTaskName.value = ''
-    addingMainTask.value = false
+    const created = await taskGroupApi.create(name)
+    taskGroups.value = [...taskGroups.value, created].sort((a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name))
+    form.taskGroupId = created.id
+    newTaskGroupName.value = ''
+    addingTaskGroup.value = false
   } catch (e) {
     app.toast((e as Error).message, 'error')
   } finally {
-    addingMainTaskBusy.value = false
+    addingTaskGroupBusy.value = false
   }
 }
 
@@ -975,10 +975,10 @@ async function onImport(e: Event) {
 
 onMounted(async () => {
   try {
-    const [orgsRes, ownersRes, mtRes] = await Promise.all([metaApi.orgs(), metaApi.owners(), mainTaskApi.list()])
+    const [orgsRes, ownersRes, mtRes] = await Promise.all([metaApi.orgs(), metaApi.owners(), taskGroupApi.list()])
     orgs.value = orgsRes
     owners.value = ownersRes
-    mainTasks.value = mtRes.sort(
+    taskGroups.value = mtRes.sort(
       (a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name, 'zh'),
     )
   } catch {

@@ -18,7 +18,7 @@ from app.config import settings
 from app.constants import ORG_TYPE_TEAM
 from app.core.deps import get_user_perms, require_any_perm, require_perm
 from app.db.session import get_db
-from app.models import MainTask, Organization, Task, TaskProgress, User
+from app.models import TaskGroup, Organization, Task, TaskProgress, User
 from app.schemas.common import ImportResult
 from app.schemas.task import (
     DeptTaskStat,
@@ -108,10 +108,10 @@ def _task_or_404(db: Session, user: User, task_id: str) -> Task:
 
 
 def _enrich(db: Session, items: list[dict]) -> list[dict]:
-    """批量补齐展示用名称：责任部门名 + 创建人名 + 主任务名 + 责任人 ID。
+    """批量补齐展示用名称：责任部门名 + 创建人名 + 任务组名 + 责任人 ID。
 
     创建人由 created_by（用户 ID）解析为姓名，责任人与其 user.id 也一并补齐
-    （分组视图需按人员 ID 排序）；组织名、用户名、主任务名都做去重缓存，避免 N+1。
+    （分组视图需按人员 ID 排序）；组织名、用户名、任务组名都做去重缓存，避免 N+1。
     """
     dept_names: dict[str, str] = {}
     creator_ids = {str(it.get("createdById") or "") for it in items} - {""}
@@ -125,13 +125,13 @@ def _enrich(db: Session, items: list[dict]) -> list[dict]:
     owner_ids: dict[str, str] = {
         name: uid for uid, name in db.execute(select(User.id, User.name)).all()
     }
-    # 主任务名映射
-    mt_ids = {str(it.get("mainTaskId") or "") for it in items} - {""}
+    # 任务组名映射
+    mt_ids = {str(it.get("taskGroupId") or "") for it in items} - {""}
     mt_names: dict[str, str] = {}
     if mt_ids:
         mt_names = {
             mid: name
-            for mid, name in db.execute(select(MainTask.id, MainTask.name).where(MainTask.id.in_(mt_ids))).all()
+            for mid, name in db.execute(select(TaskGroup.id, TaskGroup.name).where(TaskGroup.id.in_(mt_ids))).all()
         }
     # 最新进展记录（列表「进展描述」列）：按 id 取每个任务最大一条（自增主键即时间序）
     task_ids = {str(it.get("id") or "") for it in items} - {""}
@@ -151,12 +151,12 @@ def _enrich(db: Session, items: list[dict]) -> list[dict]:
         it["deptName"] = dept_names.get(did, "")
         it["createdByName"] = creators.get(str(it.get("createdById") or ""), "")
         it["ownerId"] = owner_ids.get((it.get("owner") or "").strip(), "") or owner_ids.get(it.get("owner") or "", "")
-        mt_id = str(it.get("mainTaskId") or "")
-        it["mainTaskName"] = mt_names.get(mt_id, "")
+        mt_id = str(it.get("taskGroupId") or "")
+        it["taskGroupName"] = mt_names.get(mt_id, "")
         it["latestProgress"] = latest_progress.get(str(it.get("id") or ""), "")
-        # 兼容旧字段：title 沿用主任务名（无主任务时为空）
+        # 兼容旧字段：title 沿用任务组名（无任务组时为空）
         if it.get("title") is None:
-            it["title"] = it["mainTaskName"]
+            it["title"] = it["taskGroupName"]
     return items
 
 
@@ -365,8 +365,8 @@ def get_task(
     return _enrich(db, [task_to_dict(task)])[0]
 
 
-# 系统默认主任务：任务未选择主任务时默认关联它
-MT_NONE_ID = "MT_NONE"
+# 系统默认任务组：任务未选择任务组时默认关联它
+TG_NONE_ID = "TG_NONE"
 
 
 def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
@@ -381,14 +381,14 @@ def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
         raise HTTPException(status_code=422, detail="日期格式应为 2026-10-01") from exc
     if end < start:
         raise HTTPException(status_code=422, detail="计划结束日期不能早于计划开始日期")
-    # 主任务：不选择 → 默认关联系统「空」；选择 → 校验存在
-    mt_id = payload.main_task_id or MT_NONE_ID
-    mt = db.get(MainTask, mt_id)
+    # 任务组：不选择 → 默认关联系统「空」；选择 → 校验存在
+    mt_id = payload.task_group_id or TG_NONE_ID
+    mt = db.get(TaskGroup, mt_id)
     if not mt:
-        raise HTTPException(status_code=422, detail="主任务不存在")
+        raise HTTPException(status_code=422, detail="任务组不存在")
     task.parent = payload.parent.strip()
     task.title = mt.name  # 冗余存储，便于旧查询 / 导出兼容
-    task.main_task_id = mt_id
+    task.task_group_id = mt_id
     task.description = payload.description
     task.abnormal = bool(payload.abnormal)
     task.target = Decimal(str(payload.target))
@@ -398,10 +398,10 @@ def _apply_payload(db: Session, task: Task, payload, user: User) -> None:
     task.end_date = end
     task.dept_id = payload.dept_id
     task.owner = payload.owner.strip()
-    # 主任务（非「空」）首次被任务选用时，将其 责任人/责任部门 回填为当前任务的责任人/部门。
-    # 设计约定：主任务创建时这两项为空，主任务名下第一个任务保存时由该任务带出；
-    # 已有值则保留（不覆盖人工维护结果）。改名只改 name，ID 不变，故回填只认非「空」主任务。
-    if mt_id != MT_NONE_ID and mt is not None:
+    # 任务组（非「空」）首次被任务选用时，将其 责任人/责任部门 回填为当前任务的责任人/部门。
+    # 设计约定：任务组创建时这两项为空，任务组名下第一个任务保存时由该任务带出；
+    # 已有值则保留（不覆盖人工维护结果）。改名只改 name，ID 不变，故回填只认非「空」任务组。
+    if mt_id != TG_NONE_ID and mt is not None:
         if not mt.owner_id:
             u = db.scalar(select(User).where(User.name == task.owner))
             mt.owner_id = u.id if u else None
