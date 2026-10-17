@@ -43,7 +43,7 @@
             <option value="ultra">超高（3X）</option>
           </select>
         </div>
-        <button class="btn-ghost" @click="download(taskApi.exportUrl(), '重点任务清单.xlsx')">导出</button>
+        <button class="btn-ghost" @click="onExportTask">导出</button>
         <button v-if="auth.hasPerm('task.import')" class="btn-ghost" @click="importOpen = true">批量导入</button>
         <button v-if="auth.hasPerm('task.edit')" class="btn-primary" @click="openForm()">新建任务</button>
       </div>
@@ -780,6 +780,15 @@ function progressBar(t: TaskItem) {
   return 'bg-brand-500'
 }
 const download = downloadFile
+
+async function onExportTask() {
+  try {
+    await download(taskApi.exportUrl(), '重点任务清单.xlsx')
+    app.toast('已生成导出记录，可在「下载中心」查看与重新下载')
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  }
+}
 
 async function load() {
   loading.value = true

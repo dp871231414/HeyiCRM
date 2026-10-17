@@ -91,12 +91,19 @@ PERM_GROUPS: list[dict] = [
             {"key": "sys.config.edit", "label": "维护数据字典", "type": "action"},
         ],
     },
+    {
+        "menu": "download",
+        "label": "下载中心",
+        "items": [
+            {"key": "download.view", "label": "查看下载中心（导出记录）", "type": "menu"},
+        ],
+    },
 ]
 
 ALL_PERM_KEYS: set[str] = {item["key"] for g in PERM_GROUPS for item in g["items"]}
 
 # 所有用户默认拥有的权限点：升级新增权限时自动补进每个角色（含自定义角色，幂等）
-DEFAULT_PERMS_FOR_ALL: list[str] = ["task.detail", "market.detail", "sys.config.view"]
+DEFAULT_PERMS_FOR_ALL: list[str] = ["task.detail", "market.detail", "sys.config.view", "download.view"]
 
 # 权限 key → 中文名（用于报错提示，让用户知道缺哪个权限）
 PERM_LABELS: dict[str, str] = {item["key"]: item["label"] for g in PERM_GROUPS for item in g["items"]}

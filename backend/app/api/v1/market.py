@@ -40,6 +40,7 @@ from app.schemas.project import (
 )
 from app.services import scope as scope_svc
 from app.services.audit import write_log
+from app.services.download import create_download_record
 from app.services.importer import (
     MARKET_PROJECT_COLUMNS,
     MARKET_PROJECT_OPTIONAL_COLUMNS,
@@ -258,7 +259,11 @@ def list_projects(
 @router.get("/export")
 def market_project_export(db: Session = Depends(get_db), user: User = Depends(require_perm("market.view"))):
     rows = list(db.scalars(_visible_query(db, user).order_by(MarketProject.id)).all())
-    return _xlsx(export_market_projects(db, rows), "市场项目清单.xlsx")
+    content = export_market_projects(db, rows)
+    # 先落盘并在下载中心生成导出记录，再返回文件（记录文件名即下载文件名）
+    rec = create_download_record(db, user, "market_project", content)
+    db.commit()
+    return _xlsx(content, rec.filename)
 
 
 @router.get("/{project_id}", response_model=MarketProjectOut)

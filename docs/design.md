@@ -1,8 +1,8 @@
 # 合一重卡生态经营看板 · 技术设计（design）
 
-> 版本：v2.0 · 2026-10-17
-> 上游：`docs/proposal.md`（需求编号 A/O/R/U/M/T/D/I/K/S）
-> 说明：本文回答「用什么技术、模块如何协作、如何部署」。技术栈已锁定，本文严格遵守现状（SQLite 单文件库 + 单端口同源托管），并并入 Round 23 的系统配置·数据字典、项目管理车头/挂车需求子列表两项改造。
+> 版本：v2.1 · 2026-10-17
+> 上游：`docs/proposal.md`（需求编号 A/O/R/U/M/T/D/I/K/S/X）
+> 说明：本文回答「用什么技术、模块如何协作、如何部署」。技术栈已锁定，本文严格遵守现状（SQLite 单文件库 + 单端口同源托管），并并入 Round 23 的系统配置·数据字典、项目管理车头/挂车需求子列表两项改造，以及 Round 24 的下载中心（X-1~X-6）。
 
 ---
 
@@ -40,8 +40,9 @@
                           │   API 层  /api/v1/*                       │
                           │    ├─ auth / orgs / projects / roles       │
                           │    ├─ users / metrics / tasks / dashboard  │
-                          │    ├─ market-projects / system/dicts       │
-                          │    └─ deps: JWT 鉴权 + 权限/范围依赖       │
+│    ├─ market-projects / system/dicts       │
+│    ├─ downloads（下载中心）                  │
+│    └─ deps: JWT 鉴权 + 权限/范围依赖       │
                           │   Service 层（业务纯逻辑）                 │
                           │    ├─ achievement 达成率/红黄绿灯/回款      │
                           │    ├─ summary     规则生成分析总结          │
@@ -188,8 +189,9 @@
 | 指标维护 | metric.view | metric.edit_company / metric.edit（维护监控指标）/ metric.edit_project / project.create/edit/delete / metric.import |
 | 账号管理 | account.view | account.edit / account.role / account.import / account.delete |
 | **系统配置·数据字典** | **sys.config.view** | **sys.config.edit** |
+| **下载中心** | **download.view** | （仅查看/下载/删除自己生成的记录，无独立按钮权限） |
 
-`DEFAULT_PERMS_FOR_ALL = ["task.detail", "market.detail", "sys.config.view"]`（所有角色含「查看详情/数据字典」，普通成员默认可读字典）。
+`DEFAULT_PERMS_FOR_ALL = ["task.detail", "market.detail", "sys.config.view", "download.view"]`（所有角色含「查看详情/数据字典/下载中心」，普通成员默认可读自己的导出记录，但导出行为由业务接口触发，不在此菜单权限外额外开放）。
 
 ### 5.7 市场项目与车头/挂车需求（Round 23 核心）
 
@@ -262,6 +264,27 @@
 
 单行单阶段（stage PK / prob float）；缺省时按阶段百分比回落（见 `services.funnel`）。
 
+### 5.11 `download_record` 下载中心记录（Round 24 新增）
+
+导出文件先落盘并在本表生成记录，再返回文件供本次下载；列表与文件下载/删除均按 `created_by` 隔离（仅本人可见可操作）。文件存放于 `settings.download_dir`（默认 `backend/downloads/`，`.gitignore` 排除，不进源码仓库）。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | Integer PK 自增 | | 导出记录 ID（列表列「记录ID」） |
+| object_type | String(32) | index | 导出对象类型：`task`（重点任务）/ `market_project`（市场项目） |
+| filename | String(128) | | 自动生成的导出文件名，即下载文件名 |
+| created_by | String(16) | FK→user.id, index | 创建人账号（列表列「创建人」） |
+| created_at | DateTime | server_default func.now(), index | 创建时间（列表列「创建时间」） |
+
+**关键设计点（X-1~X-6）**
+
+- **X-1 落盘即记录**：`tasks/export` 与 `market-projects/export` 改为先调用 `create_download_record(db, user, object_type, content)` → 写文件 + 建记录（调用方 commit），再返回 `Response`（`Content-Disposition` 用记录里的 `filename`）。前端导出后 toast 提示「已生成导出记录，可在下载中心查看与重新下载」。
+- **X-2 文件命名**：`{对象中文标签}_{YYYYMMDD_HHMMSS}.xlsx`（如 `重点任务_20261017_153000.xlsx`、`市场项目_20261017_153500.xlsx`）；同名追加序号（`.xlsx` → `_1.xlsx`）。标签来自 `_OBJECT_LABELS = {"task":"重点任务","market_project":"市场项目"}`。
+- **X-3 对象枚举**：`object_type` 仅 `task` / `market_project` 两值，与导出端点一一对应；后续新增导出对象只需扩 `_OBJECT_LABELS` 与枚举。
+- **X-4 数据隔离**：列表 `GET /downloads` 强制 `created_by == user.id`；`GET /downloads/{id}/file` 与 `DELETE /downloads/{id}` 二次校验 owner，非本人 403。
+- **X-5 删除语义**：删除记录同步 `os.remove` 落盘文件（文件缺失仅删记录，不报错）。
+- **X-6 权限与默认角色**：菜单权限 `download.view` 加入 `DEFAULT_PERMS_FOR_ALL`，所有角色（含普通成员）默认可进「下载中心」看自己生成的记录；导出动作本身仍受原业务接口权限（`task.view` / `market.view`）约束，下载中心不另设写权限。
+
 ---
 
 ## 6. 关键接口设计
@@ -331,6 +354,16 @@
 | POST | `` | sys.config.edit（编码唯一，重名 422） |
 | PATCH | `/{id}` | sys.config.edit（枚举整份替换） |
 | DELETE | `/{id}` | sys.config.edit（级联删枚举） |
+
+**下载中心（前缀 `/downloads`，权限 `download.view`）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | ``（列表） | 当前用户本人导出记录，按 `created_at.desc()`；响应 `list[DownloadRecordOut]`（id / objectType / filename / createdById / createdByName / createdAt） |
+| GET | `/{id}/file` | 下载文件（`FileResponse`）；校验 `created_by==user.id`，否则 403；文件不存在 404 |
+| DELETE | `/{id}` | 删除记录（204），校验 owner，删记录并 `os.remove` 落盘文件 |
+
+> 导出触发端点（`GET /tasks/export`、`GET /market-projects/export`）仍走原业务权限（`task.view` / `market.view`），并在返回前落盘 + 建记录（X-1）。下载中心仅做「记录列表 / 重新下载 / 删除」，不直接触发导出。
 
 ### 6.6 经营驾驶舱 / 漏斗
 
@@ -407,14 +440,15 @@
 │   │   ├── db/{base,session}.py
 │   │   ├── core/{security,deps}.py
 │   │   ├── models/              # organization/metric/task/main_task/user/role/
-│   │   │                       #   market_project + 需求明细 + 进展 + 字典 + funnel_config
+│   │   │                       #   market_project + 需求明细 + 进展 + 字典 + funnel_config + download_record
 │   │   ├── schemas/             # Pydantic v2
-│   │   ├── services/            # achievement/scope/summary/importer/audit
+│   │   ├── services/            # achievement/scope/summary/importer/audit/download
 │   │   ├── api/v1/              # auth/orgs/projects/roles/users/metrics/tasks/
-│   │   │                       #   dashboard/market/system
+│   │   │                       #   dashboard/market/system/downloads
 │   │   ├── constants.py         # PERM_GROUPS / SCOPES / 阶段常量
 │   │   └── seed.py              # 演示数据 + 数据字典预设
-│   ├── tests/                   # pytest（149 passed）
+│   ├── tests/                   # pytest（153 passed）
+│   ├── downloads/               # 导出文件落盘目录（gitignore，不进仓库）
 │   ├── static/                  # 前端构建产物（发布时同步进来，gitignore）
 │   ├── requirements.txt
 │   └── start.sh                 # 启动入口：seed → uvicorn（监听 $PORT，0.0.0.0）
@@ -444,6 +478,7 @@
 | I-1~I-6 数据导入 | `importer` | §4, §6.4–6.5, §8 |
 | **K-1~K-7 项目管理车头/挂车需求子列表** | `market-projects` / `project_*_requirement` | §5.7, §6.5 |
 | **S-1~S-6 系统配置·数据字典** | `system/dicts` / `sys_dict` / `sys_dict_item` | §5.8, §6.5 |
+| **X-1~X-6 下载中心** | `downloads` / `download_record` / `services.download` | §5.11, §6.5 |
 | **E-15~E-17 异常与校验** | 各接口 | §8 |
 
 ---
@@ -461,14 +496,15 @@
 - **2026-10-16 · 任务进展时间轴（round18）**：`task_progress` 表，编辑只追加；`task.detail` 全角色可见。
 - **2026-10-16 · 列宽固定 + 省略号 + 行高偏好（round19/20）**：用户偏好持久化；`table-fixed` + `.cell-c` 真正固定列宽与省略号。
 - **2026-10-17 · Round 23 系统配置·数据字典 + 项目管理车头/挂车需求子列表（K/S）**：新增 `sys_dict`/`sys_dict_item`（种子预设车型）；`project_tractor_requirement`/`project_trailer_requirement` 明细表 + `tractor_demand`/`trailer_demand` 汇总快照；编辑表单改为列头表格；项目导入模板精简为 6 列（不含车辆需求，车辆需求在系统内补充）；导出含汇总列。详见 `proposal.md` §5.8–5.10。
+- **2026-10-17 · Round 24 下载中心（X-1~X-6）**：新增 `download_record` 表与 `services/download.py`；`tasks/export`、`market-projects/export` 改为「先落盘建记录再返回文件」；新增 `GET /downloads`（列表）、`GET /downloads/{id}/file`（下载）、`DELETE /downloads/{id}`（删除），均按 `created_by` 隔离（仅本人可见可操作）；菜单权限 `download.view` 纳入 `DEFAULT_PERMS_FOR_ALL`；前端新增「下载中心」菜单与 `DownloadsView` 列表页，导出后 toast 引导去下载中心。需求文档同步去掉「典型人员」虚拟角色列（`proposal.md` v3.1）。后端测试 149 → **153 passed**（新增 `test_downloads.py` 4 项）。详见 `proposal.md` §3.13、§5.13。
 
 ---
 
 ## 14. 测试与质量门禁
 
-- **后端**：`pytest tests/`，当前 **149 passed**（详见 `test-report.md`）。
-- **前端**：`npm run build`（`vue-tsc --noEmit` 类型检查 + `vite build`），当前通过（126 模块，2.6s，主包 gzip 68 KB）。
-- **线上验证**：发布后对公开链接复跑接口与浏览器验收，确认鉴权（Cookie 通道）、字典取值、需求子列表、漏斗口径一致。
+- **后端**：`pytest tests/`，当前 **153 passed**（详见 `test-report.md`；其中 Round 24 下载中心新增 `test_downloads.py` 4 项，149 → 153）。
+- **前端**：`npm run build`（`vue-tsc --noEmit` 类型检查 + `vite build`），当前通过（含 `DownloadsView` chunk）。
+- **线上验证**：发布后对公开链接复跑接口与浏览器验收，确认鉴权（Cookie 通道）、字典取值、需求子列表、漏斗口径、下载中心记录一致。
 
 ## 15. 已知限制与后续项
 

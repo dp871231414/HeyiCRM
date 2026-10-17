@@ -26,6 +26,7 @@ import type {
   TaskProgressListOut,
   TrendResult,
   UserItem,
+  DownloadRecord,
 } from '@/types'
 
 /* ---------------- 元数据 ---------------- */
@@ -235,4 +236,13 @@ export async function downloadFile(url: string, filename: string) {
   a.download = filename
   a.click()
   URL.revokeObjectURL(a.href)
+}
+
+/* ---------------- 下载中心 ---------------- */
+export const downloadApi = {
+  /** 当前用户本人的导出记录（按创建时间倒序） */
+  list: () => http.get<DownloadRecord[]>('/downloads').then((r) => r.data),
+  remove: (id: number) => http.delete(`/downloads/${id}`).then((r) => r.data),
+  /** 某条记录对应文件的下载地址 */
+  fileUrl: (id: number) => `/api/v1/downloads/${id}/file`,
 }

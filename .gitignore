@@ -20,6 +20,8 @@ venv/
 *.db
 # 单容器托管用的前端产物副本（由 frontend/dist 构建后拷入）
 backend/static/
+# 下载中心：运行时导出的文件落盘目录（不纳入源码仓库）
+backend/downloads/
 .alembic_out*.txt
 .pytest_last.txt
 

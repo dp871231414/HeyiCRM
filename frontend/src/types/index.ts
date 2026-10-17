@@ -316,6 +316,19 @@ export interface ProjectRequirementItem {
   qty: number
 }
 
+/* ---------------- 下载中心 ---------------- */
+export interface DownloadRecord {
+  id: number
+  /** 导出对象类型：task / market_project */
+  objectType: string
+  /** 导出文件名称（按对象 + 时间自动命名） */
+  filename: string
+  createdById: string
+  createdByName: string
+  /** 创建时间（YYYY-MM-DD HH:MM:SS） */
+  createdAt: string
+}
+
 export interface MarketProjectItem {
   id: string
   name: string

@@ -12,6 +12,7 @@ from app.models.project import (
     SysDict,
     SysDictItem,
 )
+from app.models.download import DownloadRecord
 from app.models.user import Role, User
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "SysDict",
     "SysDictItem",
     "FunnelConfig",
+    "DownloadRecord",
     "Role",
     "User",
     "OperationLog",

@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # 单容器托管：命中该目录时由后端直接托管前端产物（前后端同源部署）
     static_dir: str = ""
 
+    # 下载中心：导出文件落盘目录（相对路径基于工作目录解析，默认 backend/downloads）
+    download_dir: str = "downloads"
+
     # 导入
     import_max_mb: int = 5
     import_max_rows: int = 2000

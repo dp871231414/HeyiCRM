@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     auth,
     dashboard,
+    downloads,
     main_tasks,
     market,
     meta,
@@ -29,3 +30,4 @@ api_router.include_router(tasks.router)
 api_router.include_router(main_tasks.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(system.router)
+api_router.include_router(downloads.router)

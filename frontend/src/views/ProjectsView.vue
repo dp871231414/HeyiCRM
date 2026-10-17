@@ -19,7 +19,7 @@
             <option value="ultra">超高（3X）</option>
           </select>
         </div>
-        <button class="btn-ghost" @click="download(marketApi.exportUrl(), '市场项目清单.xlsx')">导出</button>
+        <button class="btn-ghost" @click="onExportMarket">导出</button>
         <button v-if="auth.hasPerm('market.import')" class="btn-ghost" @click="importOpen = true">批量导入</button>
         <button v-if="auth.hasPerm('market.edit')" class="btn-ghost" @click="confirmReseed = true">重新生成</button>
         <button v-if="auth.hasPerm('market.edit')" class="btn-primary" @click="openForm()">新建项目</button>
@@ -455,6 +455,15 @@ import type {
 const auth = useAuthStore()
 const app = useAppStore()
 const download = downloadFile
+
+async function onExportMarket() {
+  try {
+    await download(marketApi.exportUrl(), '市场项目清单.xlsx')
+    app.toast('已生成导出记录，可在「下载中心」查看与重新下载')
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  }
+}
 
 /** 行高：绑定账号偏好（default/high/ultra），切换后写入后端、下次登录仍生效 */
 const rowHeightSel = ref<'default' | 'high' | 'ultra'>((auth.rowHeight as 'default' | 'high' | 'ultra') || 'default')

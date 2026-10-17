@@ -32,6 +32,7 @@ from app.schemas.task import (
 )
 from app.services import scope as scope_svc
 from app.services.achievement import reference_date, task_to_dict
+from app.services.download import create_download_record
 from app.services.audit import write_log
 from app.services.importer import (
     TASK_COLUMNS,
@@ -307,7 +308,11 @@ async def task_import(
 @router.get("/export")
 def task_export(db: Session = Depends(get_db), user: User = Depends(require_perm("task.view"))):
     rows = list(db.scalars(_visible_query(db, user).order_by(Task.id)).all())
-    return _xlsx(export_tasks(db, rows), "重点任务清单.xlsx")
+    content = export_tasks(db, rows)
+    # 先落盘并在下载中心生成导出记录，再返回文件（记录文件名即下载文件名）
+    rec = create_download_record(db, user, "task", content)
+    db.commit()
+    return _xlsx(content, rec.filename)
 
 
 @router.get("", response_model=TaskListOut)
