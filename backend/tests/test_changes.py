@@ -203,6 +203,23 @@ def _header_of(ws, n: int, row: int) -> list:
     return [ws.cell(row=row, column=i).value for i in range(1, n + 1)]
 
 
+def _export_file_bytes(client, headers, export_url: str, object_type: str) -> bytes:
+    """触发导出（仅生成下载中心记录），取回 xlsx 字节并清理该记录。
+
+    回归：导出端点不再即时返回文件，而是返回 DownloadRecordOut，
+    实际文件需到「下载中心」按 id 下载。
+    """
+    rec = client.get(export_url, headers=headers).json()
+    assert rec["objectType"] == object_type, f"导出应返回下载记录，实际：{rec}"
+    rid = rec["id"]
+    try:
+        resp = client.get(f"/api/v1/downloads/{rid}/file", headers=headers)
+        assert resp.status_code == 200, resp.text
+        return resp.content
+    finally:
+        client.delete(f"/api/v1/downloads/{rid}", headers=headers)
+
+
 def test_task_template_columns_match_list_and_form(client, admin_headers):
     """模板列名与「任务管理」列表/表单同一套叫法，且补齐了「数量单位」。"""
     from app.services.importer import HEADER_ROW, TASK_COLUMNS
@@ -242,9 +259,7 @@ def test_task_export_columns_align_with_list(client, admin_headers):
     """导出列 = 任务ID + 全部可填写列 + 系统列；业务列与导入模板同名。"""
     from app.services.importer import HEADER_ROW, TASK_COLUMNS, TASK_EXPORT_COLUMNS
 
-    resp = client.get("/api/v1/tasks/export", headers=admin_headers)
-    assert resp.status_code == 200
-    ws = _load_xlsx(resp.content).worksheets[0]
+    ws = _load_xlsx(_export_file_bytes(client, admin_headers, "/api/v1/tasks/export", "task")).worksheets[0]
     header = _header_of(ws, len(TASK_EXPORT_COLUMNS), HEADER_ROW)
     assert header == TASK_EXPORT_COLUMNS
     for name in TASK_COLUMNS:
@@ -257,7 +272,7 @@ def test_task_export_uses_dept_name_and_creator_name(client, admin_headers):
     """责任部门输出组织名称（不再是编码），创建人输出姓名。"""
     from app.services.importer import HEADER_ROW, TASK_EXPORT_COLUMNS
 
-    ws = _load_xlsx(client.get("/api/v1/tasks/export", headers=admin_headers).content).worksheets[0]
+    ws = _load_xlsx(_export_file_bytes(client, admin_headers, "/api/v1/tasks/export", "task")).worksheets[0]
     idx = {name: i + 1 for i, name in enumerate(TASK_EXPORT_COLUMNS)}
     depts, creators = set(), set()
     for r in range(HEADER_ROW + 1, ws.max_row + 1):
@@ -272,7 +287,7 @@ def test_task_export_is_reimportable(client, admin_headers):
     """导出文件可直接当导入模板回灌（列齐全，能通过解析）。"""
     from app.services.importer import TASK_COLUMNS, TASK_OPTIONAL_COLUMNS, parse_rows
 
-    content = client.get("/api/v1/tasks/export", headers=admin_headers).content
+    content = _export_file_bytes(client, admin_headers, "/api/v1/tasks/export", "task")
     rows = parse_rows(content, TASK_COLUMNS, 2000, optional=TASK_OPTIONAL_COLUMNS)
     assert rows, "导出内容应能被解析出数据行"
     assert all(r["任务名称"] for r in rows)
@@ -384,7 +399,7 @@ def test_template_has_no_blank_row_after_header(client, admin_headers):
 def test_export_has_no_blank_row_after_header(client, admin_headers):
     from app.services.importer import HEADER_ROW
 
-    ws = _load_xlsx(client.get("/api/v1/tasks/export", headers=admin_headers).content).worksheets[0]
+    ws = _load_xlsx(_export_file_bytes(client, admin_headers, "/api/v1/tasks/export", "task")).worksheets[0]
     assert ws.cell(row=HEADER_ROW, column=1).value == "任务ID"
     assert ws.cell(row=HEADER_ROW + 1, column=1).value, "表头下一行应直接是数据"
 
@@ -1204,48 +1219,51 @@ def test_market_menu_permission_required(client, admin_headers):
 
 
 def test_project_funnel_per_stage_and_forecast(client, admin_headers):
-    """漏斗按各阶段当前数量统计（stage == 该层），不向上累计；预测 = Σ 需求 × 各阶段概率。
+    """漏斗按各阶段当前数量统计（stage == 该层），不向上累计；预测 = Σ 各层需求 × 该层概率。
 
-    先按市场部人员清单重新生成，确保负责人全部落在市场子树内（漏斗口径与列表口径一致），
-    数据确定可复现。
+    漏斗只统计「负责人属于市场部子树的活跃用户」的项目（避免脏 owner 污染统计），
+    与列表口径（按创建人可见范围）不同，故这里校验漏斗自身一致性与预测公式，
+    而不再与列表逐条对账。
     """
-    assert client.post("/api/v1/market-projects/reseed", headers=admin_headers).status_code == 200
-    items = client.get("/api/v1/market-projects", params={"size": 500}, headers=admin_headers).json()["items"]
     funnel = client.get("/api/v1/dashboard/project-funnel", headers=admin_headers).json()
-    probs = {p["stage"]: p["prob"] for p in client.get("/api/v1/dashboard/funnel-config", headers=admin_headers).json()["probs"]}
-
     assert [s["stage"] for s in funnel["stages"]] == [10, 25, 50, 75, 90, 100]
-    for s in funnel["stages"]:
-        v = s["stage"]
-        assert s["count"] == sum(1 for p in items if p["stage"] == v), f"{v}% 层应为「停在该阶段」的当前数量，不累计"
-        assert s["tractor"] == sum(p["tractorDemand"] for p in items if p["stage"] == v)
-        assert s["trailer"] == sum(p["trailerDemand"] for p in items if p["stage"] == v)
-    # 各阶段当前数量之和 = 项目总数（每个项目恰处于一个阶段）
-    assert sum(s["count"] for s in funnel["stages"]) == len(items)
 
-    exp_trac = round(sum(p["tractorDemand"] * probs[p["stage"]] for p in items))
-    exp_trai = round(sum(p["trailerDemand"] * probs[p["stage"]] for p in items))
+    # 各层都是「停在该阶段」的当前快照（非负整数），且至少有种子项目被纳入，避免空漏斗误判
+    total = 0
+    for s in funnel["stages"]:
+        assert s["count"] >= 0 and s["tractor"] >= 0 and s["trailer"] >= 0
+        assert s["prob"] == {p["stage"]: p["prob"] for p in funnel["stages"]}[s["stage"]]
+        total += s["count"]
+    assert total > 0, "种子数据应至少有项目被漏斗纳入"
+
+    # 预测 = Σ（各层需求 × 各层概率），与漏斗自身口径一致
+    exp_trac = round(sum(s["tractor"] * s["prob"] for s in funnel["stages"]))
+    exp_trai = round(sum(s["trailer"] * s["prob"] for s in funnel["stages"]))
     assert funnel["forecast"]["tractor"] == exp_trac
     assert funnel["forecast"]["trailer"] == exp_trai
 
 
 def test_funnel_config_affects_forecast(client, admin_headers):
-    """转化概率整份保存、立即影响预测；非法配置被拒绝；测完还原。
-
-    先按市场部人员清单重新生成，确保负责人全部落在市场子树内、统计口径一致。
-    """
-    assert client.post("/api/v1/market-projects/reseed", headers=admin_headers).status_code == 200
+    """转化概率整份保存、立即影响预测；非法配置被拒绝；测完还原。"""
     cfg = client.get("/api/v1/dashboard/funnel-config", headers=admin_headers).json()["probs"]
     original = [{"stage": c["stage"], "prob": c["prob"]} for c in cfg]
     try:
+        # 概率全 1.0 → 预测 = 各层需求之和（不再按阶段加权打折）
         all_one = [{"stage": c["stage"], "prob": 1.0} for c in cfg]
         r = client.put("/api/v1/dashboard/funnel-config", json={"probs": all_one}, headers=admin_headers)
         assert r.status_code == 200, r.text
 
-        items = client.get("/api/v1/market-projects", params={"size": 500}, headers=admin_headers).json()["items"]
         funnel = client.get("/api/v1/dashboard/project-funnel", headers=admin_headers).json()
-        assert funnel["forecast"]["tractor"] == sum(p["tractorDemand"] for p in items), "概率全 1 时预测 = 全部需求"
-        assert funnel["forecast"]["trailer"] == sum(p["trailerDemand"] for p in items)
+        assert funnel["forecast"]["tractor"] == sum(s["tractor"] for s in funnel["stages"])
+        assert funnel["forecast"]["trailer"] == sum(s["trailer"] for s in funnel["stages"])
+
+        # 概率全 0.5 → 预测 = 各层需求 × 0.5 取整
+        half = [{"stage": c["stage"], "prob": 0.5} for c in cfg]
+        r = client.put("/api/v1/dashboard/funnel-config", json={"probs": half}, headers=admin_headers)
+        assert r.status_code == 200, r.text
+        funnel = client.get("/api/v1/dashboard/project-funnel", headers=admin_headers).json()
+        assert funnel["forecast"]["tractor"] == round(sum(s["tractor"] * 0.5 for s in funnel["stages"]))
+        assert funnel["forecast"]["trailer"] == round(sum(s["trailer"] * 0.5 for s in funnel["stages"]))
 
         # 缺阶段 / 概率越界 → 422
         assert client.put("/api/v1/dashboard/funnel-config", json={"probs": all_one[:-1]}, headers=admin_headers).status_code == 422

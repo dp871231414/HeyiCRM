@@ -1,8 +1,8 @@
 # 合一重卡生态经营看板 · 技术设计（design）
 
-> 版本：v2.1 · 2026-10-17
+> 版本：v2.2 · 2026-10-17
 > 上游：`docs/proposal.md`（需求编号 A/O/R/U/M/T/D/I/K/S/X）
-> 说明：本文回答「用什么技术、模块如何协作、如何部署」。技术栈已锁定，本文严格遵守现状（SQLite 单文件库 + 单端口同源托管），并并入 Round 23 的系统配置·数据字典、项目管理车头/挂车需求子列表两项改造，以及 Round 24 的下载中心（X-1~X-6）。
+> 说明：本文回答「用什么技术、模块如何协作、如何部署」。技术栈已锁定，本文严格遵守现状（SQLite 单文件库 + 单端口同源托管），并并入 Round 23 的系统配置·数据字典、项目管理车头/挂车需求子列表两项改造，以及 Round 24 的下载中心（X-1~X-6）。**v2.2 调整导出口径（导出仅返回下载中心记录 JSON，不再即时下载）并移除「重新生成」入口（原 `POST /market-projects/reseed`）。**
 
 ---
 
@@ -225,7 +225,7 @@
 - **K-4 整份替换**：编辑提交时 `_reconcile_requirements` 先删后插，子列表增删即全量覆盖。
 - **K-5 阶段固定**：stage 取值固定 10/25/50/75/90/100，后端 `require_perm` + 前端下拉双控。
 - **K-6 数据权限**：列表/详情/编辑按创建人归属部门匹配可见范围（与任务模块一致）；驾驶舱漏斗仅按角色权限，不做范围裁剪。
-- **K-7 重新生成**：`POST /market-projects/reseed` 清空后按市场部启用人员确定性造数（车型留空、数量=汇总值，保证明细与汇总一致）。
+- **K-7（已移除）重新生成**：原 `POST /market-projects/reseed` 整库种子数据重建入口已删除，「项目管理」不再提供「重新生成」按钮；演示环境重置改由部署侧 `SEED_RESET=1 sh start.sh` 完成。
 
 ### 5.8 系统配置·数据字典（Round 23 新增）
 
@@ -266,7 +266,7 @@
 
 ### 5.11 `download_record` 下载中心记录（Round 24 新增）
 
-导出文件先落盘并在本表生成记录，再返回文件供本次下载；列表与文件下载/删除均按 `created_by` 隔离（仅本人可见可操作）。文件存放于 `settings.download_dir`（默认 `backend/downloads/`，`.gitignore` 排除，不进源码仓库）。
+导出文件先落盘并在本表生成记录（**导出端点只返回该记录 JSON，不再即时返回文件流**，实际文件由用户在下载中心按记录下载）；列表与文件下载/删除均按 `created_by` 隔离（仅本人可见可操作）。文件存放于 `settings.download_dir`（默认 `backend/downloads/`，`.gitignore` 排除，不进源码仓库）。
 
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -278,7 +278,7 @@
 
 **关键设计点（X-1~X-6）**
 
-- **X-1 落盘即记录**：`tasks/export` 与 `market-projects/export` 改为先调用 `create_download_record(db, user, object_type, content)` → 写文件 + 建记录（调用方 commit），再返回 `Response`（`Content-Disposition` 用记录里的 `filename`）。前端导出后 toast 提示「已生成导出记录，可在下载中心查看与重新下载」。
+- **X-1 落盘即记录**：`tasks/export` 与 `market-projects/export` 改为先调用 `create_download_record(db, user, object_type, content)` → 写文件 + 建记录（调用方 commit），再返回 `DownloadRecordOut`（记录 JSON，**不再返回文件流**）。前端导出后 toast 提示「已生成导出记录，请前往下载中心下载」并跳转下载中心。
 - **X-2 文件命名**：`{对象中文标签}_{YYYYMMDD_HHMMSS}.xlsx`（如 `重点任务_20261017_153000.xlsx`、`市场项目_20261017_153500.xlsx`）；同名追加序号（`.xlsx` → `_1.xlsx`）。标签来自 `_OBJECT_LABELS = {"task":"重点任务","market_project":"市场项目"}`。
 - **X-3 对象枚举**：`object_type` 仅 `task` / `market_project` 两值，与导出端点一一对应；后续新增导出对象只需扩 `_OBJECT_LABELS` 与枚举。
 - **X-4 数据隔离**：列表 `GET /downloads` 强制 `created_by == user.id`；`GET /downloads/{id}/file` 与 `DELETE /downloads/{id}` 二次校验 owner，非本人 403。
@@ -337,14 +337,13 @@
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | ``（列表） | 服务端按可见范围过滤；`stage` 为空必须不传 |
-| GET | `/export` | 导出可见项目 xlsx（含汇总列） |
+| GET | `/export` | 导出可见项目：生成 xlsx 落盘并在下载中心建记录，返回 `DownloadRecordOut`（不即时下载，由用户在下载中心取文件） |
 | GET | `/{id}` | 详情（范围外 403）；带出 `tractorRequirements`/`trailerRequirements` 明细 |
 | POST | `` | 新建，`tractor_demand=Σ tractorRequirements.qty`，整份写明细 |
 | PATCH | `/{id}` | 编辑；`tractor_demand`/`trailer_demand` 重算；明细整份替换 |
 | DELETE | `/{id}` | 级联删除进展与需求明细 |
 | GET/POST | `/{id}/progress` | 项目进展时间轴（最新一条冗余到 `progress`） |
 | GET | `/import/template` / POST `/import` | 导入模板 6 列；校验失败整批回滚 |
-| POST | `/reseed` | 按市场部人员重生成（确定性） |
 
 **系统配置·数据字典（前缀 `/system/dicts`）**
 
@@ -363,7 +362,7 @@
 | GET | `/{id}/file` | 下载文件（`FileResponse`）；校验 `created_by==user.id`，否则 403；文件不存在 404 |
 | DELETE | `/{id}` | 删除记录（204），校验 owner，删记录并 `os.remove` 落盘文件 |
 
-> 导出触发端点（`GET /tasks/export`、`GET /market-projects/export`）仍走原业务权限（`task.view` / `market.view`），并在返回前落盘 + 建记录（X-1）。下载中心仅做「记录列表 / 重新下载 / 删除」，不直接触发导出。
+> 导出触发端点（`GET /tasks/export`、`GET /market-projects/export`）仍走原业务权限（`task.view` / `market.view`），在返回前落盘 + 建记录（X-1），但**只返回记录 JSON（`DownloadRecordOut`），不再返回文件流**；实际文件由用户在下载中心按记录点击「下载」获取。下载中心仅做「记录列表 / 重新下载 / 删除」，不直接触发导出。
 
 ### 6.6 经营驾驶舱 / 漏斗
 
@@ -497,12 +496,13 @@
 - **2026-10-16 · 列宽固定 + 省略号 + 行高偏好（round19/20）**：用户偏好持久化；`table-fixed` + `.cell-c` 真正固定列宽与省略号。
 - **2026-10-17 · Round 23 系统配置·数据字典 + 项目管理车头/挂车需求子列表（K/S）**：新增 `sys_dict`/`sys_dict_item`（种子预设车型）；`project_tractor_requirement`/`project_trailer_requirement` 明细表 + `tractor_demand`/`trailer_demand` 汇总快照；编辑表单改为列头表格；项目导入模板精简为 6 列（不含车辆需求，车辆需求在系统内补充）；导出含汇总列。详见 `proposal.md` §5.8–5.10。
 - **2026-10-17 · Round 24 下载中心（X-1~X-6）**：新增 `download_record` 表与 `services/download.py`；`tasks/export`、`market-projects/export` 改为「先落盘建记录再返回文件」；新增 `GET /downloads`（列表）、`GET /downloads/{id}/file`（下载）、`DELETE /downloads/{id}`（删除），均按 `created_by` 隔离（仅本人可见可操作）；菜单权限 `download.view` 纳入 `DEFAULT_PERMS_FOR_ALL`；前端新增「下载中心」菜单与 `DownloadsView` 列表页，导出后 toast 引导去下载中心。需求文档同步去掉「典型人员」虚拟角色列（`proposal.md` v3.1）。后端测试 149 → **153 passed**（新增 `test_downloads.py` 4 项）。详见 `proposal.md` §3.13、§5.13。
+- **2026-10-17 · Round 26 导出口径收紧 + 移除重新生成**：`tasks/export`、`market-projects/export` 改为「落盘建记录后只返回 `DownloadRecordOut`，不再返回文件流」，前端导出后跳转下载中心由用户取文件；删除 `POST /market-projects/reseed` 及前端「重新生成」按钮（演示重置改由部署侧 `SEED_RESET=1` 完成）。测试随语义改写，当前 **152 passed**。
 
 ---
 
 ## 14. 测试与质量门禁
 
-- **后端**：`pytest tests/`，当前 **153 passed**（详见 `test-report.md`；其中 Round 24 下载中心新增 `test_downloads.py` 4 项，149 → 153）。
+- **后端**：`pytest tests/`，当前 **152 passed**（详见 `test-report.md`）。
 - **前端**：`npm run build`（`vue-tsc --noEmit` 类型检查 + `vite build`），当前通过（含 `DownloadsView` chunk）。
 - **线上验证**：发布后对公开链接复跑接口与浏览器验收，确认鉴权（Cookie 通道）、字典取值、需求子列表、漏斗口径、下载中心记录一致。
 

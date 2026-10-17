@@ -45,6 +45,22 @@ def _header_of(ws, n: int, row: int) -> list:
     return [ws.cell(row=row, column=i).value for i in range(1, n + 1)]
 
 
+def _export_file_bytes(client, headers, export_url: str, object_type: str) -> bytes:
+    """触发导出（仅生成下载中心记录），取回 xlsx 字节并清理该记录。
+
+    回归：导出端点不再即时返回文件，而是返回下载记录，实际文件需到下载中心按 id 下载。
+    """
+    rec = client.get(export_url, headers=headers).json()
+    assert rec["objectType"] == object_type, f"导出应返回下载记录，实际：{rec}"
+    rid = rec["id"]
+    try:
+        resp = client.get(f"/api/v1/downloads/{rid}/file", headers=headers)
+        assert resp.status_code == 200, resp.text
+        return resp.content
+    finally:
+        client.delete(f"/api/v1/downloads/{rid}", headers=headers)
+
+
 def _mp_body(**over) -> dict:
     body = {
         "name": "验证项目",
@@ -77,9 +93,8 @@ def test_market_export_columns_align_with_list_and_form(client, admin_headers):
     """导出列 = 项目ID + 全部可填写列 + 系统列；业务列与模板同名。"""
     from app.services.importer import HEADER_ROW
 
-    resp = client.get("/api/v1/market-projects/export", headers=admin_headers)
-    assert resp.status_code == 200
-    ws = _load_xlsx(resp.content).worksheets[0]
+    content = _export_file_bytes(client, admin_headers, "/api/v1/market-projects/export", "market_project")
+    ws = _load_xlsx(content).worksheets[0]
     header = _header_of(ws, len(MARKET_PROJECT_EXPORT_COLUMNS), HEADER_ROW)
     assert header == MARKET_PROJECT_EXPORT_COLUMNS
     for name in MARKET_PROJECT_COLUMNS:

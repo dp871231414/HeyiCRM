@@ -21,7 +21,6 @@
         </div>
         <button class="btn-ghost" @click="onExportMarket">导出</button>
         <button v-if="auth.hasPerm('market.import')" class="btn-ghost" @click="importOpen = true">批量导入</button>
-        <button v-if="auth.hasPerm('market.edit')" class="btn-ghost" @click="confirmReseed = true">重新生成</button>
         <button v-if="auth.hasPerm('market.edit')" class="btn-primary" @click="openForm()">新建项目</button>
       </div>
     </div>
@@ -376,19 +375,6 @@
       </template>
     </ModalDialog>
 
-    <!-- 重新生成确认 -->
-    <ModalDialog :open="confirmReseed" title="重新生成项目数据" width="sm" @close="confirmReseed = false">
-      <p class="text-sm text-slate-600">
-        将删除全部现有市场项目，并按当前「市场部及其下属部门」人员清单重新生成。该操作不可撤销。
-      </p>
-      <template #footer>
-        <button class="btn-ghost" @click="confirmReseed = false">取消</button>
-        <button class="btn-danger" :disabled="reseeding" @click="doReseed">
-          {{ reseeding ? '生成中…' : '确认重新生成' }}
-        </button>
-      </template>
-    </ModalDialog>
-
     <!-- 批量导入（含下载模板 + 上传 + 结果） -->
     <ModalDialog :open="importOpen" title="批量导入" width="lg" @close="importOpen = false">
       <div class="space-y-4">
@@ -436,6 +422,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { dictApi, downloadFile, marketApi, metaApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
@@ -454,12 +441,14 @@ import type {
 
 const auth = useAuthStore()
 const app = useAppStore()
+const router = useRouter()
 const download = downloadFile
 
 async function onExportMarket() {
   try {
-    await download(marketApi.exportUrl(), '市场项目清单.xlsx')
-    app.toast('已生成导出记录，可在「下载中心」查看与重新下载')
+    await marketApi.exportCreate()
+    app.toast('已生成导出记录，请前往「下载中心」下载')
+    router.push('/downloads')
   } catch (e) {
     app.toast((e as Error).message, 'error')
   }
@@ -531,8 +520,6 @@ const form = reactive({
   trailerRequirements: [] as ProjectRequirementItem[],
 })
 const deleteTarget = ref<MarketProjectItem | null>(null)
-const confirmReseed = ref(false)
-const reseeding = ref(false)
 
 /* ---------------- 进展记录（时间轴）· 编辑/详情共用 ---------------- */
 
@@ -736,20 +723,6 @@ async function doDelete() {
     await load()
   } catch (e) {
     app.toast((e as Error).message, 'error')
-  }
-}
-
-async function doReseed() {
-  reseeding.value = true
-  try {
-    const r = await marketApi.reseed()
-    app.toast(r.msg || '已重新生成项目数据')
-    confirmReseed.value = false
-    await load()
-  } catch (e) {
-    app.toast((e as Error).message, 'error')
-  } finally {
-    reseeding.value = false
   }
 }
 

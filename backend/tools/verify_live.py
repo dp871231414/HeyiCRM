@@ -32,6 +32,9 @@ def _req(method: str, path: str, token: str | None = None, json_body: dict | Non
             ctype = resp.headers.get("Content-Type", "")
             if raw or "application/json" not in ctype:
                 return resp.status, ctype, body
+            if not body:
+                # 204 等无响应体时直接返回，避免对空串做 json 解析
+                return resp.status, ctype, None
             return resp.status, ctype, json.loads(body.decode("utf-8"))
     except urllib.error.HTTPError as e:
         return e.code, e.headers.get("Content-Type", ""), e.read().decode("utf-8", "replace")
@@ -57,10 +60,20 @@ def main():
     print(f"[2] 列表 OK，共 {body['total']} 条；首条字段含 latestProgress={('latestProgress' in items[0])}，"
           f"sample latestProgress={items[0].get('latestProgress','')!r}")
 
-    # 3) 导出：之前被动态路由拦截返回 404，现应 200 + xlsx
-    st, ctype, _ = _req("GET", "/market-projects/export", cookie=cookie, raw=True)
-    print(f"[3] 导出 状态码={st} content-type={ctype} （期望 200 + spreadsheet）")
-    assert st == 200 and "spreadsheetml" in ctype, f"导出异常: {st} {ctype}"
+    # 3) 导出：不再即时下载，而是落盘并在下载中心生成记录（返回 JSON 记录）
+    st, _, body = _req("GET", "/market-projects/export", cookie=cookie)
+    assert st == 200 and isinstance(body, dict) and body.get("objectType") == "market_project", f"导出异常: {st} {body}"
+    rid = body["id"]
+    filename = body["filename"]
+    print(f"[3] 导出生成记录 OK id={rid} filename={filename}（仅落盘，不直接下载）")
+    # 文件须经由下载中心按记录下载
+    st, ctype, _ = _req("GET", f"/downloads/{rid}/file", cookie=cookie, raw=True)
+    assert st == 200 and "spreadsheetml" in ctype, f"下载中心文件下载异常: {st} {ctype}"
+    print(f"[3b] 下载中心文件下载 OK content-type 含 spreadsheetml")
+    # 清理：删除测试导出的记录，避免污染线上库
+    d_st, _, _ = _req("DELETE", f"/downloads/{rid}", cookie=cookie)
+    assert d_st == 204, f"删除测试导出记录失败: {d_st}"
+    print(f"[3c] 已删除测试导出记录 id={rid}")
 
     # 4) 导入模板：应 200 + xlsx
     st, ctype, _ = _req("GET", "/market-projects/import/template", cookie=cookie, raw=True)

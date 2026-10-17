@@ -149,7 +149,8 @@ export const taskApi = {
     return http.post<ImportResult>('/tasks/import', fd).then((r) => r.data)
   },
   templateUrl: () => '/api/v1/tasks/import/template',
-  exportUrl: () => '/api/v1/tasks/export',
+  /** 导出任务清单：触发落盘并在下载中心生成记录（不直接下载），返回该记录 */
+  exportCreate: () => http.get<DownloadRecord>('/tasks/export').then((r) => r.data),
 }
 
 /* ---------------- 项目管理（市场项目/商机） ---------------- */
@@ -172,15 +173,14 @@ export const marketApi = {
   /** 追加一条进展记录（编辑界面不可直接改进展，只能追加） */
   progressAdd: (id: string, content: string) =>
     http.post<ProjectProgressItem>(`/market-projects/${id}/progress`, { content }).then((r) => r.data),
-  /** 按市场部人员清单重新生成项目数据（删除全部后逐个重建） */
-  reseed: () => http.post<{ ok: boolean; msg: string; created: number }>('/market-projects/reseed').then((r) => r.data),
   importFile: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)
     return http.post<ImportResult>('/market-projects/import', fd).then((r) => r.data)
   },
   templateUrl: () => '/api/v1/market-projects/import/template',
-  exportUrl: () => '/api/v1/market-projects/export',
+  /** 导出市场项目清单：触发落盘并在下载中心生成记录（不直接下载），返回该记录 */
+  exportCreate: () => http.get<DownloadRecord>('/market-projects/export').then((r) => r.data),
 }
 
 /* ---------------- 系统配置 · 数据字典 ---------------- */

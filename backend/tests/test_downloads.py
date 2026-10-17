@@ -20,20 +20,20 @@ def _is_xlsx(content: bytes) -> bool:
 
 
 def test_task_export_creates_record_and_lists(client, admin_headers, member_headers):
-    # admin 导出任务清单 → 先在下载中心生成一条记录，再返回文件
+    # admin 导出任务清单 → 先在下载中心生成一条记录（返回记录 JSON，不再即时下载文件）
     resp = client.get("/api/v1/tasks/export", headers=admin_headers)
     assert resp.status_code == 200
-    assert _is_xlsx(resp.content)
-
-    lst = client.get("/api/v1/downloads", headers=admin_headers)
-    assert lst.status_code == 200
-    items = lst.json()
-    assert items, "导出后应在下载中心生成记录"
-    rec = items[0]  # 按创建时间倒序，最新一条
+    rec = resp.json()
     assert rec["objectType"] == "task"
     assert rec["filename"].startswith("重点任务_") and rec["filename"].endswith(".xlsx")
     assert rec["createdByName"]  # 创建人姓名非空
     rid = rec["id"]
+
+    # 列表也应包含该记录（按创建时间倒序，最新一条）
+    lst = client.get("/api/v1/downloads", headers=admin_headers)
+    assert lst.status_code == 200
+    items = lst.json()
+    assert any(r["id"] == rid for r in items), "导出后应在下载中心生成记录"
 
     # 文件可下载且为合法 xlsx
     f = client.get(f"/api/v1/downloads/{rid}/file", headers=admin_headers)
@@ -47,13 +47,13 @@ def test_task_export_creates_record_and_lists(client, admin_headers, member_head
 
 
 def test_market_export_isolated_from_other_user(client, admin_headers, member_headers):
-    # admin 导出市场项目清单
+    # admin 导出市场项目清单 → 生成 market_project 记录
     resp = client.get("/api/v1/market-projects/export", headers=admin_headers)
     assert resp.status_code == 200
-    assert _is_xlsx(resp.content)
-
-    lst = client.get("/api/v1/downloads", headers=admin_headers).json()
-    rid = next(r["id"] for r in lst if r["objectType"] == "market_project")
+    rec = resp.json()
+    assert rec["objectType"] == "market_project"
+    assert rec["filename"].startswith("市场项目_") and rec["filename"].endswith(".xlsx")
+    rid = rec["id"]
 
     # 创建人本人（admin）可下载
     assert client.get(f"/api/v1/downloads/{rid}/file", headers=admin_headers).status_code == 200
@@ -62,9 +62,8 @@ def test_market_export_isolated_from_other_user(client, admin_headers, member_he
 
 
 def test_delete_record_removes_file(client, admin_headers):
-    client.get("/api/v1/tasks/export", headers=admin_headers)
-    lst = client.get("/api/v1/downloads", headers=admin_headers).json()
-    rid = lst[0]["id"]
+    rec = client.get("/api/v1/tasks/export", headers=admin_headers).json()
+    rid = rec["id"]
 
     d = client.delete(f"/api/v1/downloads/{rid}", headers=admin_headers)
     assert d.status_code == 204

@@ -12,7 +12,7 @@ import re
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from urllib.parse import quote
 
@@ -41,6 +41,7 @@ from app.schemas.project import (
 from app.services import scope as scope_svc
 from app.services.audit import write_log
 from app.services.download import create_download_record
+from app.schemas.download import DownloadRecordOut
 from app.services.importer import (
     MARKET_PROJECT_COLUMNS,
     MARKET_PROJECT_OPTIONAL_COLUMNS,
@@ -50,7 +51,6 @@ from app.services.importer import (
     parse_rows,
     validate_market_project_rows,
 )
-from app.services.org_tree import market_tree_ids
 
 router = APIRouter(prefix="/market-projects", tags=["项目管理"])
 
@@ -256,14 +256,26 @@ def list_projects(
     }
 
 
-@router.get("/export")
+@router.get("/export", response_model=DownloadRecordOut)
 def market_project_export(db: Session = Depends(get_db), user: User = Depends(require_perm("market.view"))):
+    """导出市场项目清单：生成 xlsx 并落盘到下载中心，返回导出记录（不直接下载）。
+
+    实际文件下载统一在「下载中心」按记录进行（GET /downloads/{id}/file），
+    列表页「导出」按钮不再触发即时下载，仅生成记录、引导用户去下载中心取文件。
+    """
     rows = list(db.scalars(_visible_query(db, user).order_by(MarketProject.id)).all())
     content = export_market_projects(db, rows)
-    # 先落盘并在下载中心生成导出记录，再返回文件（记录文件名即下载文件名）
+    # 落盘并在下载中心生成导出记录（记录文件名即下载文件名）
     rec = create_download_record(db, user, "market_project", content)
     db.commit()
-    return _xlsx(content, rec.filename)
+    return DownloadRecordOut(
+        id=rec.id,
+        objectType=rec.object_type,
+        filename=rec.filename,
+        createdById=rec.created_by or "",
+        createdByName=user.name,
+        createdAt=rec.created_at.isoformat() if rec.created_at else "",
+    )
 
 
 @router.get("/{project_id}", response_model=MarketProjectOut)
@@ -440,83 +452,3 @@ async def market_project_import(
     write_log(db, user, "import", "market_project", "", {"count": count}, request)
     db.commit()
     return {"imported": count, "errors": []}
-
-
-@router.post("/reseed", status_code=200)
-def reseed_projects(
-    request: Request,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_perm("market.edit")),
-):
-    """按市场部人员清单重新生成项目数据。
-
-    删除全部现有市场项目，再为「市场部及其下属部门」内的每个**启用**人员生成 1 个市场项目
-    （负责人 = 该人员，所属部门 = 其直接部门，阶段 / 牵引车 / 挂车需求按确定规则生成，
-    便于线上线下用同一套逻辑得到一致、无脏引用的数据）。
-
-    生成规则（确定性，与人员顺序无关地可复现）：
-    - 阶段按 MARKET_STAGE_VALUES 循环取（10→25→…→100→10…）
-    - 牵引车需求 = 20 + (序号 × 53) % 200（20~219 辆）
-    - 挂车需求 = 牵引车 × 3 // 5（约 0.6 倍）
-    项目 ID 沿用 MP 递增号段（清空后从 MP0001 起）。
-    """
-    from app.constants import MARKET_STAGE_VALUES
-
-    # 1) 清空现有项目（含其审计引用由数据库外键置空处理）
-    #    会话 autoflush=False，DELETE 已立即执行；此处再 flush 一次，确保后续 next_project_id
-    #    读到的「最大已用 ID」是清空后的状态，而不残留旧号段。
-    db.execute(delete(ProjectTractorRequirement))
-    db.execute(delete(ProjectTrailerRequirement))
-    db.execute(delete(MarketProject))
-    db.flush()
-
-    # 2) 取市场部子树内的启用人员，按部门 + 账号稳定排序
-    market_ids = market_tree_ids(db)
-    users = (
-        db.execute(
-            select(User)
-            .where(User.status == "active", User.dept_id.in_(market_ids))
-            .order_by(User.dept_id, User.id)
-        )
-        .scalars()
-        .all()
-    )
-
-    created = 0
-    for idx, u in enumerate(users):
-        stage = MARKET_STAGE_VALUES[idx % len(MARKET_STAGE_VALUES)]
-        tractor = 20 + (idx * 53) % 200
-        trailer = tractor * 3 // 5
-        pid = next_project_id(db)
-        p = MarketProject(
-            id=pid,
-            name=f"{u.name}负责的市场项目",
-            description=f"系统按市场部人员清单自动生成（负责人 {u.name}）",
-            tractor_demand=tractor,
-            trailer_demand=trailer,
-            stage=stage,
-            owner=u.name,
-            owner_dept_id=u.dept_id,
-            created_by=user.id,
-        )
-        db.add(p)
-        # 立即 flush：让下一轮 next_project_id 读到本行已写入的 ID（会话 autoflush=False，
-        # 不清空也会因读不到刚插入的行而重复生成 MP0001，导致主键冲突）。
-        db.flush()
-        # 需求明细：按汇总值各补一行（型号留空，数量=汇总值），保证列表汇总与明细一致，
-        # 编辑表单预填时也带得出数据。
-        db.add(ProjectTractorRequirement(project_id=pid, model="", battery="", qty=tractor))
-        db.add(ProjectTrailerRequirement(project_id=pid, model="", battery="", qty=trailer))
-        created += 1
-
-    db.commit()
-    write_log(
-        db,
-        user,
-        "reseed",
-        "market_project",
-        "global",
-        {"deleted": "all", "created": created, "marketUsers": len(users)},
-        request,
-    )
-    return {"ok": True, "msg": f"已按 {len(users)} 名市场部人员重新生成 {created} 个项目", "created": created}

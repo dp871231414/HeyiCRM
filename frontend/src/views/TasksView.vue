@@ -486,6 +486,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { downloadFile, mainTaskApi, metaApi, taskApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
@@ -501,6 +502,7 @@ const MT_NONE_ID = 'MT_NONE'
 
 const auth = useAuthStore()
 const app = useAppStore()
+const router = useRouter()
 
 /** 行高：绑定账号偏好（default/high/ultra），切换后写入后端、下次登录仍生效 */
 const rowHeightSel = ref<'default' | 'high' | 'ultra'>((auth.rowHeight as 'default' | 'high' | 'ultra') || 'default')
@@ -783,8 +785,9 @@ const download = downloadFile
 
 async function onExportTask() {
   try {
-    await download(taskApi.exportUrl(), '重点任务清单.xlsx')
-    app.toast('已生成导出记录，可在「下载中心」查看与重新下载')
+    await taskApi.exportCreate()
+    app.toast('已生成导出记录，请前往「下载中心」下载')
+    router.push('/downloads')
   } catch (e) {
     app.toast((e as Error).message, 'error')
   }

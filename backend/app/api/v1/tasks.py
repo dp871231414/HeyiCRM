@@ -33,6 +33,7 @@ from app.schemas.task import (
 from app.services import scope as scope_svc
 from app.services.achievement import reference_date, task_to_dict
 from app.services.download import create_download_record
+from app.schemas.download import DownloadRecordOut
 from app.services.audit import write_log
 from app.services.importer import (
     TASK_COLUMNS,
@@ -305,14 +306,26 @@ async def task_import(
     return {"imported": count, "errors": []}
 
 
-@router.get("/export")
+@router.get("/export", response_model=DownloadRecordOut)
 def task_export(db: Session = Depends(get_db), user: User = Depends(require_perm("task.view"))):
+    """导出任务清单：生成 xlsx 并落盘到下载中心，返回导出记录（不直接下载）。
+
+    实际文件下载统一在「下载中心」按记录进行（GET /downloads/{id}/file），
+    列表页「导出」按钮不再触发即时下载，仅生成记录、引导用户去下载中心取文件。
+    """
     rows = list(db.scalars(_visible_query(db, user).order_by(Task.id)).all())
     content = export_tasks(db, rows)
-    # 先落盘并在下载中心生成导出记录，再返回文件（记录文件名即下载文件名）
+    # 落盘并在下载中心生成导出记录（记录文件名即下载文件名）
     rec = create_download_record(db, user, "task", content)
     db.commit()
-    return _xlsx(content, rec.filename)
+    return DownloadRecordOut(
+        id=rec.id,
+        objectType=rec.object_type,
+        filename=rec.filename,
+        createdById=rec.created_by or "",
+        createdByName=user.name,
+        createdAt=rec.created_at.isoformat() if rec.created_at else "",
+    )
 
 
 @router.get("", response_model=TaskListOut)
