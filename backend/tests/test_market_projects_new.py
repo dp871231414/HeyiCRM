@@ -142,6 +142,38 @@ def test_market_progress_requires_content(client, admin_headers):
     assert bad.status_code == 422
 
 
+def test_market_description_required(client, admin_headers):
+    """项目描述必填：缺字段 / 空串 / 纯空白 都应 422（覆盖 Pydantic 省略字段不触发 field_validator 的陷阱）。"""
+    # 缺 description 字段
+    miss = client.post("/api/v1/market-projects", json={k: v for k, v in _mp_body().items() if k != "description"}, headers=admin_headers)
+    assert miss.status_code == 422, miss.text
+    # 空串
+    empty = client.post("/api/v1/market-projects", json=_mp_body(description=""), headers=admin_headers)
+    assert empty.status_code == 422, empty.text
+    # 纯空白
+    ws = client.post("/api/v1/market-projects", json=_mp_body(description="   "), headers=admin_headers)
+    assert ws.status_code == 422, ws.text
+    # 正常应通过（并把首尾空白裁掉）
+    ok = client.post("/api/v1/market-projects", json=_mp_body(description="  正常描述  "), headers=admin_headers)
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["description"] == "正常描述"
+    # 编辑同样要求描述
+    pid = ok.json()["id"]
+    upd = client.patch(f"/api/v1/market-projects/{pid}", json={k: v for k, v in _mp_body().items() if k != "description"}, headers=admin_headers)
+    assert upd.status_code == 422, upd.text
+    client.delete(f"/api/v1/market-projects/{pid}", headers=admin_headers)
+
+
+def test_market_field_length_limits(client, admin_headers):
+    """字段长度限制：项目名>40 / 描述>150 / 进展>150 应 422。"""
+    name_too_long = client.post("/api/v1/market-projects", json=_mp_body(name="项" * 41), headers=admin_headers)
+    assert name_too_long.status_code == 422, name_too_long.text
+    desc_too_long = client.post("/api/v1/market-projects", json=_mp_body(description="描" * 151), headers=admin_headers)
+    assert desc_too_long.status_code == 422, desc_too_long.text
+    prog_too_long = client.post("/api/v1/market-projects", json=_mp_body(progress="进" * 151), headers=admin_headers)
+    assert prog_too_long.status_code == 422, prog_too_long.text
+
+
 # ---------------------------------------------------------------- 导入
 
 

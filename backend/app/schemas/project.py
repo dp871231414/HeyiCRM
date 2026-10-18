@@ -44,7 +44,7 @@ class MarketProjectOut(BaseModel):
 
 class MarketProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128, description="项目名称")
-    description: str = ""
+    description: str = Field(description="项目描述（必填）")
     # 项目进展：创建时必填，作为该项目的第一条进展记录（时间轴展示）
     progress: str = Field(min_length=1, max_length=2000, description="项目进展（必填，写入第一条进展记录）")
     # 车头 / 挂车需求明细（子列表）；tractor_demand/trailer_demand 由后端按各行 qty 汇总，无需前端传
@@ -64,11 +64,14 @@ class MarketProjectCreate(BaseModel):
     @field_validator("description")
     @classmethod
     def _v_desc(cls, v: str) -> str:
-        if not v or not v.strip():
+        if not isinstance(v, str):
             raise ValueError("项目描述不能为空")
-        if len(v) > DESC_MAX:
+        s = v.strip()
+        if not s:
+            raise ValueError("项目描述不能为空")
+        if len(s) > DESC_MAX:
             raise ValueError(f"项目描述不能超过 {DESC_MAX} 个字")
-        return v
+        return s
 
     @field_validator("progress")
     @classmethod
@@ -80,7 +83,7 @@ class MarketProjectCreate(BaseModel):
 
 class MarketProjectUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
-    description: str = ""
+    description: str = Field(description="项目描述（必填）")
     tractorRequirements: list[ProjectRequirementItem] = Field(default_factory=list, description="车头需求明细")
     trailerRequirements: list[ProjectRequirementItem] = Field(default_factory=list, description="挂车需求明细")
     stage: int
@@ -98,11 +101,14 @@ class MarketProjectUpdate(BaseModel):
     @field_validator("description")
     @classmethod
     def _v_desc(cls, v: str) -> str:
-        if not v or not v.strip():
+        if not isinstance(v, str):
             raise ValueError("项目描述不能为空")
-        if len(v) > DESC_MAX:
+        s = v.strip()
+        if not s:
+            raise ValueError("项目描述不能为空")
+        if len(s) > DESC_MAX:
             raise ValueError(f"项目描述不能超过 {DESC_MAX} 个字")
-        return v
+        return s
 
 
 class MarketProjectListOut(BaseModel):
