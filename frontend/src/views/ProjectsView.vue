@@ -110,15 +110,11 @@
           </select>
         </div>
         <div>
-          <label class="label">责任人<span class="req">*</span></label>
+          <label class="label">责任人<span class="req">*</span><span class="text-slate-400 font-normal">（带所属部门，与账号管理实时联动）</span></label>
           <select v-model="form.owner" class="input" @change="onOwnerChange">
             <option value="" disabled>请选择责任人</option>
             <option v-for="o in marketOwners" :key="o.id" :value="o.name">{{ o.name }}（{{ o.deptName }}）</option>
           </select>
-        </div>
-        <div>
-          <label class="label">所属部门<span class="text-slate-400 font-normal">（选责任人后自动带出）</span></label>
-          <input :value="form.ownerDeptName" class="input bg-slate-50" disabled placeholder="选择责任人后自动带出" />
         </div>
 
         <!-- 车头需求：子列表（车辆型号 / 电池度数 / 数量），列头展示字段名，下方为可增删的表格 -->

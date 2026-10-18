@@ -268,19 +268,63 @@ def test_task_export_columns_align_with_list(client, admin_headers):
         assert name in header
 
 
-def test_task_export_uses_dept_name_and_creator_name(client, admin_headers):
-    """责任部门输出组织名称（不再是编码），创建人输出姓名。"""
+def test_task_export_drops_dept_column_and_keeps_creator(client, admin_headers):
+    """任务导出不再单列「责任部门」（部门由责任人自动带出），但「创建人」仍为姓名。"""
     from app.services.importer import HEADER_ROW, TASK_EXPORT_COLUMNS
 
+    assert "责任部门" not in TASK_EXPORT_COLUMNS, "责任部门已改为由责任人自动带出，导出模板不应再单列该列"
     ws = _load_xlsx(_export_file_bytes(client, admin_headers, "/api/v1/tasks/export", "task")).worksheets[0]
     idx = {name: i + 1 for i, name in enumerate(TASK_EXPORT_COLUMNS)}
-    depts, creators = set(), set()
-    for r in range(HEADER_ROW + 1, ws.max_row + 1):
-        depts.add(ws.cell(row=r, column=idx["责任部门"]).value)
-        creators.add(ws.cell(row=r, column=idx["创建人"]).value)
-    assert "市场部" in depts, f"应为组织名称，实际：{depts}"
-    assert not any(str(d).startswith("D0") for d in depts), "不应输出组织编码"
+    creators = {
+        ws.cell(row=r, column=idx["创建人"]).value
+        for r in range(HEADER_ROW + 1, ws.max_row + 1)
+    }
     assert any(c for c in creators), "创建人应有姓名"
+
+
+def test_task_import_derives_dept_from_owner(client, admin_headers):
+    """导入仅填责任人（不填责任部门）时，责任部门应自动带出为该责任人的所属部门。"""
+    from openpyxl import Workbook
+
+    from app.services.importer import TASK_COLUMNS
+
+    # 取责任人及其所属部门（联动账号管理）
+    owners = {o["name"]: o for o in client.get("/api/v1/meta/owners", headers=admin_headers).json()}
+    owner = owners["郑凯"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(TASK_COLUMNS)
+    vals = {
+        "任务名称": "导入派生部门任务",
+        "任务分类": "派生子组",
+        "任务描述": "描述",
+        "任务进展": "首条进展",
+        "是否异常": "否",
+        "目标": 100,
+        "已完成": 50,
+        "计划开始日期": "2026-01-01",
+        "计划结束日期": "2026-12-31",
+        "责任人": "郑凯",
+    }
+    ws.append([vals.get(c, "") for c in TASK_COLUMNS])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    resp = client.post(
+        "/api/v1/tasks/import",
+        files={"file": ("t.xlsx", buf.getvalue(), _MIME_XLSX)},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200 and resp.json()["imported"] == 1
+    items = client.get("/api/v1/tasks", params={"keyword": "导入派生部门任务"}, headers=admin_headers).json()["items"]
+    assert items, "应导入成功"
+    try:
+        assert items[0]["deptId"] == owner["deptId"], "责任部门应自动等于责任人的所属部门"
+        assert items[0]["deptName"] == owner["deptName"]
+    finally:
+        for it in items:
+            client.delete(f"/api/v1/tasks/{it['id']}", headers=admin_headers)
 
 
 def test_task_export_is_reimportable(client, admin_headers):

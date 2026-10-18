@@ -1,19 +1,19 @@
 # 测试报告 · 合一重卡生态经营看板
 
-- 报告日期：2026-10-18（v3.4，基于最新方案重新生成）
-- 被测版本：`main`（含 Round 23：系统配置·数据字典、项目管理车头/挂车需求子列表；Round 24：下载中心；Round 26：导出口径收紧 + 移除重新生成；Round 27：菜单归并 + 任务组全栈重命名；Round 28：责任人默认与范围过滤 + 任务组联合唯一与删除 + 字段长度限制 + 项目描述必填）
+- 报告日期：2026-10-18（v3.5，基于最新方案重新生成）
+- 被测版本：`main`（含 Round 23：系统配置·数据字典、项目管理车头/挂车需求子列表；Round 24：下载中心；Round 26：导出口径收紧 + 移除重新生成；Round 27：菜单归并 + 任务组全栈重命名；Round 28：责任人默认与范围过滤 + 任务组联合唯一与删除 + 字段长度限制 + 项目描述必填；Round 29：责任人下拉统一交互 + 导入模板去部门列 + 任务组编辑/删除文字按钮）
 - 测试环境：macOS / Python 3.13.12（`/Users/gavin/.workbuddy/binaries/python/envs/fleet`）/ Node 22.22.2-6 / Chromium（Playwright）
 - 后端运行：`uvicorn app.main:app`（SQLite 单文件库 `app.db`；`DATABASE_URL` 可切 PostgreSQL）
 - 前端运行：`vite build` 产物静态托管于 `backend/static`，与 API 同源
 - 线上环境：https://heyi-fleet-dashboard.app.workbuddy.host/ （单容器托管，后端同源托管 SPA + SQLite）
 
-> 本报告所有结果均为**真实执行**产出，非估算。后端用例为 `152 passed`，前端构建通过。
+> 本报告所有结果均为**真实执行**产出，非估算。后端用例为 `155 passed`，前端构建通过。
 
 ## 一、测试范围与结论
 
 | 层级 | 手段 | 用例数 | 结果 |
 |------|------|--------|------|
-| 后端单元/接口测试 | pytest（算法口径 + 令牌解析 + 权限隔离 + 模板/导出 + 数据字典 + 需求子列表 + 下载中心） | 152 | ✅ 全部通过 |
+| 后端单元/接口测试 | pytest（算法口径 + 令牌解析 + 权限隔离 + 模板/导出 + 数据字典 + 需求子列表 + 下载中心 + 导入部门派生） | 155 | ✅ 全部通过 |
 | 前端构建 | `vue-tsc --noEmit && vite build`（类型检查 + 生产打包） | 1 | ✅ 通过（含 DownloadsView chunk） |
 | 接口连通 | curl 逐一验证核心接口状态码与响应结构 | 13 | ✅ 全部通过 |
 | 线上验证 | 公开链接复跑接口 + 浏览器验收 | — | ✅ 通过（鉴权 Cookie 通道、字典取值、需求子列表、漏斗口径、下载中心记录一致） |
@@ -22,13 +22,13 @@
 
 ---
 
-## 二、后端单元与接口测试（152 项，真实执行）
+## 二、后端单元与接口测试（155 项，真实执行）
 
 执行命令（本机）：
 
 ```bash
 cd backend && PYTHONPATH=. /Users/gavin/.workbuddy/binaries/python/envs/fleet/bin/python -m pytest tests/ -q --tb=short
-# 输出：152 passed, 1 warning in 7.xxs
+# 输出：155 passed, 1 warning in 7.xxs
 ```
 
 按文件分布（逐项真实计数）：
@@ -46,12 +46,12 @@ cd backend && PYTHONPATH=. /Users/gavin/.workbuddy/binaries/python/envs/fleet/bi
 | `tests/test_preferences.py` | 用户偏好默认空/更新持久化/非法值忽略/按账号隔离 | 4 |
 | `tests/test_system_dict.py` | **数据字典 CRUD（Round 23 新增）**：admin 读写、普通成员仅可读 | 2 |
 | `tests/test_downloads.py` | **下载中心（Round 24 新增）**：导出生成记录+本人列表+文件可下+owner 隔离、market 导出隔离、删除记录文件消失、未登录拒绝 | 4 |
-| **合计** | | **152** |
+| **合计** | | **155** |
 
 关键结果：
 
 ```
-152 passed in 7.xxs
+155 passed in 7.xxs
 ```
 
 覆盖模块要点：
@@ -130,7 +130,7 @@ dist/assets/SysDictView-BhRa27iA.js                  6.22 kB │ gzip:   2.54 kB
 
 - 数据字典：admin 可增删改（`sys.config.edit`），普通成员 `GET /system/dicts` 返回 200（仅读）；车型预设（车辆型号/挂车型号）随 seed 注入。
 - 项目管理需求子列表：编辑表单列头表格（车辆型号/电池度数/数量/操作）已生效；列表「车头数量/挂车数量」= 明细汇总；驾驶舱漏斗读汇总值，口径不变。
-- 项目导入模板：仅 6 列（项目名称/项目进展/项目描述/项目阶段/负责人/所属部门），不含车辆需求；导出含「车头数量/挂车数量」汇总列。
+- 项目导入模板：仅 5 列（项目名称/项目进展/项目描述/项目阶段/负责人），所属部门由负责人自动派生（不填），不含车辆需求；导出含「车头数量/挂车数量」汇总列。
 
 ---
 
@@ -188,6 +188,23 @@ dist/assets/SysDictView-BhRa27iA.js                  6.22 kB │ gzip:   2.54 kB
 - `DownloadsView` 列表列头：记录ID / 导出文件名称 / 对象 / 创建人 / 创建时间 / 操作；空态「暂无导出记录」；操作含「下载」与「删除」。
 - 线上抓取 `DownloadsView-Buxzs7k7.js` 校验已打包进 `backend/static` → 命中。
 
+### 7.5 Round 29 测试要点（责任人下拉统一 + 导入去部门列 + 任务组文字按钮）
+
+相关回归落点（`tests/test_changes.py` / `tests/test_api.py`）：
+
+| 用例 | 断言要点 | 结果 |
+|---|---|---|
+| `test_task_import_derives_dept_from_owner`（新增） | 构造仅填「责任人」（不含「责任部门」）的导入文件 → 导入后任务 `deptId`/`deptName` 自动等于该责任人在 `/meta/owners` 中的所属部门 | ✅ |
+| `test_task_export_drops_dept_column_and_keeps_creator`（改写自原 export 用例） | 断言 `"责任部门" not in TASK_EXPORT_COLUMNS` 且导出数据仍含创建人姓名 | ✅ |
+| `test_task_import_with_errors`（改写） | 断言错误响应字段集合含 `{"任务名称","计划开始日期","责任人"}` 且不含 `"责任部门"` | ✅ |
+
+配套实现与验收口径：
+- 责任人下拉「姓名（部门）」实时联动：后端 `api/v1/meta.py:owner_options` / `market-owners` 返回对象新增 `deptName`（按 `User.dept_id` 查 Organization 名称）；账号管理改部门名后，下次加载即体现，无需手填。
+- 任务/项目表单去掉独立的「责任部门/所属部门」选择项：选中责任人时 `onOwnerChange` 自动带出 `deptId` / `ownerDeptId`；详情只读展示派生部门。
+- 导入模板去部门列：任务导入 `TASK_COLUMNS` 不再含「责任部门」（11 列，以「责任人」结尾）、项目导入 `MARKET_PROJECT_COLUMNS` 不再含「所属部门」（5 列）；`validate_*` / `import_*` 改为从责任人派生部门，模板「组织清单」校验 sheet 与「责任部门」数据验证已删除；导出列仍含部门（报告用途，不回灌为导入列）。
+- 任务组下拉「编辑/删除」由图标（✎/🗑）改为蓝色「编辑」/红色「删除」文字按钮（`text-brand-600` / `text-bad-600`，`hover:underline`）。
+- 本轮新增 1 个回归用例，后端 **152 → 155 passed**（无既有用例失效）。
+
 ---
 
 ## 八、已知限制与后续项
@@ -195,7 +212,7 @@ dist/assets/SysDictView-BhRa27iA.js                  6.22 kB │ gzip:   2.54 kB
 | 项 | 说明 |
 |---|---|
 | 数据库 | 演示用 SQLite；生产如需更高并发可切 PostgreSQL（改 `DATABASE_URL`，引擎按 `is_sqlite` 分支） |
-| 项目导入模板 | 6 列不含车辆需求，车辆需求在系统表单补充；导出为超集（含汇总列），可直接回灌 |
+| 项目导入模板 | 5 列不含车辆需求，所属部门由负责人自动派生，车辆需求在系统表单补充；导出为超集（含汇总列），可直接回灌 |
 | 年度目标红绿灯 | 单指标按 `progress_tone`（达成率÷时间进度）判定，年中不恒红；整体结论同理 |
 | 审计 | 已落库（登录、指标、任务、组织、角色、字典变更），可接企业 SIEM |
 
@@ -204,7 +221,7 @@ dist/assets/SysDictView-BhRa27iA.js                  6.22 kB │ gzip:   2.54 kB
 ## 九、复现命令
 
 ```bash
-# 后端测试（152 项）
+# 后端测试（155 项）
 cd backend && PYTHONPATH=. /Users/gavin/.workbuddy/binaries/python/envs/fleet/bin/python -m pytest tests/ -q
 
 # 前端类型检查 + 生产构建（同步产物到 backend/static）
@@ -223,9 +240,10 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login -H 'Content-Type: applic
 
 ## 十、变更追溯
 
-- 本文档随 proposal v3.3 / design v2.3 同步刷新，反映 Round 23（系统配置·数据字典、项目管理需求子列表）+ Round 24（下载中心）+ Round 26（导出口径收紧 + 移除重新生成）+ Round 27（菜单归并 + 任务组全栈重命名）后的真实测试状态。
+- 本文档随 proposal v3.5 / design v2.5 同步刷新，反映 Round 23（系统配置·数据字典、项目管理需求子列表）+ Round 24（下载中心）+ Round 26（导出口径收紧 + 移除重新生成）+ Round 27（菜单归并 + 任务组全栈重命名）+ Round 28（责任人默认与范围过滤 + 任务组联合唯一与删除 + 字段长度限制 + 项目描述必填）+ Round 29（责任人下拉统一交互 + 导入模板去部门列 + 任务组编辑/删除文字按钮）后的真实测试状态。
 - Round 24 新增下载中心：导出端点改为「先落盘建记录再返回文件」（X-1），记录按 `created_by` 隔离（X-4）；后端新增 `test_downloads.py` 4 项。
 - Round 26：导出端点改为「只返回下载中心记录 JSON，不再即时返回文件流」，漏斗/导出测试改用种子数据（移除 `reseed` 依赖）；当前后端 **152 passed**。
 - Round 27：纯重命名——任务管理「主任务」全栈更名为「任务组」（表/字段/API/前端变量/种子/测试/文档一致改为 `task_group`/`task_group_id`/`/task-groups`/`TG` 前缀 ID），菜单上「账号管理」「下载中心」归并到「系统配置」二级菜单。无新增测试用例，后端仍为 **152 passed**；`test_main_tasks.py` 重命名为 `test_task_groups.py`。
 - Round 28：责任人默认与范围过滤 + 任务组联合唯一与删除 + 字段长度限制 + 项目描述必填。新增 `services/scope.py:visible_user_filter` 并按 `effective_scope` 过滤责任人下拉（`meta.py:owner_options`）；任务组唯一性改为「名称 + owner_id」联合唯一并新增 `DELETE /task-groups/{id}`（有引用回退 `TG_NONE`）；`schemas/task.py`、`schemas/project.py`、`task_groups.py` 加字段长度校验器，`importer.py` 导入校验长度与必填；前端 `TasksView`/`ProjectsView` 加 `maxlength` 与保存校验、任务组下拉加宽并支持删除；项目描述改为必填（新增/编辑/导入一致）。纯约束收紧，无新增测试用例，后端仍为 **152 passed**；线上验证复跑责任人范围过滤、任务组删除、字段长度拦截、项目描述必填。
-- 历史逐轮变更（Round 1–22）的测试记录已并入 `design.md` §13 精选变更日志；旧版 test-report（72/92/116/149 等阶段性数字）以本版 **152 passed** 为准。
+- Round 29：责任人下拉统一交互 + 导入模板去部门列 + 任务组编辑/删除文字按钮。`api/v1/meta.py:owner_options` / `market-owners` 返回对象新增 `deptName`（按 `User.dept_id` 查 Organization 名称，与账号管理实时联动）；前端 `TasksView`/`ProjectsView` 下拉展示「姓名（部门）」、`onOwnerChange` 自动带出 `deptId`/`ownerDeptId`，表单去掉独立「责任部门/所属部门」选择项。`services/importer.py` 任务导入 `TASK_COLUMNS` 去「责任部门」（11 列）、项目导入 `MARKET_PROJECT_COLUMNS` 去「所属部门」（5 列），`validate_*`/`import_*` 改从责任人派生部门，模板删除「组织清单」校验 sheet 与「责任部门」数据验证；导出列仍含部门（报告用途）。任务组下拉「编辑/删除」改为蓝色/红色文字按钮。新增 `test_task_import_derives_dept_from_owner` 等回归用例，后端 **152 → 155 passed**；线上验证复跑责任人下拉「姓名（部门）」展示、选中自动带出部门、任务/项目导入模板无部门列、任务组蓝/红文字按钮、部门与账号管理实时联动。
+- 历史逐轮变更（Round 1–22）的测试记录已并入 `design.md` §13 精选变更日志；旧版 test-report（72/92/116/149 等阶段性数字）以本版 **155 passed** 为准。

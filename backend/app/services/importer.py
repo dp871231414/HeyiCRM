@@ -53,7 +53,6 @@ TASK_COLUMNS = [
     "任务进展",
     "计划开始日期",
     "计划结束日期",
-    "责任部门",
     "责任人",
 ]
 
@@ -195,8 +194,7 @@ TASK_TEMPLATE_NOTES = [
     ["任务进展", "必填。当前进展说明，导入后作为该任务的第一条进展记录（≤150字）"],
     ["计划开始日期", "必填，格式 2026-10-01"],
     ["计划结束日期", "必填，格式 2026-12-31，不能早于开始日期"],
-    ["责任部门", "必填。组织名称或编码（见「组织清单」页）"],
-    ["责任人", "必填。必须是系统内已有账号姓名"],
+    ["责任人", "必填。必须是系统内已有账号姓名；责任部门由该责任人自动带出，无需填写"],
     ["任务ID / 完成进度 / 状态 / 创建人 / 创建时间 / 更新时间", "由系统自动生成，不在模板中填写"],
 ]
 
@@ -225,7 +223,6 @@ def build_task_template(db: Session) -> bytes:
             "Q3 累计 3.18 亿",
             "2026-01-01",
             "2026-12-31",
-            "市场部",
             "郑凯",
         ]
     )
@@ -234,27 +231,12 @@ def build_task_template(db: Session) -> bytes:
     # 说明
     _notes_sheet(wb, "填写说明", TASK_TEMPLATE_NOTES)
 
-    # 组织清单
-    orgs = _notes_sheet(wb, "组织清单", [["编码", "名称"]])
-    for o in db.scalars(select(Organization).order_by(Organization.sort_order, Organization.id)).all():
-        orgs.append([o.id, o.name])
-    for r in range(2, orgs.max_row + 1):
-        for c in range(1, 3):
-            orgs.cell(row=r, column=c).border = _BORDER
-
     # 数据验证：是否异常
     dv_abn = DataValidation(type="list", formula1='"是,否"', allow_blank=True)
     dv_abn.error = "只能填「是」或「否」"
     ws.add_data_validation(dv_abn)
     col_abn = get_column_letter(TASK_COLUMNS.index("是否异常") + 1)
     dv_abn.add(f"{col_abn}{HEADER_ROW + 1}:{col_abn}{HEADER_ROW + 2000}")
-
-    # 数据验证：责任部门（引用组织清单）
-    dv_dept = DataValidation(type="list", formula1="=组织清单!$B$2:$B$200", allow_blank=True)
-    dv_dept.error = "责任部门需存在于组织清单"
-    ws.add_data_validation(dv_dept)
-    col_dept = get_column_letter(TASK_COLUMNS.index("责任部门") + 1)
-    dv_dept.add(f"{col_dept}{HEADER_ROW + 1}:{col_dept}{HEADER_ROW + 2000}")
 
     # 数据验证：责任人（引用账号清单）
     dv_owner = DataValidation(type="list", formula1="=账号清单!$A$2:$A$300", allow_blank=True)
@@ -407,8 +389,6 @@ def _is_valid_date(s: str) -> bool:
 def validate_task_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     errors: list[dict] = []
     valid: list[dict] = []
-    org_ids = set(db.scalars(select(Organization.id)).all())
-    org_names = set(db.scalars(select(Organization.name)).all())
     user_names = set(db.scalars(select(User.name)).all())
 
     for i, r in enumerate(rows):
@@ -475,11 +455,7 @@ def validate_task_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[
         elif _is_valid_date(start_raw) and datetime.strptime(end_raw, "%Y-%m-%d") < datetime.strptime(start_raw, "%Y-%m-%d"):
             row_errors.append({"field": "计划结束日期", "msg": "不能早于计划开始日期"})
 
-        dept = r.get("责任部门", "")
-        if not dept:
-            row_errors.append({"field": "责任部门", "msg": "不能为空"})
-        elif dept not in org_ids and dept not in org_names:
-            row_errors.append({"field": "责任部门", "msg": f"「{dept}」不是有效的组织名称或编码"})
+        # 责任部门由「责任人」自动带出（与新建/编辑表单一致），导入模板不再填写
 
         owner = r.get("责任人", "")
         if not owner:
@@ -596,13 +572,11 @@ def _resolve_task_group(db: Session, name: str, owner_id: str | None, user: User
 
 def import_tasks(db: Session, rows: list[dict], user: User) -> int:
     for r in rows:
-        dept_raw = r["责任部门"]
-        org = db.scalar(select(Organization).where(Organization.id == dept_raw))
-        if not org:
-            org = db.scalar(select(Organization).where(Organization.name == dept_raw))
-        # 责任人 → 用户 ID，供任务组「名称 + 责任人」联合解析
+        # 责任人 → 用户（含其所属部门）；任务组按「名称 + 责任人」联合解析，
+        # 责任部门由该责任人自动带出（与新建/编辑表单一致），导入模板不再填写
         owner_user = db.scalar(select(User).where(User.name == r["责任人"]))
         owner_id = owner_user.id if owner_user else None
+        dept_id = owner_user.dept_id if owner_user else None
         mt = _resolve_task_group(db, r.get("任务分类", ""), owner_id, user)
         task = Task(
             id=next_task_id(db),
@@ -617,7 +591,7 @@ def import_tasks(db: Session, rows: list[dict], user: User) -> int:
             note=r.get("任务进展", ""),
             start_date=datetime.strptime(r["计划开始日期"], "%Y-%m-%d").date(),
             end_date=datetime.strptime(r["计划结束日期"], "%Y-%m-%d").date(),
-            dept_id=org.id,
+            dept_id=dept_id,
             owner=r["责任人"],
             created_by=user.id,
         )
@@ -703,7 +677,6 @@ def export_tasks(db: Session, rows: list[Task]) -> bytes:
                 d["note"],
                 d["startDate"],
                 d["endDate"],
-                org_name_of(db, d["deptId"]),
                 d["owner"],
                 f"{d['progress']}%",
                 d["statusLabel"],
@@ -918,11 +891,10 @@ MARKET_PROJECT_COLUMNS = [
     "项目描述",
     "项目阶段",
     "负责人",
-    "所属部门",
 ]
 
-# 可选列：老版本模板（无「项目描述 / 所属部门」）仍可导入，缺失时按空值处理
-MARKET_PROJECT_OPTIONAL_COLUMNS = {"项目描述", "所属部门"}
+# 可选列：老版本模板（无「项目描述」）仍可导入，缺失时按空值处理
+MARKET_PROJECT_OPTIONAL_COLUMNS = {"项目描述"}
 
 # 导出列 = 项目ID + 全部可填写列（不含车辆需求明细，导入模板也不含） + 汇总值 + 系统列。
 # 与导入模板刻意不同：导入只填项目信息，车辆需求（车头/挂车）在系统里补充；
@@ -975,8 +947,7 @@ MARKET_PROJECT_TEMPLATE_NOTES = [
     ["项目进展", "必填。当前项目进展说明，导入后作为该项目的第一条进展记录（≤150字）"],
     ["项目描述", "必填。项目的背景与交付要求（≤150字）"],
     ["项目阶段", "必填。填 10/25/50/75/90/100 或阶段名称（项目导入/市场尽调/初审通过/联合评审通过/签约落地/交车投运）"],
-    ["负责人", "必填。必须是系统内已有账号姓名"],
-    ["所属部门", "选填。负责人直接所属部门，留空则按负责人自动带出"],
+    ["负责人", "必填。必须是系统内已有账号姓名；所属部门由该负责人自动带出，无需填写"],
     ["车头需求 / 挂车需求", "不在导入模板内。导入后请在系统「编辑项目」中补充车辆型号、电池度数与数量"],
     ["项目ID / 创建人 / 创建时间 / 更新时间", "由系统自动生成，不在模板中填写"],
 ]
@@ -1001,27 +972,12 @@ def build_market_project_template(db: Session) -> bytes:
             "物流园 200 辆燃油重卡替换为新能源",
             25,
             "郑凯",
-            "市场部",
         ]
     )
     _style_data_rows(ws, HEADER_ROW + 1, ws.max_row, len(MARKET_PROJECT_COLUMNS), sample_rows=1)
 
     # 说明
     _notes_sheet(wb, "填写说明", MARKET_PROJECT_TEMPLATE_NOTES)
-
-    # 组织清单（供「所属部门」下拉）
-    orgs = _notes_sheet(wb, "组织清单", [["编码", "名称"]])
-    for o in db.scalars(select(Organization).order_by(Organization.sort_order, Organization.id)).all():
-        orgs.append([o.id, o.name])
-    for r in range(2, orgs.max_row + 1):
-        for c in range(1, 3):
-            orgs.cell(row=r, column=c).border = _BORDER
-
-    dv_dept = DataValidation(type="list", formula1="=组织清单!$B$2:$B$200", allow_blank=True)
-    dv_dept.error = "所属部门需存在于组织清单"
-    ws.add_data_validation(dv_dept)
-    col_dept = get_column_letter(MARKET_PROJECT_COLUMNS.index("所属部门") + 1)
-    dv_dept.add(f"{col_dept}{HEADER_ROW + 1}:{col_dept}{HEADER_ROW + 2000}")
 
     # 数据验证：负责人（引用账号清单）
     dv_owner = DataValidation(type="list", formula1="=账号清单!$A$2:$A$300", allow_blank=True)
@@ -1057,8 +1013,6 @@ def build_market_project_template(db: Session) -> bytes:
 def validate_market_project_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     errors: list[dict] = []
     valid: list[dict] = []
-    org_ids = set(db.scalars(select(Organization.id)).all())
-    org_names = set(db.scalars(select(Organization.name)).all())
     user_names = set(db.scalars(select(User.name)).all())
 
     for i, r in enumerate(rows):
@@ -1093,9 +1047,7 @@ def validate_market_project_rows(db: Session, rows: list[dict]) -> tuple[list[di
         elif owner not in user_names:
             row_errors.append({"field": "负责人", "msg": f"「{owner}」不是系统内已有账号姓名"})
 
-        dept = (r.get("所属部门") or "").strip()
-        if dept and dept not in org_ids and dept not in org_names:
-            row_errors.append({"field": "所属部门", "msg": f"「{dept}」不是有效的组织名称或编码"})
+        # 所属部门由「负责人」自动带出（与新建/编辑表单一致），导入模板不再填写
 
         if row_errors:
             for e in row_errors:
@@ -1116,16 +1068,8 @@ def import_market_projects(db: Session, rows: list[dict], user: User) -> int:
     for r in rows:
         owner = r["_owner"]
         u = db.scalar(select(User).where(User.name == owner))
-        dept_raw = (r.get("所属部门") or "").strip()
-        dept_id = None
-        if dept_raw:
-            org = db.scalar(select(Organization).where(Organization.id == dept_raw))
-            if not org:
-                org = db.scalar(select(Organization).where(Organization.name == dept_raw))
-            dept_id = org.id if org else None
-        # 所属部门留空 → 按负责人自动带出（与编辑表单一致）
-        if not dept_id and u:
-            dept_id = u.dept_id
+        # 所属部门由负责人自动带出（与新建/编辑表单一致），导入模板不再填写该列
+        dept_id = u.dept_id if u else None
         pid = next_market_project_id(db)
         progress = (r["项目进展"] or "").strip()
         p = MarketProject(

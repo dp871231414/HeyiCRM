@@ -236,20 +236,18 @@
                     <button
                       v-if="auth.hasPerm('task.edit') && !m.isSystem"
                       type="button"
-                      class="text-slate-400 hover:text-brand-600 shrink-0"
-                      title="修改任务组名称"
+                      class="text-brand-600 hover:underline text-xs shrink-0"
                       @click.stop="startRename(m)"
                     >
-                      ✎
+                      编辑
                     </button>
                     <button
                       v-if="auth.hasPerm('task.edit') && !m.isSystem"
                       type="button"
-                      class="text-slate-400 hover:text-bad-600 shrink-0"
-                      title="删除任务组"
+                      class="text-bad-600 hover:underline text-xs shrink-0"
                       @click.stop="startDeleteTaskGroup(m)"
                     >
-                      🗑
+                      删除
                     </button>
                   </template>
                 </button>
@@ -262,15 +260,9 @@
           </div>
         </div>
         <div>
-          <label class="label">责任人<span class="req">*</span></label>
-          <select v-model="form.owner" class="input">
-            <option v-for="o in owners" :key="o.id" :value="o.name">{{ o.name }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="label">责任部门<span class="req">*</span></label>
-          <select v-model="form.deptId" class="input">
-            <option v-for="o in orgs" :key="o.id" :value="o.id">{{ '　'.repeat(o.depth) }}{{ o.name }}</option>
+          <label class="label">责任人<span class="req">*</span><span class="text-slate-400 font-normal">（带所属部门，与账号管理实时联动）</span></label>
+          <select v-model="form.owner" class="input" @change="onOwnerChange">
+            <option v-for="o in owners" :key="o.id" :value="o.name">{{ o.name }}（{{ o.deptName }}）</option>
           </select>
         </div>
         <div>
@@ -544,7 +536,7 @@ const keyword = ref('')
 const deptFilter = ref('')
 const statusFilter = ref('')
 const orgs = ref<{ id: string; name: string; depth: number }[]>([])
-const owners = ref<{ id: string; name: string; deptId?: string }[]>([])
+const owners = ref<{ id: string; name: string; deptId?: string; deptName?: string }[]>([])
 /** 任务组（原任务分类）下拉选项 */
 const taskGroups = ref<TaskGroup[]>([])
 /** 新增任务组内联输入 */
@@ -883,9 +875,13 @@ function openForm(t?: TaskItem) {
     })
     // 编辑时任务的责任人可能不在当前用户数据权限范围内（下拉未列出），需补入下拉以保证选中项不丢失
     if (t.owner && !owners.value.some((o) => o.name === t.owner)) {
-      owners.value = [...owners.value, { id: t.ownerId || '', name: t.owner, deptId: t.deptId }]
+      const dept = orgs.value.find((o) => o.id === t.deptId)
+      owners.value = [...owners.value, { id: t.ownerId || '', name: t.owner, deptId: t.deptId, deptName: dept?.name }]
     }
   } else {
+    // 责任人默认等于当前操作人（创建人）；可选范围由后端按数据权限过滤（本人/本部门/全公司）
+    const ownerName = auth.user?.name ?? owners.value[0]?.name ?? ''
+    const ownerObj = owners.value.find((o) => o.name === ownerName)
     Object.assign(form, {
       id: '',
       parent: '',
@@ -898,15 +894,21 @@ function openForm(t?: TaskItem) {
       note: '',
       startDate: new Date().toISOString().slice(0, 10),
       endDate: '',
-      deptId: orgs.value[1]?.id ?? 'CO',
-      // 责任人默认等于当前操作人（创建人）；可选范围由后端按数据权限过滤（本人/本部门/全公司）
-      owner: auth.user?.name ?? owners.value[0]?.name ?? '',
+      // 责任部门由选中的责任人自动带出（与账号管理实时联动）
+      owner: ownerName,
+      deptId: ownerObj?.deptId ?? '',
     })
   }
   // 编辑模式加载进展记录（新建无需）
   if (t) loadProgressForEdit(t.id)
   else resetProgress()
   formOpen.value = true
+}
+
+/** 选中责任人后，自动带出其所属部门（责任部门无需手填，与账号管理实时联动） */
+function onOwnerChange() {
+  const o = owners.value.find((x) => x.name === form.owner)
+  form.deptId = o?.deptId ?? ''
 }
 
 async function save() {

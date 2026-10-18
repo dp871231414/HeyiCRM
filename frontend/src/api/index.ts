@@ -35,7 +35,7 @@ export const metaApi = {
     http.get<{ id: string; name: string; type: string; parentId: string | null; head: string; depth: number }[]>('/meta/orgs').then(
       (r) => r.data,
     ),
-  owners: () => http.get<{ id: string; name: string; deptId: string }[]>('/meta/owners').then((r) => r.data),
+  owners: () => http.get<{ id: string; name: string; deptId: string; deptName: string }[]>('/meta/owners').then((r) => r.data),
   marketOwners: () => http.get<MarketOwner[]>('/meta/market-owners').then((r) => r.data),
 }
 

@@ -42,13 +42,19 @@ def owner_options(db: Session = Depends(get_db), user: User = Depends(get_curren
 
     scope=all → 全公司；dept_sub → 本部门及下属部门；dept → 本部门；self → 仅本人。
     与「新建任务 / 任务组」的责任人可选范围一致（见 services/scope.visible_user_filter）。
+    返回 deptName（人员的直接所属部门名称，取自账号管理），供前端「责任人」下拉展示
+    「姓名（部门）」并实时联动账号管理（部门调整后立即体现，无需手填）。
     """
     cond = scope_svc.visible_user_filter(db, user)
     q = select(User).where(User.status == "active")
     if cond is not None:
         q = q.where(cond)
     rows = db.scalars(q.order_by(User.id)).all()
-    return [{"id": u.id, "name": u.name, "deptId": u.dept_id} for u in rows]
+    name_by_id = {o.id: o.name for o in db.scalars(select(Organization)).all()}
+    return [
+        {"id": u.id, "name": u.name, "deptId": u.dept_id, "deptName": name_by_id.get(u.dept_id, "")}
+        for u in rows
+    ]
 
 
 @router.get("/market-owners")

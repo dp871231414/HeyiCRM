@@ -405,7 +405,9 @@ def test_task_import_with_errors(client, admin_headers):
     body = resp.json()
     assert body["imported"] == 0
     fields = {e["field"] for e in body["errors"]}
-    assert {"任务名称", "计划开始日期", "责任部门", "责任人"} <= fields
+    # 责任部门已改为由责任人自动带出，导入模板不再校验该列
+    assert {"任务名称", "计划开始日期", "责任人"} <= fields
+    assert "责任部门" not in fields
 
 
 def test_task_import_success(client, admin_headers):
