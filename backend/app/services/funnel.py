@@ -25,6 +25,15 @@ from app.models import FunnelConfig, MarketProject, ProjectTractorRequirement, P
 from app.services.org_tree import market_sub_departments, market_tree_ids
 
 
+def _round_half_up(x: float) -> int:
+    """预估消化数量按「四舍五入」取整（车辆数不保留小数）。
+
+    用 int(x + 0.5) 实现「逢 .5 向上」的常规四舍五入（digest 恒非负，无需处理负数场景）。
+    不用内置 round()：其 banker's rounding（2.5→2）不符合「保留整数」的直觉预期。
+    """
+    return int(x + 0.5)
+
+
 def load_probs(db: Session) -> dict[int, float]:
     """各阶段转化概率；库里没配过的阶段按阶段百分比回落（10→0.10）。"""
     configured = {row.stage: float(row.prob) for row in db.scalars(select(FunnelConfig)).all()}
@@ -190,20 +199,20 @@ def build_demand_analysis(db: Session, dept_id: str | None = None) -> dict:
         return sorted(d.items(), key=lambda kv: (-kv[1]["qty"], kv[0]))
 
     tractor = {
-        "all": [{"model": k[0], "battery": k[1], "qty": int(v["qty"]), "digest": round(v["digest"], 1)} for k, v in sort_tractor(tractor_all)],
+        "all": [{"model": k[0], "battery": k[1], "qty": int(v["qty"]), "digest": _round_half_up(v["digest"])} for k, v in sort_tractor(tractor_all)],
         "byStage": {
-            str(s): [{"model": k[0], "battery": k[1], "qty": int(v["qty"]), "digest": round(v["digest"], 1)} for k, v in sort_tractor(d)]
+            str(s): [{"model": k[0], "battery": k[1], "qty": int(v["qty"]), "digest": _round_half_up(v["digest"])} for k, v in sort_tractor(d)]
             for s, d in tractor_by_stage.items()
         },
     }
     trailer = {
         "all": [
-            {"model": k, "qty": int(v["qty"]), "digest": round(v["digest"], 1)}
+            {"model": k, "qty": int(v["qty"]), "digest": _round_half_up(v["digest"])}
             for k, v in sort_trailer(trailer_all)
         ],
         "byStage": {
             str(s): [
-                {"model": k, "qty": int(v["qty"]), "digest": round(v["digest"], 1)}
+                {"model": k, "qty": int(v["qty"]), "digest": _round_half_up(v["digest"])}
                 for k, v in sort_trailer(d)
             ]
             for s, d in trailer_by_stage.items()

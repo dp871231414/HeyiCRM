@@ -102,6 +102,40 @@ def test_demand_analysis_churn_stage(client, admin_headers):
     assert all(s["stage"] != 0 for s in funnel["stages"])
 
 
+def test_demand_analysis_digest_is_integer(client, admin_headers):
+    """预估消化数量（digest）必须为整数：qty×转化率的小数按「四舍五入」取整。
+
+    - qty=10 × 阶段25转化率(0.25) = 2.5 → 进为 3（验证 half-up，而非 banker's 2.5→2）
+    - qty=10 × 阶段10转化率(0.10) = 1.0 → 整数 1
+    """
+    PID = "MP_DA_ROUND"
+    with SessionLocal() as db:
+        old = db.scalar(select(MarketProject).where(MarketProject.id == PID))
+        if old:
+            db.delete(old)
+            db.commit()
+        # 阶段 25 使转化率默认 0.25
+        db.add(
+            MarketProject(
+                id=PID, name="取整测试", tractor_demand=20, trailer_demand=0,
+                stage=25, owner="郑凯", created_by="U001",
+            )
+        )
+        db.flush()
+        db.add(ProjectTractorRequirement(project_id=PID, model="取整牵引车", battery="400度", qty=10))
+        db.add(ProjectTractorRequirement(project_id=PID, model="取整牵引车2", battery="400度", qty=10))
+        db.commit()
+
+    body = client.get("/api/v1/dashboard/demand-analysis", headers=admin_headers).json()
+    t = body["tractor"]["all"]
+    # 两个组合各 10×0.25=2.5 → 3
+    for m in ("取整牵引车", "取整牵引车2"):
+        row = next((x for x in t if x["model"] == m), None)
+        assert row is not None, f"缺少 {m}"
+        assert row["digest"] == 3, f"{m} 预估消化应为 3，实际 {row['digest']}"
+        assert isinstance(row["digest"], int), "digest 应为整数类型"
+
+
 def test_demand_analysis_by_dept(client, admin_headers):
     # 部门筛选生效：指定一个二级部门应只返回该部门负责人名下项目需求
     full = client.get("/api/v1/dashboard/demand-analysis", headers=admin_headers).json()

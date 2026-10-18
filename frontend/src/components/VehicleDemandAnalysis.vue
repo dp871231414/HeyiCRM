@@ -50,7 +50,7 @@
                 <td class="px-4 py-2 text-slate-700">{{ r.model }}</td>
                 <td class="px-4 py-2 text-slate-500">{{ r.battery }}</td>
                 <td class="px-4 py-2 text-right font-mono tabular-nums text-slate-900">{{ r.qty }}</td>
-                <td class="px-4 py-2 text-right font-mono tabular-nums text-slate-600">{{ fmt(r.digest, 1) }}</td>
+                <td class="px-4 py-2 text-right font-mono tabular-nums text-slate-600">{{ fmt(r.digest, 0) }}</td>
               </tr>
               <tr v-if="!tractorRows.length">
                 <td colspan="4" class="px-4 py-8 text-center text-xs text-slate-400">该范围暂无车头需求</td>
@@ -86,7 +86,7 @@
               <tr v-for="r in trailerRows" :key="r.model" class="hover:bg-slate-50">
                 <td class="px-4 py-2 text-slate-700">{{ r.model }}</td>
                 <td class="px-4 py-2 text-right font-mono tabular-nums text-slate-900">{{ r.qty }}</td>
-                <td class="px-4 py-2 text-right font-mono tabular-nums text-slate-600">{{ fmt(r.digest, 1) }}</td>
+                <td class="px-4 py-2 text-right font-mono tabular-nums text-slate-600">{{ fmt(r.digest, 0) }}</td>
               </tr>
               <tr v-if="!trailerRows.length">
                 <td colspan="3" class="px-4 py-8 text-center text-xs text-slate-400">该范围暂无挂车需求</td>
@@ -164,10 +164,10 @@ const trailerRows = computed<DemandTrailerRow[]>(() => {
 
 const tractorTotal = computed(() => tractorRows.value.reduce((a, r) => a + r.qty, 0))
 const tractorDigestTotal = computed(
-  () => Math.round(tractorRows.value.reduce((a, r) => a + (r.digest || 0), 0) * 10) / 10,
+  () => Math.round(tractorRows.value.reduce((a, r) => a + (r.digest || 0), 0)),
 )
 const trailerQtyTotal = computed(() => trailerRows.value.reduce((a, r) => a + r.qty, 0))
 const trailerDigestTotal = computed(
-  () => Math.round(trailerRows.value.reduce((a, r) => a + r.digest, 0) * 10) / 10,
+  () => Math.round(trailerRows.value.reduce((a, r) => a + r.digest, 0)),
 )
 </script>
