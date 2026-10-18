@@ -1155,7 +1155,7 @@ def test_market_project_crud_and_auto_fields(client, admin_headers):
     assert r.status_code == 201, r.text
     p = r.json()
     assert p["id"].startswith("MP")
-    assert p["createdByName"] == "陈志明", "创建人应自动记录为当前登录人"
+    assert p["createdByName"] == "管理员", "创建人应自动记录为当前登录人"
     assert p["createdAt"] and p["updatedAt"]
     assert p["stageLabel"] == "市场尽调"
 

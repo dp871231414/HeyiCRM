@@ -42,6 +42,10 @@ TG_NONE_NAME = "空"
 
 SEED_PASSWORD = os.getenv("SEED_PASSWORD", "123456")
 
+# 演示业务数据（任务/项目/指标实际值目标值/演示账号）开关：默认关闭，只建「结构数据 + 平台管理员」。
+# 需要完整演示环境时设 SEED_DEMO=1（本地开发、演示部署）。线上正式环境不开启，保证清空气持久。
+SEED_DEMO = os.getenv("SEED_DEMO") == "1"
+
 ORGS = [
     ("CO", "全公司", "company", None, "陈志明"),
     ("D01", "市场部", "dept", "CO", "林雪"),
@@ -182,8 +186,8 @@ SYS_DICTS = [
     dict(code="trailer_model", name="挂车型号", items=["侧翻挂", "高栏挂", "后翻挂"]),
 ]
 
-USERS = [
-    ("U001", "陈志明", "admin", "CO", "admin", "active"),
+# 演示账号（不含平台管理员，管理员始终单独创建）。仅 SEED_DEMO=1 时灌入。
+DEMO_USERS = [
     ("U002", "林雪", "linxue", "D01", "dept_head", "active"),
     ("U003", "王建国", "wangjg", "D06", "dept_head", "active"),
     ("U004", "赵国强", "zhaogq", "D02", "dept_head", "active"),
@@ -396,31 +400,36 @@ def seed(db: Session, reset: bool = False) -> dict:
                 db.add(SysDictItem(dict_id=sd.id, value=v, sort=i))
         created["dicts"] = len(SYS_DICTS)
 
-    # 是否「首次初始化」：库里连一个账号都没有。
-    # 演示数据只在首次初始化时灌入 —— 否则管理员清空任务后，服务重启会把数据"复活"。
-    # 注意必须在灌账号之前取值（之后 add 的记录会被 autoflush 查到）。
-    first_init = not db.scalar(select(User).limit(1))
-
-    if first_init:
+    # 平台管理员：任何「无账号」状态下都创建（clean 模式也创建），显示名固定「管理员」。
+    # 这是系统唯一强制存在的账号，保证清空气后仍能登录管理。
+    no_users = not db.scalar(select(User).limit(1))
+    if no_users:
         pwd = hash_password(SEED_PASSWORD)
-        for uid, name, account, dept, role, status in USERS:
+        db.add(User(id="U001", name="管理员", account="admin", password_hash=pwd, dept_id="CO", role_id="admin", status="active"))
+        created["users"] += 1
+
+    # 演示账号（不含管理员）：SEED_DEMO=1 灌入；reset=True（测试 / SEED_RESET=1 恢复到演示初态）也灌入。
+    # 否则（线上默认 idempotent 启动）不灌入，保证清空气在重启/重建后持久。
+    if SEED_DEMO or reset:
+        pwd = hash_password(SEED_PASSWORD)
+        for uid, name, account, dept, role, status in DEMO_USERS:
             db.add(User(id=uid, name=name, account=account, password_hash=pwd, dept_id=dept, role_id=role, status=status))
             created["users"] += 1
 
-    if not db.scalar(select(MetricTarget).limit(1)):
+    if (SEED_DEMO or reset) and not db.scalar(select(MetricTarget).limit(1)):
         for metric_id, period, org_id, value in TARGETS:
             db.add(MetricTarget(metric_id=metric_id, period=period, org_id=org_id, value=Decimal(str(value))))
             created["targets"] += 1
 
-    if not db.scalar(select(MetricActual).limit(1)):
+    if (SEED_DEMO or reset) and not db.scalar(select(MetricActual).limit(1)):
         for (metric_id, org_id), values in SERIES.items():
             for period, value in zip(PERIODS, values):
                 db.add(MetricActual(metric_id=metric_id, org_id=org_id, period=period, value=Decimal(str(value)), created_by="U001"))
                 created["actuals"] += 1
 
-    # 任务同样只在首次初始化时灌入（见上：清空后不应被重启"复活"）
+    # 任务同样只在 SEED_DEMO=1 时灌入（清空后不应被重启"复活"）
     ensure_task_group_none(db)
-    if first_init and not db.scalar(select(Task).limit(1)):
+    if (SEED_DEMO or reset) and not db.scalar(select(Task).limit(1)):
         # 演示任务各自的「任务分类」对应为任务组（按名称建表），建立 名称→id 映射
         title_to_mt: dict[str, str] = {}
         for t in TASKS:
@@ -452,8 +461,8 @@ def seed(db: Session, reset: bool = False) -> dict:
     # 数据迁移：任务组责任人/部门为空时，取其下最早任务回填（下拉「名称 责任人」展示用）
     created["taskGroupOwnersBackfilled"] = backfill_task_group_owners(db)
 
-    # 市场项目同理：只在首次初始化时灌入演示数据
-    if first_init and not db.scalar(select(MarketProject).limit(1)):
+    # 市场项目同理：只在 SEED_DEMO=1 时灌入演示数据
+    if (SEED_DEMO or reset) and not db.scalar(select(MarketProject).limit(1)):
         for i, mp in enumerate(MARKET_PROJECTS, start=1):
             db.add(
                 MarketProject(

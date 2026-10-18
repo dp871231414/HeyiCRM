@@ -1,10 +1,18 @@
 """数据维护工具（一次性运维动作，不暴露为 HTTP 接口）。
 
 用法：
-    .venv/bin/python -m app.maintenance purge --keep admin,huguohai --dry-run
-    .venv/bin/python -m app.maintenance purge --keep admin,huguohai
+    .venv/bin/python -m app.maintenance purge --keep admin --admin-name 管理员 --dry-run
+    .venv/bin/python -m app.maintenance purge --keep admin --admin-name 管理员
     .venv/bin/python -m app.maintenance rename --account chenzm --to admin --password 123456
     .venv/bin/python -m app.maintenance rename --account chenzm --to admin --dry-run
+
+purge 清理范围（默认全部）：
+    - 账号：删除白名单之外的所有账号（先解除指向它们的引用，避免悬空）
+    - 任务：清空任务及其进展
+    - 市场项目（商机）：清空项目及其进展
+    - 指标：清空实际值 / 目标值（保留指标定义目录，不破坏仪表盘配置）
+    - 任务组：删除非系统任务组（系统默认「空」保留）
+    - 可选 --admin-name：把保留账号中的管理员（account=admin）显示名改为该值
 
 为什么不做成接口：
 - 删除账号、清空任务都是**不可逆**动作，不需要在日常界面上暴露；
@@ -35,7 +43,18 @@ from sqlalchemy import delete, func, select, update
 
 from app.core.security import hash_password
 from app.db.session import SessionLocal
-from app.models import MetricActual, OperationLog, Role, Task, User
+from app.models import (
+    MarketProject,
+    MetricActual,
+    MetricTarget,
+    OperationLog,
+    ProjectProgress,
+    Role,
+    Task,
+    TaskGroup,
+    TaskProgress,
+    User,
+)
 
 # 与 schemas/user.py 的约束对齐：账号 2-32 位，密码 6-128 位
 ACCOUNT_RE = re.compile(r"^[A-Za-z0-9_.-]{2,32}$")
@@ -52,7 +71,17 @@ def _accounts_with_role_perm(db) -> set[str]:
     }
 
 
-def purge(db, keep: list[str], *, tasks: bool = True, dry_run: bool = False) -> dict:
+def purge(
+    db,
+    keep: list[str],
+    *,
+    tasks: bool = True,
+    projects: bool = True,
+    metrics: bool = True,
+    task_groups: bool = True,
+    admin_name: str | None = None,
+    dry_run: bool = False,
+) -> dict:
     keep = [a.strip() for a in keep if a and a.strip()]
     if not keep:
         raise SystemExit("拒绝执行：--keep 不能为空，否则会删光全部账号、无人可以登录。")
@@ -72,6 +101,13 @@ def purge(db, keep: list[str], *, tasks: bool = True, dry_run: bool = False) -> 
     targets = list(db.scalars(select(User).where(User.account.notin_(keep))).all())
     target_ids = [u.id for u in targets]
     task_total = db.scalar(select(func.count()).select_from(Task)) or 0
+    project_total = db.scalar(select(func.count()).select_from(MarketProject)) or 0
+    metric_actual_total = db.scalar(select(func.count()).select_from(MetricActual)) or 0
+    metric_target_total = db.scalar(select(func.count()).select_from(MetricTarget)) or 0
+    tg_total = (
+        db.scalar(select(func.count()).select_from(TaskGroup).where(TaskGroup.is_system.is_(False)))
+        or 0
+    )
     log_total = (
         db.scalar(
             select(func.count()).select_from(OperationLog).where(OperationLog.user_id.in_(target_ids))
@@ -85,7 +121,12 @@ def purge(db, keep: list[str], *, tasks: bool = True, dry_run: bool = False) -> 
         "keep": sorted(kept),
         "removed_users": [{"id": u.id, "name": u.name, "account": u.account} for u in targets],
         "tasks": task_total,
+        "projects": project_total,
+        "metric_actuals": metric_actual_total,
+        "metric_targets": metric_target_total,
+        "task_groups": tg_total,
         "unlinked_logs": log_total,
+        "admin_name": admin_name,
     }
     if dry_run:
         return result
@@ -102,15 +143,36 @@ def purge(db, keep: list[str], *, tasks: bool = True, dry_run: bool = False) -> 
         )
         db.execute(update(Task).where(Task.created_by.in_(target_ids)).values(created_by=None))
 
-    # 2) 清空任务
+    # 2) 清空任务（先删进展子表，再删任务；任务组在任务清空后再删非系统项）
     if tasks and task_total:
+        db.execute(delete(TaskProgress))
         db.execute(delete(Task))
 
-    # 3) 删除账号
+    # 3) 清空市场项目（商机）及其进展
+    if projects and project_total:
+        db.execute(delete(ProjectProgress))
+        db.execute(delete(MarketProject))
+
+    # 4) 清空指标实际值 / 目标值（保留指标定义目录）
+    if metrics and (metric_actual_total or metric_target_total):
+        db.execute(delete(MetricActual))
+        db.execute(delete(MetricTarget))
+
+    # 5) 删除非系统任务组（系统默认「空」保留）
+    if task_groups and tg_total:
+        db.execute(delete(TaskGroup).where(TaskGroup.is_system.is_(False)))
+
+    # 6) 删除账号
     if target_ids:
         db.execute(delete(User).where(User.id.in_(target_ids)))
 
-    # 4) 留一条痕迹，便于日后追溯这次清理是谁、在什么时候做的
+    # 7) 平台管理员显示名（如需）
+    if admin_name:
+        admin_user = next((u for u in keep_users if u.account == "admin"), keep_users[0] if keep_users else None)
+        if admin_user:
+            admin_user.name = admin_name
+
+    # 8) 留一条痕迹，便于日后追溯这次清理是谁、在什么时候做的
     db.add(
         OperationLog(
             user_id=keep_users[0].id if keep_users else None,
@@ -120,6 +182,11 @@ def purge(db, keep: list[str], *, tasks: bool = True, dry_run: bool = False) -> 
             detail={
                 "removedUsers": [u["account"] for u in result["removed_users"]],
                 "removedTasks": task_total,
+                "removedProjects": project_total,
+                "removedMetricActuals": metric_actual_total,
+                "removedMetricTargets": metric_target_total,
+                "removedTaskGroups": tg_total,
+                "adminName": admin_name,
             },
         )
     )
@@ -201,7 +268,15 @@ def _report(result: dict, dry_run: bool) -> None:
     for u in result["removed_users"]:
         print(f"    - {u['id']} {u['name']}（{u['account']}）")
     print(f"  任务数据：{result['tasks']} 条" + ("（将全部删除）" if result["tasks"] else ""))
+    print(f"  市场项目：{result['projects']} 条" + ("（将全部删除）" if result["projects"] else ""))
+    print(
+        f"  指标数据：实际值 {result['metric_actuals']} 条 / 目标值 {result['metric_targets']} 条"
+        + ("（将全部删除，保留指标定义目录）" if result["metric_actuals"] or result["metric_targets"] else "")
+    )
+    print(f"  任务组（非系统）：{result['task_groups']} 个" + ("（将全部删除）" if result["task_groups"] else ""))
     print(f"  解除引用：operation_log {result['unlinked_logs']} 条 user_id 置空")
+    if result.get("admin_name"):
+        print(f"  管理员显示名将设为：{result['admin_name']}")
 
 
 def _report_rename(result: dict, dry_run: bool) -> None:
@@ -219,9 +294,13 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="合一重卡经营看板 · 数据维护工具")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("purge", help="按白名单清理账号，并清空任务数据")
-    p.add_argument("--keep", required=True, help="要保留的账号名，逗号分隔（如 admin,huguohai）")
-    p.add_argument("--no-tasks", action="store_true", help="保留任务数据，只清理账号")
+    p = sub.add_parser("purge", help="按白名单清理账号，并清空业务数据（任务/项目/指标/任务组）")
+    p.add_argument("--keep", required=True, help="要保留的账号名，逗号分隔（如 admin）")
+    p.add_argument("--no-tasks", action="store_true", help="保留任务数据，只清理账号与其他业务数据")
+    p.add_argument("--no-projects", action="store_true", help="保留市场项目（商机）数据")
+    p.add_argument("--no-metrics", action="store_true", help="保留指标实际值/目标值（仅清理账号与任务）")
+    p.add_argument("--no-task-groups", action="store_true", help="保留非系统任务组")
+    p.add_argument("--admin-name", default=None, help="清理后把保留账号中管理员（account=admin）的显示名改为该值")
     p.add_argument("--dry-run", action="store_true", help="只打印将删除的内容，不写入数据库")
 
     r = sub.add_parser("rename", help="重命名账号（可选同时重置密码）")
@@ -238,6 +317,10 @@ def main(argv: list[str] | None = None) -> None:
                 db,
                 args.keep.split(","),
                 tasks=not args.no_tasks,
+                projects=not args.no_projects,
+                metrics=not args.no_metrics,
+                task_groups=not args.no_task_groups,
+                admin_name=args.admin_name,
                 dry_run=args.dry_run,
             )
         _report(result, args.dry_run)

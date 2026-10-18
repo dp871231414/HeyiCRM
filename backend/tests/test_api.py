@@ -17,7 +17,7 @@ def test_login_success_and_me(client):
     assert "account.role" in data["perms"]
     me = client.get("/api/v1/auth/me", headers=headers)
     assert me.status_code == 200
-    assert me.json()["user"]["name"] == "陈志明"
+    assert me.json()["user"]["name"] == "管理员"
 
 
 def test_login_wrong_password(client):
@@ -427,7 +427,7 @@ def test_task_import_success(client, admin_headers):
     items = client.get("/api/v1/tasks", params={"keyword": "导入任务一"}, headers=admin_headers).json()["items"]
     assert {it["unit"] for it in items} == {"万元", ""}
     # 创建人由系统记录，等于导入操作者
-    assert all(it["createdByName"] == "陈志明" for it in items)
+    assert all(it["createdByName"] == "管理员" for it in items)
     # 清理
     for it in items:
         client.delete(f"/api/v1/tasks/{it['id']}", headers=admin_headers)

@@ -55,7 +55,7 @@ def test_create_task_writes_first_progress(client, admin_headers):
     page = client.get(f"/api/v1/tasks/{task['id']}/progress", headers=admin_headers).json()
     assert page["total"] == 1
     assert page["items"][0]["content"] == "开工首周完成备料"
-    assert page["items"][0]["createdByName"] == "陈志明"
+    assert page["items"][0]["createdByName"] == "管理员"
     # 清理
     client.delete(f"/api/v1/tasks/{task['id']}", headers=admin_headers)
 

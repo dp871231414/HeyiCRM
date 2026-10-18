@@ -38,8 +38,14 @@ fi
 # 注意：必须走本脚本，才能复用上面那份 DATABASE_URL；直接在外面跑
 #       `python -m app.maintenance` 会拿到代码里的默认值，连到的不是这里在用的库。
 if [ -n "${PURGE_KEEP}" ]; then
-  echo "[start] PURGE_KEEP=${PURGE_KEEP} → 执行数据清理（保留这些账号）"
-  python -m app.maintenance purge --keep "${PURGE_KEEP}" || echo "[start] purge failed (non-fatal)"
+  PURGE_ARGS="--keep ${PURGE_KEEP}"
+  # 清空业务数据时，平台管理员显示名默认统一为「管理员」（可用 PURGE_ADMIN_NAME 覆盖）。
+  # 这样无需在部署命令里带中文，也能把预留的管理员账号命名规范到位。
+  PURGE_ADMIN_NAME="${PURGE_ADMIN_NAME:-管理员}"
+  PURGE_ARGS="${PURGE_ARGS} --admin-name ${PURGE_ADMIN_NAME}"
+  echo "[start] PURGE_KEEP=${PURGE_KEEP} → 执行数据清理（保留这些账号，管理员显示名=${PURGE_ADMIN_NAME}）"
+  # shellcheck disable=SC2086
+  python -m app.maintenance purge ${PURGE_ARGS} || echo "[start] purge failed (non-fatal)"
 fi
 
 # 一次性账号改名（可选，默认不执行）。同样必须走本脚本才能用对连接串。
