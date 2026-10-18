@@ -114,11 +114,11 @@ def main():
                   json_body={"name": tg_name, "owner_id": owner_b["id"]})
     assert st in (200, 201), f"同名不同责任人应允许: {st} {b2}"
     id_b = b2["id"]
-    # 5c) 同名同责任人 A 重复应 422
+    # 5c) 同名同责任人 A 重复应 409（唯一冲突）
     st, _ = _req("POST", "/task-groups", admin_cookie,
                  json_body={"name": tg_name, "owner_id": owner_a["id"]})
-    assert st == 422, f"同名同责任人重复应 422，实际: {st}"
-    print(f"[5] 任务组联合唯一 OK（同名不同责任人并存、同名同责任人 422）")
+    assert st == 409, f"同名同责任人重复应 409，实际: {st}"
+    print(f"[5] 任务组联合唯一 OK（同名不同责任人并存、同名同责任人 409 冲突）")
     # 5d) 删除两个测试任务组
     for tid in (id_a, id_b):
         st, _ = _req("DELETE", f"/task-groups/{tid}", admin_cookie)
