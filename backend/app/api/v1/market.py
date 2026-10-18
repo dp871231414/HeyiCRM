@@ -17,7 +17,13 @@ from sqlalchemy.orm import Session
 from urllib.parse import quote
 
 from app.config import settings
-from app.constants import MARKET_PROJECT_ID_PREFIX, MARKET_STAGE_VALUES, MARKET_STAGES
+from app.constants import (
+    ALL_PROJECT_STAGE_LABELS,
+    ALL_PROJECT_STAGE_VALUES,
+    MARKET_PROJECT_ID_PREFIX,
+    MARKET_STAGE_VALUES,
+    MARKET_STAGES,
+)
 from app.core.deps import require_any_perm, require_perm
 from app.db.session import get_db
 from app.models import (
@@ -54,7 +60,7 @@ from app.services.importer import (
 
 router = APIRouter(prefix="/market-projects", tags=["项目管理"])
 
-_STAGE_LABELS = {s["stage"]: s["label"] for s in MARKET_STAGES}
+_STAGE_LABELS = dict(ALL_PROJECT_STAGE_LABELS)
 
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 500
@@ -210,7 +216,7 @@ def _project_or_404(db: Session, user: User, project_id: str) -> MarketProject:
 
 
 def _apply_payload(p: MarketProject, payload) -> None:
-    if payload.stage not in MARKET_STAGE_VALUES:
+    if payload.stage not in ALL_PROJECT_STAGE_VALUES:
         raise HTTPException(status_code=422, detail="项目阶段不合法")
     p.name = payload.name.strip()
     if not p.name:

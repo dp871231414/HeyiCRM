@@ -50,7 +50,7 @@ class MarketProjectCreate(BaseModel):
     # 车头 / 挂车需求明细（子列表）；tractor_demand/trailer_demand 由后端按各行 qty 汇总，无需前端传
     tractorRequirements: list[ProjectRequirementItem] = Field(default_factory=list, description="车头需求明细")
     trailerRequirements: list[ProjectRequirementItem] = Field(default_factory=list, description="挂车需求明细")
-    stage: int = Field(description="项目阶段：10/25/50/75/90/100")
+    stage: int = Field(description="项目阶段：10/25/50/75/90/100 或 0（流失）")
     owner: str = Field(min_length=1, max_length=32, description="负责人")
     owner_dept_id: str | None = Field(default=None, description="负责人直接所属部门（选负责人后自动带出）")
 

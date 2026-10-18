@@ -141,6 +141,13 @@ CHURN_STAGE: dict = {"stage": 0, "label": "流失"}
 # 车辆需求分析筛选用阶段集合（MARKET_STAGES + 流失），顺序即筛选标签顺序
 DEMAND_ANALYSIS_STAGES: list[dict] = MARKET_STAGES + [CHURN_STAGE]
 
+# 允许作为「项目阶段」落库的全部取值：常规 6 阶段 + 流失（stage=0，0% 转化，仅用于标记项目已流失，不进销售漏斗）。
+# 编辑/新建项目、导入均以此为准；销售漏斗与转化率配置仍只取 MARKET_STAGES。
+ALL_PROJECT_STAGE_VALUES: list[int] = MARKET_STAGE_VALUES + [CHURN_STAGE["stage"]]
+
+# 全部阶段「取值 → 名称」映射（含流失），用于列表/详情/导出展示 stageLabel。
+ALL_PROJECT_STAGE_LABELS: dict[int, str] = {s["stage"]: s["label"] for s in DEMAND_ANALYSIS_STAGES}
+
 MARKET_PROJECT_ID_PREFIX = "MP"
 
 # 指标分组元数据

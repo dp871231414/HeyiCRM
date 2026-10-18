@@ -1181,7 +1181,7 @@ def test_market_project_crud_and_auto_fields(client, admin_headers):
 
 
 def test_market_project_stage_validation(client, admin_headers):
-    """阶段必须是 10/25/50/75/90/100 之一；需求数不能为负。"""
+    """阶段必须是 10/25/50/75/90/100 或 0（流失）之一；需求数不能为负。"""
     r = client.post("/api/v1/market-projects", json=_mp_body(stage=33), headers=admin_headers)
     assert r.status_code == 422
     r = client.post(
@@ -1190,6 +1190,24 @@ def test_market_project_stage_validation(client, admin_headers):
         headers=admin_headers,
     )
     assert r.status_code == 422
+
+
+def test_market_project_stage_churn_saves(client, admin_headers):
+    """流失阶段（stage=0）应允许保存：新建与编辑都可，且 stageLabel 正确回填为「流失」。"""
+    # 新建为流失
+    r = client.post("/api/v1/market-projects", json=_mp_body(stage=0), headers=admin_headers)
+    assert r.status_code == 201, r.text
+    pid = r.json()["id"]
+    assert r.json()["stage"] == 0
+    assert r.json()["stageLabel"] == "流失"
+    # 编辑为流失：从 25 改到 0 应成功
+    r = client.post("/api/v1/market-projects", json=_mp_body(name="待转流失"), headers=admin_headers)
+    assert r.status_code == 201, r.text
+    pid2 = r.json()["id"]
+    upd = _mp_body(stage=0)
+    r = client.patch(f"/api/v1/market-projects/{pid2}", json=upd, headers=admin_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["stage"] == 0 and r.json()["stageLabel"] == "流失"
 
 
 def test_market_project_scope_isolation(client, admin_headers, member_headers, head_headers):

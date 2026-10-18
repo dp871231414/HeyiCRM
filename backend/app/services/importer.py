@@ -20,7 +20,15 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.constants import MARKET_PROJECT_ID_PREFIX, MARKET_STAGE_VALUES, MARKET_STAGES, SCOPES, TASK_ID_PREFIX
+from app.constants import (
+    ALL_PROJECT_STAGE_VALUES,
+    CHURN_STAGE,
+    MARKET_PROJECT_ID_PREFIX,
+    MARKET_STAGE_VALUES,
+    MARKET_STAGES,
+    SCOPES,
+    TASK_ID_PREFIX,
+)
 from app.models import (
     TaskGroup,
     MarketProject,
@@ -882,8 +890,8 @@ def validate_account_rows(db: Session, rows: list[dict]) -> tuple[list[dict], li
 # 挂车需求 / 项目阶段 / 负责人 / 所属部门。其中「项目描述」列表不展示，但导入模板、导出、新增/编辑/详情仍展示，
 # 因此模板与导出都保留该列；「项目进展」为新增字段，导入后写入项目快照并生成第一条进展记录。
 
-_STAGE_LABEL_TO_VALUE = {s["label"]: s["stage"] for s in MARKET_STAGES}
-_STAGE_VALUE_TO_LABEL = {s["stage"]: s["label"] for s in MARKET_STAGES}
+_STAGE_LABEL_TO_VALUE = {s["label"]: s["stage"] for s in MARKET_STAGES + [CHURN_STAGE]}
+_STAGE_VALUE_TO_LABEL = {s["stage"]: s["label"] for s in MARKET_STAGES + [CHURN_STAGE]}
 
 MARKET_PROJECT_COLUMNS = [
     "项目名称",
@@ -928,7 +936,7 @@ def _resolve_stage(raw: Any) -> int | None:
         v = int(raw)
     else:
         v = _STAGE_LABEL_TO_VALUE.get(raw)
-    return v if v in MARKET_STAGE_VALUES else None
+    return v if v in ALL_PROJECT_STAGE_VALUES else None
 
 
 def next_market_project_id(db: Session) -> str:
@@ -946,7 +954,7 @@ MARKET_PROJECT_TEMPLATE_NOTES = [
     ["项目名称", "必填。市场项目名称（≤40字）"],
     ["项目进展", "必填。当前项目进展说明，导入后作为该项目的第一条进展记录（≤150字）"],
     ["项目描述", "必填。项目的背景与交付要求（≤150字）"],
-    ["项目阶段", "必填。填 10/25/50/75/90/100 或阶段名称（项目导入/市场尽调/初审通过/联合评审通过/签约落地/交车投运）"],
+    ["项目阶段", "必填。填 10/25/50/75/90/100/0 或阶段名称（项目导入/市场尽调/初审通过/联合评审通过/签约落地/交车投运/流失）"],
     ["负责人", "必填。必须是系统内已有账号姓名；所属部门由该负责人自动带出，无需填写"],
     ["车头需求 / 挂车需求", "不在导入模板内。导入后请在系统「编辑项目」中补充车辆型号、电池度数与数量"],
     ["项目ID / 创建人 / 创建时间 / 更新时间", "由系统自动生成，不在模板中填写"],
@@ -1039,7 +1047,7 @@ def validate_market_project_rows(db: Session, rows: list[dict]) -> tuple[list[di
 
         stage = _resolve_stage(r.get("项目阶段", ""))
         if stage is None:
-            row_errors.append({"field": "项目阶段", "msg": "不合法，应为 10/25/50/75/90/100 或阶段名称"})
+            row_errors.append({"field": "项目阶段", "msg": "不合法，应为 10/25/50/75/90/100/0 或阶段名称（含流失）"})
 
         owner = (r.get("负责人") or "").strip()
         if not owner:
