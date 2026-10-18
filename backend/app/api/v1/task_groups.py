@@ -1,9 +1,13 @@
-"""任务组（原「任务分类」）路由：列表、新增、改名。
+"""任务组（原「任务分类」）路由：列表、新增、改名、删除。
 
 任务组单独建表存储，支持下拉选择与动态新增：
 - 列表：返回全部任务组（含系统默认「空」），供前端下拉使用；
-- 新增：生成不可变 ID，记录创建人 / 创建时间；
-- 改名：仅改 name，ID 不变（任务组名称可修改，ID 锁定）。
+- 新增：生成不可变 ID，记录创建人 / 创建时间；**所属责任人（owner_id）取自新建任务界面选中的责任人**；
+- 改名：仅改 name，ID 不变（任务组名称可修改，ID 锁定）；
+- 删除：系统默认「空」不可删；有任务引用的任务组，删除前将引用任务回退到「空」。
+
+**唯一性口径**：任务组以「名称 + 责任人」联合唯一 —— 同名但责任人不同的任务组允许并存
+（例如「华东大区营收达成」可由不同责任人各持一份）。库级不再对 name 设唯一约束，由本路由校验。
 权限复用任务的 task.view / task.edit。
 """
 from __future__ import annotations
@@ -11,18 +15,19 @@ from __future__ import annotations
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_perm
 from app.db.session import get_db
-from app.models import TaskGroup, User
+from app.models import Task, TaskGroup, User
 from app.services.serializers import org_name
 
 router = APIRouter(prefix="/task-groups", tags=["任务组"])
 
 TG_NONE_ID = "TG_NONE"
+TG_NAME_MAX = 25
 
 
 class TaskGroupOut(BaseModel):
@@ -31,8 +36,8 @@ class TaskGroupOut(BaseModel):
     createdAt: str = ""
     createdBy: str = ""
     createdByName: str = ""
-    # 责任人 / 责任部门：任务组首次被任务选用时从任务回填，下拉展示「名称 创建人」用 createdByName，
-    # 这两个字段供「任务组单独维护」的数据表呈现（id 不可变，改名只改 name）。
+    # 责任人 / 责任部门：任务组首次被任务选用时从任务回填，或直接由新建任务界面选定；
+    # 下拉展示「名称 责任人」用 ownerName。
     ownerId: str = ""
     ownerName: str = ""
     deptId: str = ""
@@ -42,11 +47,13 @@ class TaskGroupOut(BaseModel):
 
 
 class TaskGroupCreate(BaseModel):
-    name: str = ""
+    name: str = Field(default="", min_length=1, max_length=TG_NAME_MAX, description="任务组名称（≤25字）")
+    # 所属责任人（用户 ID）：新建任务组时取界面选中的责任人；为空则无责任人
+    owner_id: str | None = Field(default=None, description="任务组所属责任人用户 ID")
 
 
 class TaskGroupRename(BaseModel):
-    name: str = ""
+    name: str = Field(default="", min_length=1, max_length=TG_NAME_MAX, description="任务组名称（≤25字）")
 
 
 def _next_id(db: Session) -> str:
@@ -99,12 +106,21 @@ def create_task_group(
     name = (payload.name or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="任务组名称不能为空")
-    if len(name) > 128:
-        raise HTTPException(status_code=422, detail="任务组名称不能超过 128 个字符")
-    if db.scalar(select(TaskGroup).where(TaskGroup.name == name)):
-        raise HTTPException(status_code=409, detail=f"任务组「{name}」已存在")
+    if len(name) > TG_NAME_MAX:
+        raise HTTPException(status_code=422, detail=f"任务组名称不能超过 {TG_NAME_MAX} 个字")
+    # 责任人（用户 ID）：校验存在；为空表示无责任人，与「名称 + 空责任人」同类
+    owner_id = payload.owner_id
+    if owner_id:
+        if not db.get(User, owner_id):
+            raise HTTPException(status_code=422, detail="任务组所属责任人不存在")
+    # 唯一性 = 名称 + 责任人（同名但责任人不同允许并存）
+    dup = db.scalar(
+        select(TaskGroup).where(TaskGroup.name == name, TaskGroup.owner_id.is_(None) if owner_id is None else TaskGroup.owner_id == owner_id)
+    )
+    if dup:
+        raise HTTPException(status_code=409, detail=f"任务组「{name}」已存在（同名且责任人相同）")
 
-    mt = TaskGroup(id=_next_id(db), name=name, created_by=user.id)
+    mt = TaskGroup(id=_next_id(db), name=name, created_by=user.id, owner_id=owner_id)
     db.add(mt)
     db.commit()
     db.refresh(mt)
@@ -124,13 +140,49 @@ def rename_task_group(
     name = (payload.name or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="任务组名称不能为空")
-    if len(name) > 128:
-        raise HTTPException(status_code=422, detail="任务组名称不能超过 128 个字符")
-    # ID 不变，仅改名称；名称唯一，需排除自身后查重
-    dup = db.scalar(select(TaskGroup).where(TaskGroup.name == name, TaskGroup.id != mt_id))
+    if len(name) > TG_NAME_MAX:
+        raise HTTPException(status_code=422, detail=f"任务组名称不能超过 {TG_NAME_MAX} 个字")
+    # ID 不变，仅改名称；唯一性 = 名称 + 责任人（排除自身后查重）
+    dup = db.scalar(
+        select(TaskGroup).where(
+            TaskGroup.name == name,
+            TaskGroup.id != mt_id,
+            TaskGroup.owner_id.is_(None) if mt.owner_id is None else TaskGroup.owner_id == mt.owner_id,
+        )
+    )
     if dup:
-        raise HTTPException(status_code=409, detail=f"任务组「{name}」已存在")
+        raise HTTPException(status_code=409, detail=f"任务组「{name}」已存在（同名且责任人相同）")
     mt.name = name
     db.commit()
     db.refresh(mt)
     return _to_out(db, mt)
+
+
+@router.delete("/{mt_id}")
+def delete_task_group(
+    mt_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("task.edit")),
+):
+    """删除任务组。
+
+    - 系统默认「空」不可删；
+    - 有任务引用的任务组，删除前将引用任务回退到「空」（不删除任务，仅解除分组归属）。
+    """
+    mt = db.get(TaskGroup, mt_id)
+    if not mt:
+        raise HTTPException(status_code=404, detail="任务组不存在")
+    if mt.is_system:
+        raise HTTPException(status_code=400, detail="系统默认任务组不可删除")
+    # 引用该任务组的任务回退到「空」
+    ref_tasks = db.scalars(select(Task).where(Task.task_group_id == mt_id)).all()
+    none_name = ""
+    none = db.get(TaskGroup, TG_NONE_ID)
+    if none:
+        none_name = none.name
+    for t in ref_tasks:
+        t.task_group_id = TG_NONE_ID
+        t.title = none_name  # 冗余任务组名随归属一并清空
+    db.delete(mt)
+    db.commit()
+    return {"ok": True, "msg": "已删除", "data": {"id": mt_id, "reassignedTasks": len(ref_tasks)}}

@@ -100,8 +100,8 @@
     <ModalDialog :open="formOpen" :title="form.id ? '编辑项目' : '新建项目'" width="lg" @close="formOpen = false">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="md:col-span-2">
-          <label class="label">项目名称<span class="req">*</span></label>
-          <input v-model.trim="form.name" class="input" placeholder="如：华东物流园运力替换项目" />
+          <label class="label">项目名称<span class="req">*</span><span class="text-slate-400 font-normal">（≤40字）</span></label>
+          <input v-model.trim="form.name" class="input" maxlength="40" placeholder="如：华东物流园运力替换项目" />
         </div>
         <div>
           <label class="label">项目阶段<span class="req">*</span></label>
@@ -202,13 +202,13 @@
         </div>
 
         <div class="md:col-span-2">
-          <label class="label">项目描述<span class="text-slate-400 font-normal">（选填）</span></label>
-          <textarea v-model="form.description" rows="3" class="input" />
+          <label class="label">项目描述<span class="req">*</span><span class="text-slate-400 font-normal">（≤150字）</span></label>
+          <textarea v-model="form.description" rows="3" class="input" maxlength="150" placeholder="项目的背景、交付要求与关键说明" />
         </div>
         <!-- 项目进展：新建时直接填写（必填，成为第一条进展记录）；编辑时只读，通过「新增进展」追加 -->
         <div v-if="!form.id" class="md:col-span-2">
-          <label class="label">项目进展<span class="req">*</span><span class="text-slate-400 font-normal">（将作为第一条进展记录）</span></label>
-          <textarea v-model="form.progress" rows="2" class="input" placeholder="当前项目进展说明" />
+          <label class="label">项目进展<span class="req">*</span><span class="text-slate-400 font-normal">（将作为第一条进展记录，≤150字）</span></label>
+          <textarea v-model="form.progress" rows="2" class="input" maxlength="150" placeholder="当前项目进展说明" />
         </div>
         <div v-else class="md:col-span-2">
           <label class="label">进展记录<span class="text-slate-400 font-normal">（不可直接修改，点击「新增进展」追加本次内容）</span></label>
@@ -680,6 +680,9 @@ function onOwnerChange() {
 async function save() {
   formError.value = ''
   if (!form.name) return (formError.value = '项目名称不能为空')
+  if (form.name.length > 40) return (formError.value = '项目名称不能超过 40 个字')
+  if (!form.description?.trim()) return (formError.value = '项目描述不能为空')
+  if (form.description.length > 150) return (formError.value = '项目描述不能超过 150 个字')
   if (!form.owner) return (formError.value = '请选择责任人')
   if (!form.ownerDeptId) return (formError.value = '请选择市场部及下属部门的责任人')
   // 需求明细：每条数量不可为负
@@ -688,6 +691,7 @@ async function save() {
   }
   // 进展必填（新建时填写，成为第一条进展记录；编辑不可直接改进展，只能「新增进展」）
   if (!form.id && !form.progress.trim()) return (formError.value = '项目进展不能为空')
+  if (!form.id && form.progress.length > 150) return (formError.value = '项目进展不能超过 150 个字')
 
   saving.value = true
   // 请求体使用后端约定的 snake_case 字段；车头/挂车需求以明细子列表提交，汇总由后端计算

@@ -9,6 +9,7 @@ from app.constants import ORG_TYPE_PROJECT
 from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models import Organization, User
+from app.services import scope as scope_svc
 from app.services.org_tree import market_tree_ids
 
 router = APIRouter(prefix="/meta", tags=["元数据"])
@@ -37,8 +38,16 @@ def org_options(db: Session = Depends(get_db), user: User = Depends(get_current_
 
 @router.get("/owners")
 def owner_options(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """责任人候选：系统内启用状态的账号姓名。"""
-    rows = db.scalars(select(User).where(User.status == "active").order_by(User.id)).all()
+    """责任人候选：当前用户数据可见范围（scope）内的启用账号。
+
+    scope=all → 全公司；dept_sub → 本部门及下属部门；dept → 本部门；self → 仅本人。
+    与「新建任务 / 任务组」的责任人可选范围一致（见 services/scope.visible_user_filter）。
+    """
+    cond = scope_svc.visible_user_filter(db, user)
+    q = select(User).where(User.status == "active")
+    if cond is not None:
+        q = q.where(cond)
+    rows = db.scalars(q.order_by(User.id)).all()
     return [{"id": u.id, "name": u.name, "deptId": u.dept_id} for u in rows]
 
 

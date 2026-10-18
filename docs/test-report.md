@@ -1,7 +1,7 @@
 # 测试报告 · 合一重卡生态经营看板
 
-- 报告日期：2026-10-17（v3.3，基于最新方案重新生成）
-- 被测版本：`main`（含 Round 23：系统配置·数据字典、项目管理车头/挂车需求子列表；Round 24：下载中心；Round 26：导出口径收紧 + 移除重新生成；Round 27：菜单归并 + 任务组全栈重命名）
+- 报告日期：2026-10-18（v3.4，基于最新方案重新生成）
+- 被测版本：`main`（含 Round 23：系统配置·数据字典、项目管理车头/挂车需求子列表；Round 24：下载中心；Round 26：导出口径收紧 + 移除重新生成；Round 27：菜单归并 + 任务组全栈重命名；Round 28：责任人默认与范围过滤 + 任务组联合唯一与删除 + 字段长度限制 + 项目描述必填）
 - 测试环境：macOS / Python 3.13.12（`/Users/gavin/.workbuddy/binaries/python/envs/fleet`）/ Node 22.22.2-6 / Chromium（Playwright）
 - 后端运行：`uvicorn app.main:app`（SQLite 单文件库 `app.db`；`DATABASE_URL` 可切 PostgreSQL）
 - 前端运行：`vite build` 产物静态托管于 `backend/static`，与 API 同源
@@ -227,4 +227,5 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login -H 'Content-Type: applic
 - Round 24 新增下载中心：导出端点改为「先落盘建记录再返回文件」（X-1），记录按 `created_by` 隔离（X-4）；后端新增 `test_downloads.py` 4 项。
 - Round 26：导出端点改为「只返回下载中心记录 JSON，不再即时返回文件流」，漏斗/导出测试改用种子数据（移除 `reseed` 依赖）；当前后端 **152 passed**。
 - Round 27：纯重命名——任务管理「主任务」全栈更名为「任务组」（表/字段/API/前端变量/种子/测试/文档一致改为 `task_group`/`task_group_id`/`/task-groups`/`TG` 前缀 ID），菜单上「账号管理」「下载中心」归并到「系统配置」二级菜单。无新增测试用例，后端仍为 **152 passed**；`test_main_tasks.py` 重命名为 `test_task_groups.py`。
+- Round 28：责任人默认与范围过滤 + 任务组联合唯一与删除 + 字段长度限制 + 项目描述必填。新增 `services/scope.py:visible_user_filter` 并按 `effective_scope` 过滤责任人下拉（`meta.py:owner_options`）；任务组唯一性改为「名称 + owner_id」联合唯一并新增 `DELETE /task-groups/{id}`（有引用回退 `TG_NONE`）；`schemas/task.py`、`schemas/project.py`、`task_groups.py` 加字段长度校验器，`importer.py` 导入校验长度与必填；前端 `TasksView`/`ProjectsView` 加 `maxlength` 与保存校验、任务组下拉加宽并支持删除；项目描述改为必填（新增/编辑/导入一致）。纯约束收紧，无新增测试用例，后端仍为 **152 passed**；线上验证复跑责任人范围过滤、任务组删除、字段长度拦截、项目描述必填。
 - 历史逐轮变更（Round 1–22）的测试记录已并入 `design.md` §13 精选变更日志；旧版 test-report（72/92/116/149 等阶段性数字）以本版 **152 passed** 为准。

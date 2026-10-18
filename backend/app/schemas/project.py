@@ -1,7 +1,13 @@
 """市场项目相关模型。"""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+# 字段长度上限（与前端 input/maxlength、导入校验三处保持一致）
+PROJECT_NAME_MAX = 40
+DESC_MAX = 150
+PROGRESS_MAX = 150
 
 
 class ProjectRequirementItem(BaseModel):
@@ -48,6 +54,29 @@ class MarketProjectCreate(BaseModel):
     owner: str = Field(min_length=1, max_length=32, description="负责人")
     owner_dept_id: str | None = Field(default=None, description="负责人直接所属部门（选负责人后自动带出）")
 
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v: str) -> str:
+        if len(v) > PROJECT_NAME_MAX:
+            raise ValueError(f"项目名称不能超过 {PROJECT_NAME_MAX} 个字")
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def _v_desc(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("项目描述不能为空")
+        if len(v) > DESC_MAX:
+            raise ValueError(f"项目描述不能超过 {DESC_MAX} 个字")
+        return v
+
+    @field_validator("progress")
+    @classmethod
+    def _v_progress(cls, v: str) -> str:
+        if len(v) > PROGRESS_MAX:
+            raise ValueError(f"项目进展不能超过 {PROGRESS_MAX} 个字")
+        return v
+
 
 class MarketProjectUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
@@ -58,6 +87,22 @@ class MarketProjectUpdate(BaseModel):
     owner: str = Field(min_length=1, max_length=32)
     # 编辑界面不再直接改进展（只能通过「新增进展」追加记录），后端忽略该字段
     owner_dept_id: str | None = Field(default=None, description="负责人直接所属部门（选负责人后自动带出）")
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v: str) -> str:
+        if len(v) > PROJECT_NAME_MAX:
+            raise ValueError(f"项目名称不能超过 {PROJECT_NAME_MAX} 个字")
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def _v_desc(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("项目描述不能为空")
+        if len(v) > DESC_MAX:
+            raise ValueError(f"项目描述不能超过 {DESC_MAX} 个字")
+        return v
 
 
 class MarketProjectListOut(BaseModel):
@@ -93,3 +138,10 @@ class ProjectProgressListOut(BaseModel):
 
 class ProjectProgressCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000, description="本次项目进展内容")
+
+    @field_validator("content")
+    @classmethod
+    def _v_content(cls, v: str) -> str:
+        if len(v) > PROGRESS_MAX:
+            raise ValueError(f"项目进展不能超过 {PROGRESS_MAX} 个字")
+        return v

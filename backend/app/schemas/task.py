@@ -1,7 +1,13 @@
 """任务相关模型。"""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+# 字段长度上限（与前端 input/maxlength、导入校验三处保持一致）
+TASK_NAME_MAX = 40
+DESC_MAX = 150
+PROGRESS_MAX = 150
 
 
 class TaskOut(BaseModel):
@@ -51,6 +57,27 @@ class TaskCreate(BaseModel):
     dept_id: str
     owner: str
 
+    @field_validator("parent")
+    @classmethod
+    def _v_parent(cls, v: str) -> str:
+        if len(v) > TASK_NAME_MAX:
+            raise ValueError(f"任务名称不能超过 {TASK_NAME_MAX} 个字")
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def _v_desc(cls, v: str) -> str:
+        if len(v) > DESC_MAX:
+            raise ValueError(f"任务描述不能超过 {DESC_MAX} 个字")
+        return v
+
+    @field_validator("note")
+    @classmethod
+    def _v_note(cls, v: str) -> str:
+        if len(v) > PROGRESS_MAX:
+            raise ValueError(f"任务进展不能超过 {PROGRESS_MAX} 个字")
+        return v
+
 
 class TaskUpdate(BaseModel):
     parent: str = Field(min_length=1, max_length=128)
@@ -66,6 +93,20 @@ class TaskUpdate(BaseModel):
     end_date: str
     dept_id: str
     owner: str
+
+    @field_validator("parent")
+    @classmethod
+    def _v_parent(cls, v: str) -> str:
+        if len(v) > TASK_NAME_MAX:
+            raise ValueError(f"任务名称不能超过 {TASK_NAME_MAX} 个字")
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def _v_desc(cls, v: str) -> str:
+        if len(v) > DESC_MAX:
+            raise ValueError(f"任务描述不能超过 {DESC_MAX} 个字")
+        return v
 
 
 class TaskListOut(BaseModel):
@@ -103,3 +144,10 @@ class TaskProgressListOut(BaseModel):
 
 class TaskProgressCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000, description="本次进展内容")
+
+    @field_validator("content")
+    @classmethod
+    def _v_content(cls, v: str) -> str:
+        if len(v) > PROGRESS_MAX:
+            raise ValueError(f"任务进展不能超过 {PROGRESS_MAX} 个字")
+        return v

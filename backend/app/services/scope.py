@@ -58,6 +58,27 @@ def visible_org_ids(db: Session, user: User) -> list[str]:
     return [user.dept_id]
 
 
+def visible_user_filter(db: Session, user: User) -> ColumnElement[bool] | None:
+    """责任人候选范围：返回「可选项用户」的 SQL 条件；scope=all 时返回 None（不过滤）。
+
+    与 effective_scope 同一套语义：
+    - all  → 全部启用账号
+    - self → 仅本人
+    - dept → 本人所属部门内的启用账号
+    - dept_sub → 本人所属部门及其全部子孙部门内的启用账号
+    用于「新建任务 / 任务组」的责任人下拉，使其可选范围与角色设定的数据权限一致。
+    """
+    scope = effective_scope(db, user)
+    if scope == "all":
+        return None
+    if scope == "self":
+        return User.id == user.id
+    orgs = visible_org_ids(db, user)
+    if not orgs:
+        return User.id == user.id
+    return User.dept_id.in_(orgs)
+
+
 def visible_task_filter(db: Session, user: User) -> ColumnElement[bool] | None:
     """返回任务可见性的 SQL 条件；scope=all 时返回 None 表示不过滤。"""
     scope = effective_scope(db, user)

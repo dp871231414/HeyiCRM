@@ -39,6 +39,47 @@ async def lifespan(_: FastAPI):
             if "main_task_id" in tcols and "task_group_id" not in tcols:
                 conn.execute(text("ALTER TABLE task RENAME COLUMN main_task_id TO task_group_id"))
 
+    # 迁移：任务组名称去「库级唯一约束」——唯一性改为「名称 + 责任人」联合（由接口层校验）。
+    # 老库 task_group.name 上可能残留 autoindex，需移除，否则同名不同责任人的任务组无法共存。
+    with engine.begin() as conn:
+        tg = conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_group'")
+        ).fetchone()
+        if tg:
+            idxs = conn.execute(text("PRAGMA index_list(task_group)")).fetchall()
+            for row in idxs:
+                # PRAGMA index_list 列：seq, name, unique, origin, partial
+                idx_name, is_unique = row[1], row[2]
+                if not is_unique:
+                    continue
+                cols = conn.execute(text(f"PRAGMA index_info({idx_name})")).fetchall()
+                col_names = {c[2] for c in cols}
+                if col_names == {"name"}:
+                    try:
+                        conn.execute(text(f"ALTER TABLE task_group DROP CONSTRAINT {idx_name}"))
+                        logger.info("已移除 task_group.name 库级唯一约束（%s）", idx_name)
+                    except Exception as exc:  # pragma: no cover - 极旧版本无 DROP CONSTRAINT
+                        logger.warning("DROP CONSTRAINT 失败，退化为整表重建：%s", exc)
+                        conn.execute(
+                            text(
+                                "CREATE TABLE task_group_new ("
+                                "id VARCHAR(32) PRIMARY KEY, name VARCHAR(128) NOT NULL, "
+                                "created_by VARCHAR(16), created_at TIMESTAMP, owner_id VARCHAR(16), "
+                                "dept_id VARCHAR(16), updated_at TIMESTAMP, is_system BOOLEAN)"
+                            )
+                        )
+                        conn.execute(
+                            text(
+                                "INSERT INTO task_group_new "
+                                "(id, name, created_by, created_at, owner_id, dept_id, updated_at, is_system) "
+                                "SELECT id, name, created_by, created_at, owner_id, dept_id, updated_at, is_system "
+                                "FROM task_group"
+                            )
+                        )
+                        conn.execute(text("DROP TABLE task_group"))
+                        conn.execute(text("ALTER TABLE task_group_new RENAME TO task_group"))
+                        logger.info("已通过整表重建移除 task_group.name 库级唯一约束")
+
     Base.metadata.create_all(bind=engine)
     logger.info("数据库表已就绪")
 

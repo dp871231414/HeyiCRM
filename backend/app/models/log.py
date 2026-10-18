@@ -58,7 +58,9 @@ class TaskGroup(Base):
     __tablename__ = "task_group"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    # 唯一性改为「名称 + 责任人」联合（由接口层校验），故 name 不再设库级唯一约束；
+    # 保留索引以加速按名称查重。
+    name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     created_by: Mapped[str | None] = mapped_column(String(16), ForeignKey("user.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # 责任人 / 责任部门：任务组单独建表维护；创建时为空，首次被任务选用时由任务的责任人/部门回填

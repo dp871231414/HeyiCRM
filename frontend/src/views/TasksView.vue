@@ -168,8 +168,8 @@
     <ModalDialog :open="formOpen" :title="form.id ? '编辑任务' : '新建任务'" width="lg" @close="formOpen = false">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="md:col-span-2">
-          <label class="label">任务名称<span class="req">*</span></label>
-          <input v-model.trim="form.parent" class="input" placeholder="如：完成全年营收目标 10.2 亿" />
+          <label class="label">任务名称<span class="req">*</span><span class="text-slate-400 font-normal">（≤40字）</span></label>
+          <input v-model.trim="form.parent" class="input" maxlength="40" placeholder="如：完成全年营收目标 10.2 亿" />
         </div>
         <div>
           <label class="label">任务组<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」，展示「名称 责任人」）</span></label>
@@ -177,7 +177,8 @@
             <input
               v-model.trim="newTaskGroupName"
               class="input"
-              placeholder="输入新任务组名称"
+              maxlength="25"
+              placeholder="输入新任务组名称（≤25字）"
               @keyup.enter="confirmAddTaskGroup"
             />
             <button class="btn-ghost" :disabled="addingTaskGroupBusy" @click="confirmAddTaskGroup">
@@ -197,9 +198,10 @@
               </button>
               <!-- 点击空白处关闭下拉 -->
               <div v-if="tgDropdownOpen" class="fixed inset-0 z-10" @click="tgDropdownOpen = false" />
+              <!-- 下拉面板宽度固定比输入框宽，避免「新增/删除」按钮拥挤 -->
               <div
                 v-if="tgDropdownOpen"
-                class="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg max-h-64 overflow-auto"
+                class="absolute z-20 mt-1 w-80 rounded-lg border border-slate-200 bg-white shadow-lg max-h-64 overflow-auto"
               >
                 <button
                   v-for="m in taskGroups"
@@ -222,7 +224,7 @@
                     </template>
                     <template v-else>
                       <span>{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</span>
-                      <!-- 展示任务组责任人（回填自首个关联任务）；创建人仅存数据表不在此体现 -->
+                      <!-- 展示任务组责任人（新建时选定 / 首次关联任务回填）；创建人仅存数据表不在此体现 -->
                       <span v-if="m.ownerName" class="text-slate-400 text-xs"> {{ m.ownerName }}</span>
                     </template>
                   </span>
@@ -230,15 +232,26 @@
                     <button type="button" class="text-good-600 text-xs" :disabled="renamingBusy" @click="confirmRename(m)">保存</button>
                     <button type="button" class="text-slate-400 text-xs" :disabled="renamingBusy" @click="cancelRename">取消</button>
                   </span>
-                  <button
-                    v-else-if="auth.hasPerm('task.edit') && !m.isSystem"
-                    type="button"
-                    class="text-slate-400 hover:text-brand-600 shrink-0"
-                    title="修改任务组名称"
-                    @click.stop="startRename(m)"
-                  >
-                    ✎
-                  </button>
+                  <template v-else>
+                    <button
+                      v-if="auth.hasPerm('task.edit') && !m.isSystem"
+                      type="button"
+                      class="text-slate-400 hover:text-brand-600 shrink-0"
+                      title="修改任务组名称"
+                      @click.stop="startRename(m)"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      v-if="auth.hasPerm('task.edit') && !m.isSystem"
+                      type="button"
+                      class="text-slate-400 hover:text-bad-600 shrink-0"
+                      title="删除任务组"
+                      @click.stop="startDeleteTaskGroup(m)"
+                    >
+                      🗑
+                    </button>
+                  </template>
                 </button>
               </div>
             </div>
@@ -292,13 +305,13 @@
           <input v-model="form.endDate" type="date" class="input" />
         </div>
         <div class="md:col-span-2">
-          <label class="label">任务描述<span class="req">*</span></label>
-          <textarea v-model="form.description" rows="2" class="input" placeholder="任务的背景、交付要求与关键说明" />
+          <label class="label">任务描述<span class="req">*</span><span class="text-slate-400 font-normal">（≤150字）</span></label>
+          <textarea v-model="form.description" rows="2" class="input" maxlength="150" placeholder="任务的背景、交付要求与关键说明" />
         </div>
         <!-- 任务进展：新建时直接填写（必填，成为第一条进展记录）；编辑时只读，通过「新增进展」追加 -->
         <div v-if="!form.id" class="md:col-span-2">
-          <label class="label">任务进展<span class="req">*</span><span class="text-slate-400 font-normal">（将作为第一条进展记录）</span></label>
-          <textarea v-model="form.note" rows="2" class="input" placeholder="当前进展说明" />
+          <label class="label">任务进展<span class="req">*</span><span class="text-slate-400 font-normal">（将作为第一条进展记录，≤150字）</span></label>
+          <textarea v-model="form.note" rows="2" class="input" maxlength="150" placeholder="当前进展说明" />
         </div>
         <div v-else class="md:col-span-2">
           <label class="label">任务进展<span class="text-slate-400 font-normal">（不可直接修改，点击「新增进展」追加本次内容）</span></label>
@@ -429,16 +442,28 @@
       </template>
     </ModalDialog>
 
-    <!-- 删除确认 -->
-    <ModalDialog :open="!!deleteTarget" title="确认删除任务" width="sm" @close="deleteTarget = null">
-      <p class="text-sm text-slate-600">
-        将删除任务「{{ deleteTarget?.parent }}」（{{ deleteTarget?.id }}）。该操作不可撤销。
-      </p>
-      <template #footer>
-        <button class="btn-ghost" @click="deleteTarget = null">取消</button>
-        <button class="btn-danger" @click="doDelete">确认删除</button>
-      </template>
-    </ModalDialog>
+<!-- 删除确认 -->
+<ModalDialog :open="!!deleteTarget" title="确认删除任务" width="sm" @close="deleteTarget = null">
+  <p class="text-sm text-slate-600">
+    将删除任务「{{ deleteTarget?.parent }}」（{{ deleteTarget?.id }}）。该操作不可撤销。
+  </p>
+  <template #footer>
+    <button class="btn-ghost" @click="deleteTarget = null">取消</button>
+    <button class="btn-danger" @click="doDelete">确认删除</button>
+  </template>
+</ModalDialog>
+
+<!-- 删除任务组确认 -->
+<ModalDialog :open="!!deleteTaskGroupTarget" title="确认删除任务组" width="sm" @close="deleteTaskGroupTarget = null">
+  <p class="text-sm text-slate-600">
+    将删除任务组「{{ deleteTaskGroupTarget?.name }}」（{{ deleteTaskGroupTarget?.ownerName ? '责任人 ' + deleteTaskGroupTarget?.ownerName : '无责任人' }}）。
+    该任务组下已有的任务将自动归到「空」，任务本身不会被删除。此操作不可撤销。
+  </p>
+  <template #footer>
+    <button class="btn-ghost" @click="deleteTaskGroupTarget = null">取消</button>
+    <button class="btn-danger" @click="confirmDeleteTaskGroup">确认删除</button>
+  </template>
+</ModalDialog>
 
     <!-- 批量导入（含下载模板 + 上传 + 结果） -->
     <ModalDialog :open="importOpen" title="批量导入" width="lg" @close="importOpen = false">
@@ -519,7 +544,7 @@ const keyword = ref('')
 const deptFilter = ref('')
 const statusFilter = ref('')
 const orgs = ref<{ id: string; name: string; depth: number }[]>([])
-const owners = ref<{ id: string; name: string }[]>([])
+const owners = ref<{ id: string; name: string; deptId?: string }[]>([])
 /** 任务组（原任务分类）下拉选项 */
 const taskGroups = ref<TaskGroup[]>([])
 /** 新增任务组内联输入 */
@@ -856,6 +881,10 @@ function openForm(t?: TaskItem) {
       deptId: t.deptId,
       owner: t.owner,
     })
+    // 编辑时任务的责任人可能不在当前用户数据权限范围内（下拉未列出），需补入下拉以保证选中项不丢失
+    if (t.owner && !owners.value.some((o) => o.name === t.owner)) {
+      owners.value = [...owners.value, { id: t.ownerId || '', name: t.owner, deptId: t.deptId }]
+    }
   } else {
     Object.assign(form, {
       id: '',
@@ -870,7 +899,8 @@ function openForm(t?: TaskItem) {
       startDate: new Date().toISOString().slice(0, 10),
       endDate: '',
       deptId: orgs.value[1]?.id ?? 'CO',
-      owner: owners.value[0]?.name ?? '',
+      // 责任人默认等于当前操作人（创建人）；可选范围由后端按数据权限过滤（本人/本部门/全公司）
+      owner: auth.user?.name ?? owners.value[0]?.name ?? '',
     })
   }
   // 编辑模式加载进展记录（新建无需）
@@ -882,6 +912,9 @@ function openForm(t?: TaskItem) {
 async function save() {
   formError.value = ''
   if (!form.parent) return (formError.value = '任务名称不能为空')
+  if (form.parent.length > 40) return (formError.value = '任务名称不能超过 40 个字')
+  if (form.description.length > 150) return (formError.value = '任务描述不能超过 150 个字')
+  if (!form.id && form.note.length > 150) return (formError.value = '任务进展不能超过 150 个字')
   if (!(form.target > 0)) return (formError.value = '目标必须为正数')
   if (!form.endDate) return (formError.value = '请选择计划结束日期')
   if (form.endDate < form.startDate) return (formError.value = '计划结束日期不能早于开始日期')
@@ -918,16 +951,23 @@ async function save() {
   }
 }
 
-/** 新增任务组：调接口创建，刷新下拉并自动选中 */
+/** 新增任务组：调接口创建，刷新下拉并自动选中。
+ *  任务组「所属责任人」取当前任务创建界面选中的责任人（form.owner 解析为 user id）。 */
 async function confirmAddTaskGroup() {
   const name = newTaskGroupName.value.trim()
   if (!name) {
     formError.value = '任务组名称不能为空'
     return
   }
+  if (name.length > 25) {
+    formError.value = '任务组名称不能超过 25 个字'
+    return
+  }
   addingTaskGroupBusy.value = true
   try {
-    const created = await taskGroupApi.create(name)
+    const ownerObj = owners.value.find((o) => o.name === form.owner)
+    const ownerId = ownerObj?.id ?? null
+    const created = await taskGroupApi.create(name, ownerId)
     taskGroups.value = [...taskGroups.value, created].sort((a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name))
     form.taskGroupId = created.id
     newTaskGroupName.value = ''
@@ -936,6 +976,30 @@ async function confirmAddTaskGroup() {
     app.toast((e as Error).message, 'error')
   } finally {
     addingTaskGroupBusy.value = false
+  }
+}
+
+/** 删除任务组：弹确认框；系统默认「空」不可删（后端也会拦截）。 */
+const deleteTaskGroupTarget = ref<TaskGroup | null>(null)
+function startDeleteTaskGroup(m: TaskGroup) {
+  if (m.isSystem) {
+    app.toast('系统默认任务组不可删除', 'error')
+    return
+  }
+  deleteTaskGroupTarget.value = m
+}
+async function confirmDeleteTaskGroup() {
+  const m = deleteTaskGroupTarget.value
+  if (!m) return
+  try {
+    await taskGroupApi.remove(m.id)
+    taskGroups.value = taskGroups.value.filter((x) => x.id !== m.id)
+    // 若当前选中的正是被删任务组，回退到默认「空」
+    if (form.taskGroupId === m.id) form.taskGroupId = defaultTaskGroupId()
+    app.toast('已删除任务组')
+    deleteTaskGroupTarget.value = null
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
   }
 }
 

@@ -185,14 +185,14 @@ def _safe_sheet_name(wb: Workbook, name: str) -> str:
 
 TASK_TEMPLATE_NOTES = [
     ["填写项", "说明"],
-    ["任务名称", "必填。公司级重点任务标题；同名多行会自动归组为同一任务"],
-    ["任务分类", "选填。部门/班组级承接任务，可为空"],
-    ["任务描述", "选填。任务的背景与交付要求"],
+    ["任务名称", "必填。公司级重点任务标题；同名多行会自动归组为同一任务（≤40字）"],
+    ["任务分类", "选填。部门/班组级承接任务，可为空（≤25字；同名不同责任人视为不同任务组）"],
+    ["任务描述", "必填。任务的背景与交付要求（≤150字）"],
     ["是否异常", "选填，只能填「是」或「否」，默认否"],
     ["目标", "必填。数字，非量化任务填 1"],
     ["已完成", "必填。数字，非量化任务未完成填 0、完成填 1"],
     ["数量单位", "选填。如 万元 / 台 / 项，留空则不显示单位"],
-    ["任务进展", "必填。当前进展说明，导入后作为该任务的第一条进展记录"],
+    ["任务进展", "必填。当前进展说明，导入后作为该任务的第一条进展记录（≤150字）"],
     ["计划开始日期", "必填，格式 2026-10-01"],
     ["计划结束日期", "必填，格式 2026-12-31，不能早于开始日期"],
     ["责任部门", "必填。组织名称或编码（见「组织清单」页）"],
@@ -415,14 +415,28 @@ def validate_task_rows(db: Session, rows: list[dict]) -> tuple[list[dict], list[
         row_no = i + 2
         row_errors: list[dict] = []
 
-        if not r.get("任务名称"):
+        name = (r.get("任务名称") or "").strip()
+        if not name:
             row_errors.append({"field": "任务名称", "msg": "不能为空"})
+        elif len(name) > 40:
+            row_errors.append({"field": "任务名称", "msg": "不能超过 40 个字"})
 
-        if not (r.get("任务描述") or "").strip():
+        desc = (r.get("任务描述") or "").strip()
+        if not desc:
             row_errors.append({"field": "任务描述", "msg": "不能为空"})
+        elif len(desc) > 150:
+            row_errors.append({"field": "任务描述", "msg": "不能超过 150 个字"})
 
-        if not (r.get("任务进展") or "").strip():
+        progress = (r.get("任务进展") or "").strip()
+        if not progress:
             row_errors.append({"field": "任务进展", "msg": "不能为空"})
+        elif len(progress) > 150:
+            row_errors.append({"field": "任务进展", "msg": "不能超过 150 个字"})
+
+        # 任务分类（即任务组名称）长度
+        tg_name = (r.get("任务分类") or "").strip()
+        if tg_name and len(tg_name) > 25:
+            row_errors.append({"field": "任务分类", "msg": "不能超过 25 个字"})
 
         abn = r.get("是否异常", "")
         if abn and abn not in ("是", "否"):
@@ -551,16 +565,30 @@ def next_task_group_id(db: Session) -> str:
     return f"TG{max_seq + 1:04d}"
 
 
-def _resolve_task_group(db: Session, name: str, user: User) -> TaskGroup:
-    """按名称解析任务组：命中则返回，否则以导入者身份新建（「任务分类」即任务组名）。"""
+def _resolve_task_group(db: Session, name: str, owner_id: str | None, user: User) -> TaskGroup:
+    """按「名称 + 责任人」解析任务组：命中则返回，否则以导入者身份新建。
+
+    责任人 = 当前行「责任人」对应的用户 ID，使导入任务组与界面新建保持同一套「名称 + 责任人」唯一口径；
+    历史无责任人的任务组（owner_id 为空）首次被复用时回填责任人，保证口径统一。
+    """
     name = (name or "").strip()
     if not name:
         mt = db.get(TaskGroup, TG_NONE_ID)
         return mt  # 系统默认「空」必定存在（seed 已建）
-    existing = db.scalar(select(TaskGroup).where(TaskGroup.name == name))
+    existing = db.scalar(
+        select(TaskGroup).where(
+            TaskGroup.name == name,
+            TaskGroup.owner_id.is_(None) if owner_id is None else TaskGroup.owner_id == owner_id,
+        )
+    )
+    if not existing:
+        # 兼容历史库：同名但无责任人的任务组，复用并回填责任人
+        existing = db.scalar(select(TaskGroup).where(TaskGroup.name == name, TaskGroup.owner_id.is_(None)))
+        if existing and owner_id:
+            existing.owner_id = owner_id
     if existing:
         return existing
-    mt = TaskGroup(id=next_task_group_id(db), name=name, created_by=user.id)
+    mt = TaskGroup(id=next_task_group_id(db), name=name, created_by=user.id, owner_id=owner_id)
     db.add(mt)
     db.flush()
     return mt
@@ -572,7 +600,10 @@ def import_tasks(db: Session, rows: list[dict], user: User) -> int:
         org = db.scalar(select(Organization).where(Organization.id == dept_raw))
         if not org:
             org = db.scalar(select(Organization).where(Organization.name == dept_raw))
-        mt = _resolve_task_group(db, r.get("任务分类", ""), user)
+        # 责任人 → 用户 ID，供任务组「名称 + 责任人」联合解析
+        owner_user = db.scalar(select(User).where(User.name == r["责任人"]))
+        owner_id = owner_user.id if owner_user else None
+        mt = _resolve_task_group(db, r.get("任务分类", ""), owner_id, user)
         task = Task(
             id=next_task_id(db),
             parent=r["任务名称"],
@@ -940,9 +971,9 @@ def next_market_project_id(db: Session) -> str:
 
 MARKET_PROJECT_TEMPLATE_NOTES = [
     ["填写项", "说明"],
-    ["项目名称", "必填。市场项目名称"],
-    ["项目进展", "必填。当前项目进展说明，导入后作为该项目的第一条进展记录"],
-    ["项目描述", "选填。项目的背景与交付要求"],
+    ["项目名称", "必填。市场项目名称（≤40字）"],
+    ["项目进展", "必填。当前项目进展说明，导入后作为该项目的第一条进展记录（≤150字）"],
+    ["项目描述", "必填。项目的背景与交付要求（≤150字）"],
     ["项目阶段", "必填。填 10/25/50/75/90/100 或阶段名称（项目导入/市场尽调/初审通过/联合评审通过/签约落地/交车投运）"],
     ["负责人", "必填。必须是系统内已有账号姓名"],
     ["所属部门", "选填。负责人直接所属部门，留空则按负责人自动带出"],
@@ -1034,11 +1065,23 @@ def validate_market_project_rows(db: Session, rows: list[dict]) -> tuple[list[di
         row_no = i + 2
         row_errors: list[dict] = []
 
-        if not (r.get("项目名称") or "").strip():
+        name = (r.get("项目名称") or "").strip()
+        if not name:
             row_errors.append({"field": "项目名称", "msg": "不能为空"})
+        elif len(name) > 40:
+            row_errors.append({"field": "项目名称", "msg": "不能超过 40 个字"})
 
-        if not (r.get("项目进展") or "").strip():
+        desc = (r.get("项目描述") or "").strip()
+        if not desc:
+            row_errors.append({"field": "项目描述", "msg": "不能为空"})
+        elif len(desc) > 150:
+            row_errors.append({"field": "项目描述", "msg": "不能超过 150 个字"})
+
+        progress = (r.get("项目进展") or "").strip()
+        if not progress:
             row_errors.append({"field": "项目进展", "msg": "不能为空"})
+        elif len(progress) > 150:
+            row_errors.append({"field": "项目进展", "msg": "不能超过 150 个字"})
 
         stage = _resolve_stage(r.get("项目阶段", ""))
         if stage is None:

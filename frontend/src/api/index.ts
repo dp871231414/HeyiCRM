@@ -124,8 +124,11 @@ export const metricApi = {
 /* ---------------- 任务组（原任务分类） ---------------- */
 export const taskGroupApi = {
   list: () => http.get<TaskGroup[]>('/task-groups').then((r) => r.data),
-  create: (name: string) => http.post<TaskGroup>('/task-groups', { name }).then((r) => r.data),
+  /** 新建任务组：name 必填；ownerId 为「任务组所属责任人」用户 ID（取自新建任务界面选中的责任人） */
+  create: (name: string, ownerId?: string | null) =>
+    http.post<TaskGroup>('/task-groups', { name, owner_id: ownerId ?? null }).then((r) => r.data),
   rename: (id: string, name: string) => http.patch<TaskGroup>(`/task-groups/${id}`, { name }).then((r) => r.data),
+  remove: (id: string) => http.delete(`/task-groups/${id}`).then((r) => r.data),
 }
 
 /* ---------------- 任务 ---------------- */
