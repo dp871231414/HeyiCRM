@@ -489,3 +489,17 @@ export interface SysDict {
   status?: string
   items: SysDictItem[]
 }
+
+/* ---------------- 系统配置 · 文档中心 ---------------- */
+export type DocKey = 'usage' | 'prd' | 'tech' | 'test' | 'design' | 'skill' | 'devnotes'
+
+export interface SystemDoc {
+  key: DocKey
+  title: string
+  fmt: 'markdown' | 'html'
+  content: string
+  /** 已渲染、可直接 v-html / iframe 的内容 */
+  html: string | null
+  version: number
+  updatedAt: string | null
+}

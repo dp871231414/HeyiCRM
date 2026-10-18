@@ -506,6 +506,35 @@
     </div>
   </section>
 
+  <!-- 模块八：文档中心 -->
+  <section id="m8">
+    <div class="module-head">
+      <div class="num">8</div>
+      <h2>文档中心（使用说明）</h2>
+      <span class="perm">sys.config.view</span>
+    </div>
+    <div class="card">
+      <div class="grid2">
+        <div class="io how">
+          <div class="lab">▸ 输出方式</div>
+          <ol>
+            <li>进入「系统配置 → 使用说明」，打开文档中心。</li>
+            <li>左侧为文档列表（使用说明 / 产品需求文档 / 技术文档 / 测试文档 / 设计文档 / Skill 文档 / 项目开发说明），点击切换。</li>
+            <li>管理员可点「同步最新」从源码刷新全部文档，或点「编辑」修改当前文档内容（版本号自动 +1）。</li>
+          </ol>
+        </div>
+        <div class="io what">
+          <div class="lab">▸ 输出结果</div>
+          <ul>
+            <li>右侧展示所选文档内容：HTML 类（如本使用说明）以富文本渲染，Markdown 类转为排版后的网页。</li>
+            <li>每篇显示<b>版本</b>与<b>更新时间</b>，内容随系统迭代自动同步至数据库。</li>
+          </ul>
+          <div class="note">本页本身即「使用说明」文档，存于数据库，每次迭代由源码自动更新；其余六类文档同理可在系统内统一查阅。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <div class="note" style="margin-top:24px">
     <b>红线提醒：</b>线下数据库的业务数据除非明确提出，不会自动同步到生产环境；发布仅包含代码与字典等配置默认值。线上验证使用的临时数据会在验证后清除，不污染生产。
   </div>

@@ -19,6 +19,7 @@ from app.constants import DEFAULT_PERMS_FOR_ALL
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
+from app.docs_meta import DOC_ORDER, DOC_TITLES, DOC_BUNDLES, read_bundle
 from app.models import (
     TaskGroup,
     MarketProject,
@@ -33,6 +34,7 @@ from app.models import (
     Role,
     SysDict,
     SysDictItem,
+    SystemDoc,
     Task,
     TaskProgress,
     User,
@@ -426,6 +428,9 @@ def seed(db: Session, reset: bool = False) -> dict:
             db.add(SysDictItem(dict_id=sd.id, value=v, sort=i))
         created["dicts"] = created.get("dicts", 0) + 1
 
+    # 文档中心（使用说明 / 产品需求 / 技术 / 测试 / 设计 / Skill / 项目开发说明）：按 key 幂等建行
+    seed_docs(db)
+
     # 平台管理员：任何「无账号」状态下都创建（clean 模式也创建），显示名固定「管理员」。
     # 这是系统唯一强制存在的账号，保证清空气后仍能登录管理。
     no_users = not db.scalar(select(User).limit(1))
@@ -519,6 +524,19 @@ def seed(db: Session, reset: bool = False) -> dict:
 
     db.commit()
     return created
+
+
+def seed_docs(db: Session) -> None:
+    """文档中心初始行：按 doc_key 幂等创建；若 bundled_docs 存在对应源文件则一并载入初始内容。
+
+    后续「每次迭代」由 POST /system/docs/sync 从 bundled_docs 重新拉取最新文档内容写入数据库。
+    """
+    for key in DOC_ORDER:
+        if db.scalar(select(SystemDoc).where(SystemDoc.doc_key == key)):
+            continue
+        content = read_bundle(key) or ""
+        fmt = DOC_BUNDLES.get(key, (None, "markdown"))[1]
+        db.add(SystemDoc(doc_key=key, title=DOC_TITLES.get(key, key), fmt=fmt, content=content))
 
 
 def main() -> None:

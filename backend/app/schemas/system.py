@@ -1,5 +1,7 @@
-"""系统配置 · 数据字典相关模型。"""
+"""系统配置 · 数据字典与文档中心相关模型。"""
 from __future__ import annotations
+
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -41,3 +43,23 @@ class DictStatusIn(BaseModel):
     """启用/停用切换（已存在的配置不允许删除，只能停用）。"""
 
     status: str = Field(description="active=启用 / disabled=停用")
+
+
+class SystemDocOut(BaseModel):
+    """文档中心文档输出（html 为已渲染的可 v-html 内容）。"""
+
+    key: str
+    title: str
+    fmt: str = "markdown"
+    content: str = ""
+    html: str | None = None
+    version: int = 1
+    updated_at: datetime | None = None
+
+
+class SystemDocUpdate(BaseModel):
+    """文档更新入参（content 改变时版本号自动 +1）。"""
+
+    title: str | None = None
+    fmt: str | None = None
+    content: str | None = None

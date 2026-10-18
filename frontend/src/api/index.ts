@@ -22,6 +22,7 @@ import type {
   RoleItem,
   SummaryResult,
   SysDict,
+  SystemDoc,
   TaskItem,
   TaskProgressItem,
   TaskProgressListOut,
@@ -203,6 +204,18 @@ export const dictApi = {
   /** 启用/停用字典（已存在的配置不允许删除，只能停用） */
   setStatus: (id: number, status: 'active' | 'disabled') =>
     http.post<SysDict>(`/system/dicts/${id}/status`, { status }).then((r) => r.data),
+}
+
+/* ---------------- 系统配置 · 文档中心 ---------------- */
+export const docApi = {
+  /** 列出全部文档（含渲染后的 html），用于「使用说明」菜单与文档中心 */
+  list: () => http.get<SystemDoc[]>('/system/docs').then((r) => r.data),
+  get: (key: string) => http.get<SystemDoc>(`/system/docs/${key}`).then((r) => r.data),
+  /** 编辑文档内容（仅 sys.config.edit） */
+  update: (key: string, payload: { title?: string; fmt?: string; content?: string }) =>
+    http.put<SystemDoc>(`/system/docs/${key}`, payload).then((r) => r.data),
+  /** 从后端 bundled_docs/ 同步最新文档内容到数据库（每次迭代自动更新） */
+  sync: () => http.post<{ ok: boolean; synced: number }>('/system/docs/sync').then((r) => r.data),
 }
 
 /* ---------------- 驾驶舱 ---------------- */

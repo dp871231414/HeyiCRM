@@ -12,6 +12,7 @@ from app.models.project import (
     SysDict,
     SysDictItem,
 )
+from app.models.doc import SystemDoc
 from app.models.download import DownloadRecord
 from app.models.user import Role, User
 

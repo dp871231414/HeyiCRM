@@ -188,6 +188,8 @@ const ICONS: Record<string, string> = {
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>',
   download:
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12" stroke-linecap="round"/><path d="M7 11l5 5 5-5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke-linecap="round"/></svg>',
+  doc:
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke-linejoin="round"/><path d="M14 2v6h6" stroke-linejoin="round"/><path d="M9 13h6M9 17h6" stroke-linecap="round"/></svg>',
 }
 
 type MenuItem = {
@@ -211,6 +213,7 @@ const ALL_MENUS: MenuItem[] = [
       { name: 'dict', label: '数据字典', perm: 'sys.config.view', icon: ICONS.dict },
       { name: 'accounts', label: '账号管理', perm: 'account.view', icon: ICONS.accounts },
       { name: 'downloads', label: '下载中心', perm: 'download.view', icon: ICONS.download },
+      { name: 'doc', label: '使用说明', perm: 'sys.config.view', icon: ICONS.doc },
     ],
   },
 ]
