@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_perm
 from app.db.session import get_db
 from app.models import SysDict, SysDictItem, User
-from app.schemas.system import SysDictCreate, SysDictItemOut, SysDictOut, SysDictUpdate
+from app.schemas.system import (
+    DictStatusIn,
+    SysDictCreate,
+    SysDictItemOut,
+    SysDictOut,
+    SysDictUpdate,
+)
 
 router = APIRouter(prefix="/system/dicts", tags=["系统配置·数据字典"])
 
@@ -28,6 +34,7 @@ def _to_dict(d: SysDict) -> SysDictOut:
         id=d.id,
         code=d.code,
         name=d.name,
+        status=d.status or "active",
         items=[SysDictItemOut(id=i.id, value=i.value, sort=i.sort) for i in items_sorted],
     )
 
@@ -93,17 +100,21 @@ def update_dict(
     return _to_dict(d)
 
 
-@router.delete("/{dict_id}")
-def delete_dict(
+@router.post("/{dict_id}/status", response_model=SysDictOut)
+def set_dict_status(
     dict_id: int,
+    payload: DictStatusIn,
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_perm("sys.config.edit")),
 ):
+    """启用/停用字典：已存在的配置不允许删除，只能停用（停用后其枚举值不再出现在关联下拉中）。"""
+    if payload.status not in ("active", "disabled"):
+        raise HTTPException(status_code=400, detail="status 仅支持 active / disabled")
     d = db.get(SysDict, dict_id)
     if not d:
         raise HTTPException(status_code=404, detail="字典不存在")
-    db.execute(delete(SysDictItem).where(SysDictItem.dict_id == d.id))
-    db.delete(d)
+    d.status = payload.status
     db.commit()
-    return {"ok": True, "msg": "已删除", "data": {"id": dict_id}}
+    db.refresh(d)
+    return _to_dict(d)

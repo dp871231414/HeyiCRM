@@ -15,7 +15,7 @@ class ProjectRequirementItem(BaseModel):
 
     id: int | None = None
     model: str = Field(default="", max_length=64, description="车辆/挂车型号（取自数据字典）")
-    battery: str = Field(default="", max_length=32, description="电池度数")
+    battery: str = Field(default="", max_length=32, description="电池容量（取自数据字典 battery_capacity）")
     qty: int = Field(default=0, ge=0, description="数量（辆）")
 
 

@@ -310,7 +310,7 @@ export interface ProjectRequirementItem {
   id?: number
   /** 车辆型号 / 挂车型号（取自数据字典） */
   model: string
-  /** 电池度数 */
+  /** 电池容量（取自数据字典 battery_capacity） */
   battery: string
   /** 数量（辆） */
   qty: number
@@ -444,5 +444,7 @@ export interface SysDict {
   id: number
   code: string | null
   name: string
+  /** active=启用 / disabled=已停用（已存在的配置不允许删除，只能停用） */
+  status?: string
   items: SysDictItem[]
 }

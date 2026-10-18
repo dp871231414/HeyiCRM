@@ -179,11 +179,13 @@ MARKET_PROJECTS = [
     dict(name="煤炭运输长协项目", description="年度长协运力框架", tractor=100, trailer=100, stage=50, owner="王建国"),
 ]
 
-# 系统配置 · 数据字典预设（首次初始化时写入；支持后续在「系统配置 → 数据字典」中修改）
-# code 为固定编码，前端按 code 取车辆型号 / 挂车型号，填充项目需求子列表下拉项。
+# 系统配置 · 数据字典预设（按 code 幂等 upsert：已存在的字典不覆盖用户修改，仅补建缺失的字典）
+# code 为固定编码，前端按 code 取车辆型号 / 挂车型号 / 电池容量，填充项目需求子列表下拉项。
+# battery_capacity 的枚举值从线上环境同步（用户已在线上配置：400度/423度/600度/352度）。
 SYS_DICTS = [
     dict(code="vehicle_model", name="车辆型号", items=["6*4牵引车", "4*2牵引车", "矿卡", "自卸车"]),
     dict(code="trailer_model", name="挂车型号", items=["侧翻挂", "高栏挂", "后翻挂"]),
+    dict(code="battery_capacity", name="电池容量", items=["400度", "423度", "600度", "352度"]),
 ]
 
 # 演示账号（不含平台管理员，管理员始终单独创建）。仅 SEED_DEMO=1 时灌入。
@@ -389,16 +391,23 @@ def seed(db: Session, reset: bool = False) -> dict:
             role.permissions = list(role.permissions or []) + missing
             created.setdefault("perms_granted", {}).setdefault(role.id, []).extend(missing)
 
-    # 数据字典（车辆型号 / 挂车型号等）：仅当字典表为空时写入预设值，
-    # 用户后续在「系统配置 → 数据字典」中的修改不会被覆盖（除非全库重置）。
-    if not db.scalar(select(SysDict).limit(1)):
-        for d in SYS_DICTS:
-            sd = SysDict(code=d["code"], name=d["name"])
-            db.add(sd)
-            db.flush()
-            for i, v in enumerate(d["items"]):
-                db.add(SysDictItem(dict_id=sd.id, value=v, sort=i))
-        created["dicts"] = len(SYS_DICTS)
+    # 数据字典（车辆型号 / 挂车型号 / 电池容量等）：按 code 幂等 upsert。
+    # 已存在同 code 的字典（含用户在「系统配置 → 数据字典」中的修改）不覆盖，仅补建缺失的字典，
+    # 因此线上新增的 battery_capacity 等会同步到本地，而用户已调整的枚举值保留。
+    for d in SYS_DICTS:
+        existing = (
+            db.scalar(select(SysDict).where(SysDict.code == d["code"]))
+            if d["code"]
+            else db.scalar(select(SysDict).where(SysDict.name == d["name"]))
+        )
+        if existing:
+            continue
+        sd = SysDict(code=d["code"], name=d["name"], status="active")
+        db.add(sd)
+        db.flush()
+        for i, v in enumerate(d["items"]):
+            db.add(SysDictItem(dict_id=sd.id, value=v, sort=i))
+        created["dicts"] = created.get("dicts", 0) + 1
 
     # 平台管理员：任何「无账号」状态下都创建（clean 模式也创建），显示名固定「管理员」。
     # 这是系统唯一强制存在的账号，保证清空气后仍能登录管理。
@@ -509,6 +518,10 @@ def main() -> None:
         mp_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(market_project)")).fetchall()}
         if "progress" not in mp_existing:
             conn.execute(text("ALTER TABLE market_project ADD COLUMN progress TEXT NOT NULL DEFAULT ''"))
+        # sys_dict.status：字典启用/停用字段，老库补 ALTER（默认 active，已存在配置保留启用）
+        sd_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(sys_dict)")).fetchall()}
+        if "status" not in sd_existing:
+            conn.execute(text("ALTER TABLE sys_dict ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'"))
     with SessionLocal() as db:
         created = seed(db, reset=reset)
     print(f"[seed] 完成（reset={reset}）: {created}")

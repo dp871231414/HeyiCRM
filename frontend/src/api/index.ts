@@ -192,14 +192,16 @@ export const marketApi = {
 
 /* ---------------- 系统配置 · 数据字典 ---------------- */
 export const dictApi = {
-  /** 列出全部字典（或按 code 过滤），含枚举值 */
+  /** 列出全部字典（或按 code 过滤），含枚举值与状态 */
   list: (code?: string) =>
     http.get<SysDict[]>('/system/dicts', { params: code ? { code } : {} }).then((r) => r.data),
   create: (payload: { name: string; code?: string | null; items: { value: string; sort?: number }[] }) =>
     http.post<SysDict>('/system/dicts', payload).then((r) => r.data),
   update: (id: number, payload: { name: string; code?: string | null; items: { value: string; sort?: number }[] }) =>
     http.patch<SysDict>(`/system/dicts/${id}`, payload).then((r) => r.data),
-  remove: (id: number) => http.delete(`/system/dicts/${id}`).then((r) => r.data),
+  /** 启用/停用字典（已存在的配置不允许删除，只能停用） */
+  setStatus: (id: number, status: 'active' | 'disabled') =>
+    http.post<SysDict>(`/system/dicts/${id}/status`, { status }).then((r) => r.data),
 }
 
 /* ---------------- 驾驶舱 ---------------- */

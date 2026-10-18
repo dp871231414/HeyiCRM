@@ -130,7 +130,7 @@
             <thead>
               <tr class="text-left text-slate-500 bg-slate-50">
                 <th class="py-1.5 px-2 font-medium border border-slate-200">车辆型号</th>
-                <th class="py-1.5 px-2 font-medium border border-slate-200">电池度数</th>
+                <th class="py-1.5 px-2 font-medium border border-slate-200">电池容量</th>
                 <th class="py-1.5 px-2 font-medium border border-slate-200 w-24">数量</th>
                 <th class="py-1.5 px-2 font-medium border border-slate-200 w-16 text-center">操作</th>
               </tr>
@@ -144,7 +144,10 @@
                   </select>
                 </td>
                 <td class="py-1 px-2 border border-slate-200">
-                  <input v-model.trim="row.battery" class="input w-full" placeholder="电池度数" />
+                  <select v-model="row.battery" class="input w-full" :class="row.battery ? '' : 'text-slate-400'">
+                    <option value="">请选择</option>
+                    <option v-for="m in batteryOptions(row.battery)" :key="m" :value="m">{{ m }}</option>
+                  </select>
                 </td>
                 <td class="py-1 px-2 border border-slate-200">
                   <input v-model.number="row.qty" type="number" min="0" class="input w-full" placeholder="数量" />
@@ -170,7 +173,7 @@
             <thead>
               <tr class="text-left text-slate-500 bg-slate-50">
                 <th class="py-1.5 px-2 font-medium border border-slate-200">挂车型号</th>
-                <th class="py-1.5 px-2 font-medium border border-slate-200">电池度数</th>
+                <th class="py-1.5 px-2 font-medium border border-slate-200">电池容量</th>
                 <th class="py-1.5 px-2 font-medium border border-slate-200 w-24">数量</th>
                 <th class="py-1.5 px-2 font-medium border border-slate-200 w-16 text-center">操作</th>
               </tr>
@@ -184,7 +187,10 @@
                   </select>
                 </td>
                 <td class="py-1 px-2 border border-slate-200">
-                  <input v-model.trim="row.battery" class="input w-full" placeholder="电池度数" />
+                  <select v-model="row.battery" class="input w-full" :class="row.battery ? '' : 'text-slate-400'">
+                    <option value="">请选择</option>
+                    <option v-for="m in batteryOptions(row.battery)" :key="m" :value="m">{{ m }}</option>
+                  </select>
                 </td>
                 <td class="py-1 px-2 border border-slate-200">
                   <input v-model.number="row.qty" type="number" min="0" class="input w-full" placeholder="数量" />
@@ -283,7 +289,7 @@
               class="flex items-center gap-2 text-sm text-slate-700"
             >
               <span class="chip bg-brand-50 text-brand-700 border border-brand-100">{{ r.model || '未填型号' }}</span>
-              <span class="text-slate-400">电池 {{ r.battery || '—' }}</span>
+              <span class="text-slate-400">电池容量 {{ r.battery || '—' }}</span>
               <span class="font-semibold">{{ r.qty }} 辆</span>
             </div>
           </div>
@@ -298,7 +304,7 @@
               class="flex items-center gap-2 text-sm text-slate-700"
             >
               <span class="chip bg-brand-50 text-brand-700 border border-brand-100">{{ r.model || '未填型号' }}</span>
-              <span class="text-slate-400">电池 {{ r.battery || '—' }}</span>
+              <span class="text-slate-400">电池容量 {{ r.battery || '—' }}</span>
               <span class="font-semibold">{{ r.qty }} 辆</span>
             </div>
           </div>
@@ -376,7 +382,7 @@
       <div class="space-y-4">
         <p class="text-sm text-slate-500">
           先下载标准模板填写，再上传。模板仅含项目信息（项目名称 / 进展 / 描述 / 阶段 / 责任人 / 所属部门），
-          <b>车头需求、挂车需求不在导入范围内</b>，导入后请在系统「编辑项目」中补充车辆型号、电池度数与数量。
+          <b>车头需求、挂车需求不在导入范围内</b>，导入后请在系统「编辑项目」中补充车辆型号、电池容量与数量。
         </p>
         <div class="flex flex-wrap items-center gap-3">
           <button class="btn-ghost" @click="download(marketApi.templateUrl(), '市场项目导入标准模板.xlsx')">下载模板</button>
@@ -433,6 +439,7 @@ import type {
   MarketStage,
   ProjectProgressItem,
   ProjectRequirementItem,
+  SysDict,
 } from '@/types'
 
 const auth = useAuthStore()
@@ -479,9 +486,10 @@ const keyword = ref('')
 const stageFilter = ref<number | ''>('')
 /** 责任人候选：仅市场部及其下属部门内的启用账号 */
 const marketOwners = ref<MarketOwner[]>([])
-/** 数据字典：车辆型号 / 挂车型号下拉项 */
+/** 数据字典：车辆型号 / 挂车型号 / 电池容量下拉项 */
 const vehicleModels = ref<string[]>([])
 const trailerModels = ref<string[]>([])
+const batteryCapacities = ref<string[]>([])
 
 const PAGE_SIZE = 50
 const page = ref(1)
@@ -744,15 +752,28 @@ async function onImport(e: Event) {
   }
 }
 
-/** 加载数据字典下拉项（车辆型号 / 挂车型号） */
+/** 加载数据字典下拉项（车辆型号 / 挂车型号 / 电池容量），停用的字典不计入下拉 */
 async function loadDictModels() {
   try {
-    const [veh, tra] = await Promise.all([dictApi.list('vehicle_model'), dictApi.list('trailer_model')])
-    vehicleModels.value = (veh[0]?.items || []).map((i) => i.value)
-    trailerModels.value = (tra[0]?.items || []).map((i) => i.value)
+    const [veh, tra, bat] = await Promise.all([
+      dictApi.list('vehicle_model'),
+      dictApi.list('trailer_model'),
+      dictApi.list('battery_capacity'),
+    ])
+    const activeItems = (d?: SysDict) => (d && d.status !== 'disabled' ? d.items : []).map((i) => i.value)
+    vehicleModels.value = activeItems(veh[0])
+    trailerModels.value = activeItems(tra[0])
+    batteryCapacities.value = activeItems(bat[0])
   } catch {
     /* 字典未配置时下拉为空，仍可手动录入 */
   }
+}
+
+/** 电池容量下拉项：确保当前已存值（可能不在字典内）始终可见，避免编辑旧数据时丢值 */
+function batteryOptions(current: string): string[] {
+  const set = new Set(batteryCapacities.value)
+  if (current && !set.has(current)) return [current, ...batteryCapacities.value]
+  return batteryCapacities.value
 }
 
 onMounted(async () => {

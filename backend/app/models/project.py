@@ -58,7 +58,7 @@ class ProjectTractorRequirement(Base):
         String(32), ForeignKey("market_project.id"), nullable=False, index=True
     )
     model: Mapped[str] = mapped_column(String(64), default="", nullable=False)  # 车辆型号（取自数据字典）
-    battery: Mapped[str] = mapped_column(String(32), default="", nullable=False)  # 电池度数
+    battery: Mapped[str] = mapped_column(String(32), default="", nullable=False)  # 电池容量（取自数据字典 battery_capacity）
     qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 数量（辆）
 
 
@@ -74,7 +74,7 @@ class ProjectTrailerRequirement(Base):
         String(32), ForeignKey("market_project.id"), nullable=False, index=True
     )
     model: Mapped[str] = mapped_column(String(64), default="", nullable=False)  # 挂车型号（取自数据字典）
-    battery: Mapped[str] = mapped_column(String(32), default="", nullable=False)  # 电池度数
+    battery: Mapped[str] = mapped_column(String(32), default="", nullable=False)  # 电池容量（取自数据字典 battery_capacity）
     qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 数量（辆）
 
 
@@ -126,6 +126,8 @@ class SysDict(Base):
     )
     code: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False)  # 字典名称
+    # 启用/停用：已存在的配置不允许删除，只能停用（停用后其枚举值不再出现在关联下拉中）
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

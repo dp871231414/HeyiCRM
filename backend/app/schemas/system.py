@@ -33,4 +33,11 @@ class SysDictOut(BaseModel):
     id: int
     code: str | None = None
     name: str
+    status: str = "active"
     items: list[SysDictItemOut] = []
+
+
+class DictStatusIn(BaseModel):
+    """启用/停用切换（已存在的配置不允许删除，只能停用）。"""
+
+    status: str = Field(description="active=启用 / disabled=停用")

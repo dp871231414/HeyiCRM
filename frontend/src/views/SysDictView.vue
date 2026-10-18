@@ -19,6 +19,12 @@
             <div class="flex items-center gap-2">
               <span class="text-sm font-bold text-slate-800">{{ d.name }}</span>
               <span v-if="d.code" class="chip bg-slate-100 text-slate-500 border border-slate-200">{{ d.code }}</span>
+              <span
+                class="chip"
+                :class="d.status === 'disabled' ? 'bg-slate-100 text-slate-400 border border-slate-200' : 'bg-good-50 text-good-700 border border-good-100'"
+              >
+                {{ d.status === 'disabled' ? '已停用' : '启用' }}
+              </span>
             </div>
             <div v-if="d.items.length" class="mt-3 flex flex-wrap gap-2">
               <span v-for="it in d.items" :key="it.id" class="chip bg-brand-50 text-brand-700 border border-brand-100">
@@ -29,7 +35,16 @@
           </div>
           <div v-if="auth.hasPerm('sys.config.edit')" class="flex items-center gap-1.5 shrink-0">
             <button class="btn-ghost btn-sm" @click="openForm(d)">编辑</button>
-            <button class="btn-danger btn-sm" @click="deleteTarget = d">删除</button>
+            <button
+              v-if="d.status !== 'disabled'"
+              class="btn-ghost btn-sm text-amber-600 hover:bg-amber-50"
+              @click="toggleStatus(d, 'disabled')"
+            >
+              停用
+            </button>
+            <button v-else class="btn-ghost btn-sm text-good-700 hover:bg-good-50" @click="toggleStatus(d, 'active')">
+              启用
+            </button>
           </div>
         </div>
       </div>
@@ -81,15 +96,16 @@
       </template>
     </ModalDialog>
 
-    <!-- 删除确认 -->
-    <ModalDialog :open="!!deleteTarget" title="确认删除字典" width="sm" @close="deleteTarget = null">
+    <!-- 停用确认 -->
+    <ModalDialog :open="!!pendingDisable" title="确认停用字典" width="sm" @close="pendingDisable = null">
       <p class="text-sm text-slate-600">
-        将删除字典「{{ deleteTarget?.name }}」及其全部枚举值。该操作不可撤销。
+        停用字典「{{ pendingDisable?.name }}」后，其枚举值将不再出现在关联下拉（如项目需求中的电池容量）。
+        已存在配置不会被删除，可随时重新启用。
       </p>
       <template #footer>
-        <button class="btn-ghost" @click="deleteTarget = null">取消</button>
-        <button class="btn-danger" :disabled="deleting" @click="doDelete">
-          {{ deleting ? '删除中…' : '确认删除' }}
+        <button class="btn-ghost" @click="pendingDisable = null">取消</button>
+        <button class="btn-primary" :disabled="toggling" @click="confirmToggle">
+          {{ toggling ? '处理中…' : '确认停用' }}
         </button>
       </template>
     </ModalDialog>
@@ -119,8 +135,8 @@ const form = reactive<{ id: number | null; name: string; code: string; items: { 
   code: '',
   items: [],
 })
-const deleteTarget = ref<SysDict | null>(null)
-const deleting = ref(false)
+const pendingDisable = ref<SysDict | null>(null)
+const toggling = ref(false)
 
 async function load() {
   loading.value = true
@@ -178,19 +194,33 @@ async function save() {
   }
 }
 
-async function doDelete() {
-  if (!deleteTarget.value) return
-  deleting.value = true
+/** 启用/停用：停用需二次确认（pendingDisable 弹窗），启用直接执行 */
+function toggleStatus(d: SysDict, status: 'active' | 'disabled') {
+  if (status === 'disabled') {
+    pendingDisable.value = d
+    return
+  }
+  void doToggle(d, 'active')
+}
+
+async function doToggle(d: SysDict, status: 'active' | 'disabled') {
+  toggling.value = true
   try {
-    await dictApi.remove(deleteTarget.value.id)
-    app.toast('已删除')
-    deleteTarget.value = null
+    await dictApi.setStatus(d.id, status)
+    app.toast(status === 'disabled' ? '已停用' : '已启用')
     await load()
   } catch (e) {
     app.toast((e as Error).message, 'error')
   } finally {
-    deleting.value = false
+    toggling.value = false
   }
+}
+
+async function confirmToggle() {
+  if (!pendingDisable.value) return
+  const d = pendingDisable.value
+  pendingDisable.value = null
+  await doToggle(d, 'disabled')
 }
 
 onMounted(load)
