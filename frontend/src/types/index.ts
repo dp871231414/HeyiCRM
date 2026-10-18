@@ -303,7 +303,7 @@ export type DeptTaskFilter = 'all' | 'year' | 'month' | 'open'
 /* ---------------- 项目管理（市场项目） ---------------- */
 
 /** 项目阶段即漏斗层级：10 项目导入 / 25 市场尽调 / 50 初审通过 / 75 联合评审通过 / 90 签约落地 / 100 交车投运 */
-export type MarketStage = 10 | 25 | 50 | 75 | 90 | 100
+export type MarketStage = 0 | 10 | 25 | 50 | 75 | 90 | 100
 
 /** 车头 / 挂车需求明细行（子列表）。创建时 id 不传；返回时带 id。 */
 export interface ProjectRequirementItem {
@@ -407,7 +407,10 @@ export interface DemandStageMeta {
 export interface DemandTractorRow {
   model: string
   battery: string
+  /** 总需求数：该组合下命中项目对应组合的车头需求之和 */
   qty: number
+  /** 预估消化数量 = Σ(需求数量 × 项目所在阶段转化概率) */
+  digest: number
 }
 
 /** 挂车需求行：按车型分行，含总数量与预估消化数量 */
@@ -438,6 +441,7 @@ export interface FunnelProbItem {
 }
 
 export const MARKET_STAGE_LABELS: Record<number, string> = {
+  0: '流失',
   10: '项目导入',
   25: '市场尽调',
   50: '初审通过',

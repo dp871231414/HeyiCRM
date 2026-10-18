@@ -134,6 +134,13 @@ MARKET_STAGES: list[dict] = [
 ]
 MARKET_STAGE_VALUES: list[int] = [s["stage"] for s in MARKET_STAGES]
 
+# 流失阶段：转化率固定 0%，**不计入销售漏斗**（漏斗仅取 MARKET_STAGES）；
+# 仅在「车辆需求分析」模块作为筛选条件出现，置于「交车/投运」之后。
+# stage 取 0 即「0% 转化」语义，与转化率配置解耦（漏斗转化率配置只覆盖 MARKET_STAGES）。
+CHURN_STAGE: dict = {"stage": 0, "label": "流失"}
+# 车辆需求分析筛选用阶段集合（MARKET_STAGES + 流失），顺序即筛选标签顺序
+DEMAND_ANALYSIS_STAGES: list[dict] = MARKET_STAGES + [CHURN_STAGE]
+
 MARKET_PROJECT_ID_PREFIX = "MP"
 
 # 指标分组元数据

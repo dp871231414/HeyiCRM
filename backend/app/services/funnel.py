@@ -20,7 +20,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.constants import MARKET_STAGES
+from app.constants import DEMAND_ANALYSIS_STAGES, MARKET_STAGES
 from app.models import FunnelConfig, MarketProject, ProjectTractorRequirement, ProjectTrailerRequirement, User
 from app.services.org_tree import market_sub_departments, market_tree_ids
 
@@ -135,17 +135,26 @@ def build_demand_analysis(db: Session, dept_id: str | None = None) -> dict:
     tractor_reqs = db.scalars(select(ProjectTractorRequirement)).all()
     trailer_reqs = db.scalars(select(ProjectTrailerRequirement)).all()
 
-    # 车头：按 (车型, 电池容量) 组合，分别按阶段与全量聚合数量
-    tractor_by_stage: dict[int, dict[tuple[str, str], int]] = {}
-    tractor_all: dict[tuple[str, str], int] = {}
+    # 车头：按 (车型, 电池容量) 组合，分别按阶段与全量聚合；
+    # qty=该组合下所有命中项目对应组合的车头需求之和，digest=Σ(需求数 × 项目所在阶段转化概率)
+    tractor_by_stage: dict[int, dict[tuple[str, str], dict[str, float]]] = {}
+    tractor_all: dict[tuple[str, str], dict[str, float]] = {}
     for r in tractor_reqs:
         s = proj_stage.get(r.project_id)
         if s is None:
             continue
         key = (r.model or "未填", r.battery or "未填")
-        tractor_all[key] = tractor_all.get(key, 0) + int(r.qty)
-        tractor_by_stage.setdefault(s, {})
-        tractor_by_stage[s][key] = tractor_by_stage[s].get(key, 0) + int(r.qty)
+        q = int(r.qty)
+        d = q * probs.get(s, s / 100.0)
+        agg = tractor_all.get(key, {"qty": 0.0, "digest": 0.0})
+        agg["qty"] += q
+        agg["digest"] += d
+        tractor_all[key] = agg
+        ts = tractor_by_stage.setdefault(s, {})
+        ta = ts.get(key, {"qty": 0.0, "digest": 0.0})
+        ta["qty"] += q
+        ta["digest"] += d
+        ts[key] = ta
 
     # 挂车：按车型，分别按阶段与全量聚合；digest = qty × 项目所在阶段转化概率
     trailer_by_stage: dict[int, dict[str, dict[str, float]]] = {}
@@ -167,19 +176,23 @@ def build_demand_analysis(db: Session, dept_id: str | None = None) -> dict:
         ta["digest"] += d
         ts[key] = ta
 
-    stages_meta = [{"stage": m["stage"], "label": m["label"], "prob": probs[m["stage"]]} for m in MARKET_STAGES]
+    # 阶段元信息：含流失阶段（置于最后），供前端渲染筛选标签；流失转化率固定 0%
+    stages_meta = [
+        {"stage": m["stage"], "label": m["label"], "prob": probs.get(m["stage"], m["stage"] / 100.0)}
+        for m in DEMAND_ANALYSIS_STAGES
+    ]
 
-    def sort_tractor(d: dict[tuple[str, str], int]):
+    def sort_tractor(d: dict[tuple[str, str], dict[str, float]]):
         # 数量降序，数量相同按车型、电池容量字典序，结果稳定
-        return sorted(d.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1]))
+        return sorted(d.items(), key=lambda kv: (-kv[1]["qty"], kv[0][0], kv[0][1]))
 
     def sort_trailer(d: dict[str, dict[str, float]]):
         return sorted(d.items(), key=lambda kv: (-kv[1]["qty"], kv[0]))
 
     tractor = {
-        "all": [{"model": k[0], "battery": k[1], "qty": v} for k, v in sort_tractor(tractor_all)],
+        "all": [{"model": k[0], "battery": k[1], "qty": int(v["qty"]), "digest": round(v["digest"], 1)} for k, v in sort_tractor(tractor_all)],
         "byStage": {
-            str(s): [{"model": k[0], "battery": k[1], "qty": v} for k, v in sort_tractor(d)]
+            str(s): [{"model": k[0], "battery": k[1], "qty": int(v["qty"]), "digest": round(v["digest"], 1)} for k, v in sort_tractor(d)]
             for s, d in tractor_by_stage.items()
         },
     }

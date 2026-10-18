@@ -464,13 +464,14 @@ function onRowHeightChange() {
   auth.updatePreferences({ rowHeight: rowHeightSel.value }).catch(() => {})
 }
 
-const STAGES: MarketStage[] = [10, 25, 50, 75, 90, 100]
+const STAGES: MarketStage[] = [10, 25, 50, 75, 90, 100, 0]
 
 /** 系统默认市场部 ID · 与后端 DEFAULT_MARKET_DEPT_ID 对应（用于责任人范围提示文案） */
 const MARKET_DEPT_ID = 'D01'
 
-/** 阶段徽章配色：由浅入深，与驾驶舱漏斗色阶一致 */
+/** 阶段徽章配色：由浅入深，与驾驶舱漏斗色阶一致；流失用中性灰表示已关闭 */
 const STAGE_CHIP: Record<number, string> = {
+  0: 'bg-slate-100 text-slate-500 border-slate-200',
   10: 'bg-slate-100 text-slate-600 border-slate-200',
   25: 'bg-brand-50 text-brand-700 border-brand-100',
   50: 'bg-brand-50 text-brand-700 border-brand-100',

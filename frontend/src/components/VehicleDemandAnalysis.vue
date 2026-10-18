@@ -2,7 +2,7 @@
   <section class="card p-5">
     <div class="flex items-baseline gap-2 mb-3">
       <h2 class="section-title">车辆需求分析</h2>
-      <span class="text-xs text-slate-400">车头按(车型×电池容量)、挂车按车型统计项目需求明细</span>
+      <span class="text-xs text-slate-400">车头按(车型×电池容量)、挂车按车型汇总总需求数与预估消化数</span>
     </div>
 
     <!-- 阶段筛选快捷标签：全部 + 各阶段（带转化率后缀，读取漏斗转化率配置） -->
@@ -33,7 +33,7 @@
       <div class="rounded-xl border border-slate-200 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <h3 class="text-[13px] font-bold text-slate-700">车头需求</h3>
-          <span class="text-[11px] text-slate-400">{{ tractorRows.length }} 种组合 · {{ tractorTotal }} 辆</span>
+          <span class="text-[11px] text-slate-400">{{ tractorRows.length }} 种组合 · 总需求 {{ tractorTotal }} 辆</span>
         </div>
         <div class="max-h-96 overflow-y-auto">
           <table class="w-full text-sm">
@@ -41,7 +41,8 @@
               <tr>
                 <th class="text-left font-medium px-4 py-2">车辆型号</th>
                 <th class="text-left font-medium px-4 py-2">电池容量</th>
-                <th class="text-right font-medium px-4 py-2">需求数量(辆)</th>
+                <th class="text-right font-medium px-4 py-2">总需求数(辆)</th>
+                <th class="text-right font-medium px-4 py-2">预估消化数量(辆)</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -49,15 +50,17 @@
                 <td class="px-4 py-2 text-slate-700">{{ r.model }}</td>
                 <td class="px-4 py-2 text-slate-500">{{ r.battery }}</td>
                 <td class="px-4 py-2 text-right font-mono tabular-nums text-slate-900">{{ r.qty }}</td>
+                <td class="px-4 py-2 text-right font-mono tabular-nums text-slate-600">{{ fmt(r.digest, 1) }}</td>
               </tr>
               <tr v-if="!tractorRows.length">
-                <td colspan="3" class="px-4 py-8 text-center text-xs text-slate-400">该范围暂无车头需求</td>
+                <td colspan="4" class="px-4 py-8 text-center text-xs text-slate-400">该范围暂无车头需求</td>
               </tr>
             </tbody>
             <tfoot v-if="tractorRows.length" class="border-t border-slate-200 bg-slate-50/60">
               <tr>
                 <td colspan="2" class="px-4 py-2 text-[12px] font-semibold text-slate-600">合计</td>
                 <td class="px-4 py-2 text-right font-mono tabular-nums font-bold text-slate-900">{{ tractorTotal }}</td>
+                <td class="px-4 py-2 text-right font-mono tabular-nums font-bold text-slate-700">{{ fmt(tractorDigestTotal, 1) }}</td>
               </tr>
             </tfoot>
           </table>
@@ -75,7 +78,7 @@
             <thead class="sticky top-0 bg-white/95 backdrop-blur text-slate-400 text-[12px]">
               <tr>
                 <th class="text-left font-medium px-4 py-2">挂车型号</th>
-                <th class="text-right font-medium px-4 py-2">总数量(辆)</th>
+                <th class="text-right font-medium px-4 py-2">总需求数(辆)</th>
                 <th class="text-right font-medium px-4 py-2">预估消化数量(辆)</th>
               </tr>
             </thead>
@@ -160,6 +163,9 @@ const trailerRows = computed<DemandTrailerRow[]>(() => {
 })
 
 const tractorTotal = computed(() => tractorRows.value.reduce((a, r) => a + r.qty, 0))
+const tractorDigestTotal = computed(
+  () => Math.round(tractorRows.value.reduce((a, r) => a + (r.digest || 0), 0) * 10) / 10,
+)
 const trailerQtyTotal = computed(() => trailerRows.value.reduce((a, r) => a + r.qty, 0))
 const trailerDigestTotal = computed(
   () => Math.round(trailerRows.value.reduce((a, r) => a + r.digest, 0) * 10) / 10,
