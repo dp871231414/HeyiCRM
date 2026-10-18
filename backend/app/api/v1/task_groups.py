@@ -16,12 +16,13 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_perm
 from app.db.session import get_db
 from app.models import Task, TaskGroup, User
+from app.services.scope import effective_scope, visible_org_ids
 from app.services.serializers import org_name
 
 router = APIRouter(prefix="/task-groups", tags=["任务组"])
@@ -91,10 +92,75 @@ def _to_out(db: Session, mt: TaskGroup) -> TaskGroupOut:
     )
 
 
+def _task_group_scope_filter(db: Session, user: User):
+    """任务组可见性：复用任务模块的数据权限（effective_scope）。
+
+    - all       → 全部；
+    - self      → 仅本人作为责任人的任务组；
+    - dept      → 责任人在本人所属部门的任务组；
+    - dept_sub  → 责任人在本人所属部门及其子孙部门的任务组；
+    - 未指定责任人的任务组（系统默认「空」或导入/回填前）对所有人可见（共享分类）。
+    """
+    scope = effective_scope(db, user)
+    if scope == "all":
+        return None
+    if scope == "self":
+        base = TaskGroup.owner_id == user.id
+    else:
+        orgs = visible_org_ids(db, user)
+        if not orgs:
+            base = TaskGroup.owner_id == user.id
+        else:
+            base = TaskGroup.owner_id.in_(select(User.id).where(User.dept_id.in_(orgs)))
+    # 未指定责任人的任务组（系统默认「空」/ 导入产生）共享可见
+    return or_(base, TaskGroup.owner_id.is_(None))
+
+
 @router.get("", response_model=list[TaskGroupOut])
-def list_task_groups(db: Session = Depends(get_db), _: User = Depends(require_perm("task.view"))):
-    rows = db.scalars(select(TaskGroup).order_by(TaskGroup.is_system.desc(), TaskGroup.name)).all()
+def list_task_groups(
+    page: int = 1,
+    size: int | None = None,
+    keyword: str = "",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("task.view")),
+):
+    """任务组下拉列表（搜索 + 分页 + 权限过滤）。
+
+    - page / size：分页，默认返回全部（兼容旧调用）；前端下拉用 ``size=10`` 取「最新 10 条」并下滑续拉。
+    - keyword：正则匹配任务组名称（大小写不敏感）；非法正则返回 400。
+    - 排序：系统默认「空」置顶，其余按创建时间倒序（最新在前）。
+    - 可见范围：按当前用户数据权限（effective_scope）过滤责任人维度；未指定责任人的任务组对所有人可见。
+    """
+    q = select(TaskGroup)
+    vf = _task_group_scope_filter(db, user)
+    if vf is not None:
+        q = q.where(vf)
+    rows = db.scalars(q).all()
+    if keyword and keyword.strip():
+        try:
+            pat = re.compile(keyword, re.IGNORECASE)
+        except re.error:
+            raise HTTPException(status_code=400, detail="搜索关键字不是合法的正则表达式")
+        rows = [r for r in rows if pat.search(r.name or "")]
+    # 系统默认置顶，其余按创建时间倒序（最新在前）
+    rows.sort(key=lambda r: (0 if r.is_system else 1, -(r.created_at.timestamp() if r.created_at else 0)))
+    if size:
+        start = max(0, (page - 1) * size)
+        rows = rows[start:start + size]
     return [_to_out(db, r) for r in rows]
+
+
+@router.get("/{mt_id}", response_model=TaskGroupOut)
+def get_task_group(
+    mt_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("task.view")),
+):
+    """按 ID 获取单个任务组（下拉回填已选任务组标签用，不受范围过滤限制）。"""
+    mt = db.get(TaskGroup, mt_id)
+    if not mt:
+        raise HTTPException(status_code=404, detail="任务组不存在")
+    return _to_out(db, mt)
 
 
 @router.post("", response_model=TaskGroupOut, status_code=201)

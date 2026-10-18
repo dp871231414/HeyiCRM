@@ -123,7 +123,11 @@ export const metricApi = {
 
 /* ---------------- 任务组（原任务分类） ---------------- */
 export const taskGroupApi = {
-  list: () => http.get<TaskGroup[]>('/task-groups').then((r) => r.data),
+  /** 分页/搜索列表：page/size 分页，keyword 为正则匹配名称（后端校验合法性）；默认返回全部以兼容旧调用 */
+  list: (params: { page?: number; size?: number; keyword?: string } = {}) =>
+    http.get<TaskGroup[]>('/task-groups', { params }).then((r) => r.data),
+  /** 按 ID 获取单个任务组（下拉回填已选标签用） */
+  get: (id: string) => http.get<TaskGroup>(`/task-groups/${id}`).then((r) => r.data),
   /** 新建任务组：name 必填；ownerId 为「任务组所属责任人」用户 ID（取自新建任务界面选中的责任人） */
   create: (name: string, ownerId?: string | null) =>
     http.post<TaskGroup>('/task-groups', { name, owner_id: ownerId ?? null }).then((r) => r.data),

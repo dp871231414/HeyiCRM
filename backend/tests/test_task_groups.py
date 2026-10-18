@@ -125,3 +125,48 @@ def test_none_task_group_never_backfilled(client, admin_headers):
     item = {m["id"]: m for m in client.get("/api/v1/task-groups", headers=admin_headers).json()}["TG_NONE"]
     assert item["ownerId"] == ""
     assert item["deptId"] == ""
+
+
+# ---------------------------------------------------------------- 列表分页 / 正则搜索（Round 30）
+
+
+def test_task_groups_list_pagination(client, admin_headers):
+    # 默认（不带 size）返回全部；带 size 则分页切片，且系统默认「空」始终置顶
+    all_items = client.get("/api/v1/task-groups", headers=admin_headers).json()
+    assert isinstance(all_items, list) and len(all_items) > 2
+    assert all_items[0]["id"] == "TG_NONE"
+
+    paged = client.get("/api/v1/task-groups?size=2", headers=admin_headers).json()
+    assert len(paged) == 2
+    assert paged[0]["id"] == "TG_NONE"  # 置顶
+
+
+def test_task_groups_list_regex_search(client, admin_headers):
+    # 正则匹配名称（大小写不敏感）：华东 应命中「华东大区营收达成」等
+    resp = client.get("/api/v1/task-groups?keyword=华东", headers=admin_headers)
+    assert resp.status_code == 200
+    items = resp.json()
+    names = {m["name"] for m in items}
+    assert "华东大区营收达成" in names
+    # 过滤生效：结果应少于全量
+    total = len(client.get("/api/v1/task-groups", headers=admin_headers).json())
+    assert len(items) < total
+    # 交替正则：华东|华南 至少命中两类
+    alt = client.get("/api/v1/task-groups?keyword=华东|华南", headers=admin_headers).json()
+    assert len(alt) >= len(items)
+
+
+def test_task_groups_list_invalid_regex_400(client, admin_headers):
+    # 非法正则（未闭合的字符类）应返回 400
+    resp = client.get("/api/v1/task-groups?keyword=[0-9", headers=admin_headers)
+    assert resp.status_code == 400
+
+
+def test_task_group_get_by_id_and_404(client, admin_headers):
+    created = client.post("/api/v1/task-groups", json={"name": "按ID获取测试组"}, headers=admin_headers).json()
+    mt_id = created["id"]
+    resp = client.get(f"/api/v1/task-groups/{mt_id}", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["id"] == mt_id
+    # 不存在返回 404
+    assert client.get("/api/v1/task-groups/TG_NO_SUCH", headers=admin_headers).status_code == 404

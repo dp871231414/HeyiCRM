@@ -191,66 +191,79 @@
               <button
                 type="button"
                 class="input flex items-center justify-between w-full text-left"
-                @click="tgDropdownOpen = !tgDropdownOpen"
+                @click="toggleTgDropdown"
               >
                 <span class="truncate">{{ selectedTaskGroupLabel || '请选择任务组' }}</span>
                 <span class="text-slate-400 ml-2">▾</span>
               </button>
               <!-- 点击空白处关闭下拉 -->
               <div v-if="tgDropdownOpen" class="fixed inset-0 z-10" @click="tgDropdownOpen = false" />
-              <!-- 下拉面板宽度固定比输入框宽，避免「新增/删除」按钮拥挤 -->
+              <!-- 下拉面板：搜索框 + 可滚动列表（下滑到底无限加载更多） -->
               <div
                 v-if="tgDropdownOpen"
-                class="absolute z-20 mt-1 w-80 rounded-lg border border-slate-200 bg-white shadow-lg max-h-64 overflow-auto"
+                class="absolute z-20 mt-1 w-80 rounded-lg border border-slate-200 bg-white shadow-lg"
               >
-                <button
-                  v-for="m in taskGroups"
-                  :key="m.id"
-                  type="button"
-                  class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
-                  :class="form.taskGroupId === m.id ? 'bg-brand-50' : ''"
-                  @click="selectTaskGroup(m.id)"
-                >
-                  <span class="flex-1 min-w-0 truncate">
-                    <template v-if="renamingId === m.id">
-                      <input
-                        v-model.trim="renameValue"
-                        class="input !py-0.5 !px-1.5 text-xs w-full"
-                        :disabled="renamingBusy"
-                        @click.stop
-                        @keyup.enter="confirmRename(m)"
-                        @keyup.esc="cancelRename"
-                      />
-                    </template>
+                <div class="p-2 border-b border-slate-100">
+                  <input
+                    v-model="tgKeyword"
+                    class="input !py-1.5 text-sm"
+                    placeholder="正则搜索任务组（如 华东|营收）"
+                    @input="onTgSearch"
+                  />
+                </div>
+                <div class="max-h-60 overflow-auto" @scroll="onTgScroll">
+                  <button
+                    v-for="m in taskGroups"
+                    :key="m.id"
+                    type="button"
+                    class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                    :class="form.taskGroupId === m.id ? 'bg-brand-50' : ''"
+                    @click="selectTaskGroup(m.id)"
+                  >
+                    <span class="flex-1 min-w-0 truncate">
+                      <template v-if="renamingId === m.id">
+                        <input
+                          v-model.trim="renameValue"
+                          class="input !py-0.5 !px-1.5 text-xs w-full"
+                          :disabled="renamingBusy"
+                          @click.stop
+                          @keyup.enter="confirmRename(m)"
+                          @keyup.esc="cancelRename"
+                        />
+                      </template>
+                      <template v-else>
+                        <span>{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</span>
+                        <!-- 展示任务组责任人（新建时选定 / 首次关联任务回填）；创建人仅存数据表不在此体现 -->
+                        <span v-if="m.ownerName" class="text-slate-400 text-xs"> {{ m.ownerName }}</span>
+                      </template>
+                    </span>
+                    <span v-if="renamingId === m.id" class="flex items-center gap-1 shrink-0" @click.stop>
+                      <button type="button" class="text-good-600 text-xs" :disabled="renamingBusy" @click="confirmRename(m)">保存</button>
+                      <button type="button" class="text-slate-400 text-xs" :disabled="renamingBusy" @click="cancelRename">取消</button>
+                    </span>
                     <template v-else>
-                      <span>{{ m.name }}{{ m.isSystem ? '（默认）' : '' }}</span>
-                      <!-- 展示任务组责任人（新建时选定 / 首次关联任务回填）；创建人仅存数据表不在此体现 -->
-                      <span v-if="m.ownerName" class="text-slate-400 text-xs"> {{ m.ownerName }}</span>
+                      <button
+                        v-if="auth.hasPerm('task.edit') && !m.isSystem"
+                        type="button"
+                        class="text-brand-600 hover:underline text-xs shrink-0"
+                        @click.stop="startRename(m)"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        v-if="auth.hasPerm('task.edit') && !m.isSystem"
+                        type="button"
+                        class="text-bad-600 hover:underline text-xs shrink-0"
+                        @click.stop="startDeleteTaskGroup(m)"
+                      >
+                        删除
+                      </button>
                     </template>
-                  </span>
-                  <span v-if="renamingId === m.id" class="flex items-center gap-1 shrink-0" @click.stop>
-                    <button type="button" class="text-good-600 text-xs" :disabled="renamingBusy" @click="confirmRename(m)">保存</button>
-                    <button type="button" class="text-slate-400 text-xs" :disabled="renamingBusy" @click="cancelRename">取消</button>
-                  </span>
-                  <template v-else>
-                    <button
-                      v-if="auth.hasPerm('task.edit') && !m.isSystem"
-                      type="button"
-                      class="text-brand-600 hover:underline text-xs shrink-0"
-                      @click.stop="startRename(m)"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      v-if="auth.hasPerm('task.edit') && !m.isSystem"
-                      type="button"
-                      class="text-bad-600 hover:underline text-xs shrink-0"
-                      @click.stop="startDeleteTaskGroup(m)"
-                    >
-                      删除
-                    </button>
-                  </template>
-                </button>
+                  </button>
+                  <div v-if="tgLoading" class="px-3 py-2 text-xs text-slate-400 text-center">加载中…</div>
+                  <div v-else-if="!tgHasMore && taskGroups.length" class="px-3 py-2 text-xs text-slate-300 text-center">没有更多了</div>
+                  <div v-else-if="!taskGroups.length && !tgLoading" class="px-3 py-2 text-xs text-slate-300 text-center">无匹配任务组</div>
+                </div>
               </div>
             </div>
             <!-- 新增任务组：常显在下拉选择框右侧 -->
@@ -549,16 +562,83 @@ const renamingId = ref('')
 const renameValue = ref('')
 const renamingBusy = ref(false)
 
+/** 任务组下拉：搜索 + 分页（无限滚动）。默认按权限取最新 10 条，下滑续拉 10 条，关键字为正则匹配。 */
+const tgPage = ref(1)
+const tgKeyword = ref('')
+const tgLoading = ref(false)
+const tgHasMore = ref(false)
+let tgSearchTimer: ReturnType<typeof setTimeout> | undefined
+
+async function loadTgGroups(reset = false) {
+  if (tgLoading.value) return
+  if (reset) tgPage.value = 1
+  tgLoading.value = true
+  try {
+    const params: { page: number; size: number; keyword?: string } = { page: tgPage.value, size: 10 }
+    const kw = tgKeyword.value.trim()
+    if (kw) params.keyword = kw
+    const items = await taskGroupApi.list(params)
+    taskGroups.value = reset ? items : [...taskGroups.value, ...items]
+    tgHasMore.value = items.length === 10
+    if (!reset) tgPage.value += 1
+  } catch (e) {
+    app.toast((e as Error).message, 'error')
+  } finally {
+    tgLoading.value = false
+  }
+}
+
+/** 搜索输入：300ms 防抖后重新拉取第一页 */
+function onTgSearch() {
+  if (tgSearchTimer) clearTimeout(tgSearchTimer)
+  tgSearchTimer = setTimeout(() => loadTgGroups(true), 300)
+}
+
+/** 列表滚动到底部时续拉下一页 */
+function onTgScroll(e: Event) {
+  const el = e.target as HTMLElement
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8 && tgHasMore.value && !tgLoading.value) {
+    loadTgGroups(false)
+  }
+}
+
+function toggleTgDropdown() {
+  tgDropdownOpen.value = !tgDropdownOpen.value
+  if (tgDropdownOpen.value && taskGroups.value.length === 0) loadTgGroups(true)
+}
+
+/** 确保已选任务组（可能不在当前下拉列表内，如较早创建的任务）可解析出标签 */
+async function resolveSelectedTg() {
+  const id = form.taskGroupId
+  if (!id) {
+    selectedTg.value = null
+    return
+  }
+  let found = taskGroups.value.find((x) => x.id === id) ?? null
+  if (!found) {
+    try {
+      found = await taskGroupApi.get(id)
+    } catch {
+      found = null
+    }
+    if (found) taskGroups.value = [found, ...taskGroups.value.filter((x) => x.id !== id)]
+  }
+  selectedTg.value = found
+}
+
 /** 当前选中任务组的展示文案：名称 + 责任人（如「注册新公司 胡国海」），系统默认「空」标记。
  *  按需求展示任务组责任人（回填字段）；创建人仅存数据表，不在前端体现。 */
+/** 当前选中的任务组对象（用于标签展示，避免懒加载下列表未包含已选项时标签丢失） */
+const selectedTg = ref<TaskGroup | null>(null)
 const selectedTaskGroupLabel = computed(() => {
-  const m = taskGroups.value.find((x) => x.id === form.taskGroupId)
+  const m = selectedTg.value
   if (!m) return ''
   return `${m.name}${m.isSystem ? '（默认）' : ''}${m.ownerName ? ` ${m.ownerName}` : ''}`
 })
 
 function selectTaskGroup(id: string) {
   form.taskGroupId = id
+  selectedTg.value = taskGroups.value.find((x) => x.id === id) ?? null
   tgDropdownOpen.value = false
 }
 
@@ -581,6 +661,7 @@ async function confirmRename(m: TaskGroup) {
     const updated = await taskGroupApi.rename(m.id, name)
     const idx = taskGroups.value.findIndex((x) => x.id === m.id)
     if (idx >= 0) taskGroups.value[idx] = { ...taskGroups.value[idx], ...updated }
+    if (selectedTg.value?.id === m.id) selectedTg.value = { ...selectedTg.value, ...updated }
     cancelRename()
   } catch (e) {
     app.toast((e as Error).message, 'error')
@@ -855,7 +936,7 @@ function switchView(grouped: boolean) {
   applyFilters()
 }
 
-function openForm(t?: TaskItem) {
+async function openForm(t?: TaskItem) {
   formError.value = ''
   if (t) {
     Object.assign(form, {
@@ -899,6 +980,8 @@ function openForm(t?: TaskItem) {
       deptId: ownerObj?.deptId ?? '',
     })
   }
+  // 解析已选任务组标签（编辑模式下所选任务组可能不在当前下拉列表内，按需按 ID 拉取）
+  await resolveSelectedTg()
   // 编辑模式加载进展记录（新建无需）
   if (t) loadProgressForEdit(t.id)
   else resetProgress()
@@ -970,7 +1053,8 @@ async function confirmAddTaskGroup() {
     const ownerObj = owners.value.find((o) => o.name === form.owner)
     const ownerId = ownerObj?.id ?? null
     const created = await taskGroupApi.create(name, ownerId)
-    taskGroups.value = [...taskGroups.value, created].sort((a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name))
+    taskGroups.value = [created, ...taskGroups.value.filter((x) => x.id !== created.id)]
+    selectedTg.value = created
     form.taskGroupId = created.id
     newTaskGroupName.value = ''
     addingTaskGroup.value = false
@@ -997,7 +1081,11 @@ async function confirmDeleteTaskGroup() {
     await taskGroupApi.remove(m.id)
     taskGroups.value = taskGroups.value.filter((x) => x.id !== m.id)
     // 若当前选中的正是被删任务组，回退到默认「空」
-    if (form.taskGroupId === m.id) form.taskGroupId = defaultTaskGroupId()
+    if (form.taskGroupId === m.id) {
+      const def = taskGroups.value.find((x) => x.isSystem) ?? null
+      form.taskGroupId = def?.id ?? TG_NONE_ID
+      selectedTg.value = def
+    }
     app.toast('已删除任务组')
     deleteTaskGroupTarget.value = null
   } catch (e) {
@@ -1041,12 +1129,15 @@ async function onImport(e: Event) {
 
 onMounted(async () => {
   try {
-    const [orgsRes, ownersRes, mtRes] = await Promise.all([metaApi.orgs(), metaApi.owners(), taskGroupApi.list()])
+    const [orgsRes, ownersRes, mtRes] = await Promise.all([
+      metaApi.orgs(),
+      metaApi.owners(),
+      taskGroupApi.list({ page: 1, size: 10 }),
+    ])
     orgs.value = orgsRes
     owners.value = ownersRes
-    taskGroups.value = mtRes.sort(
-      (a, b) => Number(b.isSystem) - Number(a.isSystem) || a.name.localeCompare(b.name, 'zh'),
-    )
+    // 任务组下拉默认加载「最新 10 条」（后端按权限过滤 + 创建时间倒序）；搜索/滚动在服务端分页
+    taskGroups.value = mtRes
   } catch {
     /* 忽略字典加载失败 */
   }
