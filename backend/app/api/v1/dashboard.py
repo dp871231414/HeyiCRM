@@ -102,6 +102,23 @@ def project_funnel(
     return build_funnel(db, dept_id=dept or None)
 
 
+@router.get("/demand-analysis")
+def demand_analysis(
+    dept: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_perm("dashboard.view")),
+):
+    """车辆需求分析：车头按(车型+电池容量)组合、挂车按车型分行统计实际录入的需求明细。
+
+    只按角色权限开放，不做数据范围裁剪（与驾驶舱其余模块同一口径）。
+    `dept`：二级部门 ID 时只统计该部门负责人的项目；为空（全部）统计市场部子树全部负责人。
+    返回结构含 stages（阶段与转化率，供前端渲染筛选标签后缀）、tractor/trailer（all + byStage 两套聚合）。
+    """
+    from app.services.funnel import build_demand_analysis
+
+    return build_demand_analysis(db, dept_id=dept or None)
+
+
 @router.get("/funnel-config")
 def funnel_config(db: Session = Depends(get_db), user: User = Depends(require_perm("dashboard.view"))):
     """各阶段转化概率（默认值 = 阶段百分比）。"""

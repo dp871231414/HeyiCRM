@@ -28,6 +28,8 @@ from app.models import (
     OperationLog,
     Organization,
     ProjectProgress,
+    ProjectTractorRequirement,
+    ProjectTrailerRequirement,
     Role,
     SysDict,
     SysDictItem,
@@ -212,6 +214,21 @@ DEMO_USERS = [
 
 def _d(s: str) -> date:
     return date.fromisoformat(s)
+
+
+def _split_even(total: int, n: int) -> list[int]:
+    """把 total 尽量均分为 n 份（余数摊到前若干份），total<=0 时返回全 0。"""
+    if total <= 0:
+        return [0] * n
+    base, rem = divmod(total, n)
+    return [base + (1 if i < rem else 0) for i in range(n)]
+
+
+def _add_req(db: Session, model, project_id: str, model_name: str, battery: str, qty: int) -> None:
+    """新增一行项目需求明细（车头或挂车）。qty<=0 时跳过，避免空行。"""
+    if qty <= 0:
+        return
+    db.add(model(project_id=project_id, model=model_name, battery=battery, qty=qty))
 
 
 # ---------------------------------------------------------------- 任务组（原「任务分类」）
@@ -472,15 +489,33 @@ def seed(db: Session, reset: bool = False) -> dict:
 
     # 市场项目同理：只在 SEED_DEMO=1 时灌入演示数据
     if (SEED_DEMO or reset) and not db.scalar(select(MarketProject).limit(1)):
+        # 需求明细拆分用的字典枚举（与 SYS_DICTS 保持一致）
+        _veh_mods = ["6*4牵引车", "4*2牵引车", "矿卡", "自卸车"]
+        _batt_caps = ["400度", "423度", "600度", "352度"]
+        _trail_mods = ["侧翻挂", "高栏挂", "后翻挂"]
+
         for i, mp in enumerate(MARKET_PROJECTS, start=1):
+            pid = f"MP{i:04d}"
             db.add(
                 MarketProject(
-                    id=f"MP{i:04d}", name=mp["name"], description=mp["description"],
+                    id=pid, name=mp["name"], description=mp["description"],
                     tractor_demand=mp["tractor"], trailer_demand=mp["trailer"],
                     stage=mp["stage"], owner=mp["owner"], created_by="U001",
                 )
             )
             created["marketProjects"] += 1
+
+            # 需求明细行：把聚合数量按 (车型×电池容量) / 挂车型号 拆成 2 行，
+            # 各行数量之和与 tractor_demand/trailer_demand 对齐（漏斗与新模块口径一致）。
+            ci = i - 1
+            if mp["tractor"] > 0:
+                t1, t2 = _split_even(mp["tractor"], 2)
+                _add_req(db, ProjectTractorRequirement, pid, _veh_mods[ci % 4], _batt_caps[ci % 4], t1)
+                _add_req(db, ProjectTractorRequirement, pid, _veh_mods[(ci + 1) % 4], _batt_caps[(ci + 2) % 4], t2)
+            if mp["trailer"] > 0:
+                tr1, tr2 = _split_even(mp["trailer"], 2)
+                _add_req(db, ProjectTrailerRequirement, pid, _trail_mods[ci % 3], "", tr1)
+                _add_req(db, ProjectTrailerRequirement, pid, _trail_mods[(ci + 1) % 3], "", tr2)
 
     db.commit()
     return created

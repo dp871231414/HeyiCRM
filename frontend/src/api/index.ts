@@ -16,6 +16,7 @@ import type {
   PermCatalog,
   ProjectFunnelResult,
   ProjectItem,
+  DemandAnalysisResult,
   ProjectProgressItem,
   ProjectProgressListOut,
   RoleItem,
@@ -227,6 +228,11 @@ export const dashboardApi = {
   projectFunnel: (dept?: string) =>
     http
       .get<ProjectFunnelResult>('/dashboard/project-funnel', { params: dept ? { dept } : {} })
+      .then((r) => r.data),
+  /** 车辆需求分析：车头按(车型×电池容量)组合、挂车按车型分行统计需求明细；dept 同 projectFunnel */
+  demandAnalysis: (dept?: string) =>
+    http
+      .get<DemandAnalysisResult>('/dashboard/demand-analysis', { params: dept ? { dept } : {} })
       .then((r) => r.data),
   funnelConfig: () =>
     http.get<{ probs: FunnelProbItem[] }>('/dashboard/funnel-config').then((r) => r.data),

@@ -183,6 +183,9 @@
             </div>
           </div>
         </div>
+
+        <!-- 车辆需求分析：车头/挂车需求明细统计（随上方部门筛选联动） -->
+        <VehicleDemandAnalysis class="mt-4" :dept="funnelDept" />
       </section>
 
       <!-- 项目公司对比 -->
@@ -389,6 +392,7 @@ import { useRouter } from 'vue-router'
 
 import { dashboardApi } from '@/api'
 import FunnelChart from '@/components/FunnelChart.vue'
+import VehicleDemandAnalysis from '@/components/VehicleDemandAnalysis.vue'
 import ModalDialog from '@/components/ModalDialog.vue'
 import MonthPicker from '@/components/MonthPicker.vue'
 import Sparkline from '@/components/Sparkline.vue'

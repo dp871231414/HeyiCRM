@@ -395,6 +395,43 @@ export interface ProjectFunnelResult {
   deptOptions: { id: string; name: string }[]
 }
 
+/** 车辆需求分析：阶段元信息（含转化率，供筛选标签后缀） */
+export interface DemandStageMeta {
+  stage: number
+  label: string
+  /** 该阶段转化概率（0~1） */
+  prob: number
+}
+
+/** 车头需求行：按(车型 × 电池容量)组合汇总 */
+export interface DemandTractorRow {
+  model: string
+  battery: string
+  qty: number
+}
+
+/** 挂车需求行：按车型分行，含总数量与预估消化数量 */
+export interface DemandTrailerRow {
+  model: string
+  qty: number
+  /** 预估消化数量 = Σ(需求数量 × 项目所在阶段转化概率) */
+  digest: number
+}
+
+export interface DemandAnalysisResult {
+  stages: DemandStageMeta[]
+  tractor: {
+    /** 全阶段汇总 */
+    all: DemandTractorRow[]
+    /** 按阶段切分，key 为字符串 stage（如 "50"） */
+    byStage: Record<string, DemandTractorRow[]>
+  }
+  trailer: {
+    all: DemandTrailerRow[]
+    byStage: Record<string, DemandTrailerRow[]>
+  }
+}
+
 export interface FunnelProbItem {
   stage: MarketStage
   prob: number

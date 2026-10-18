@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.constants import MARKET_STAGES
-from app.models import FunnelConfig, MarketProject, User
+from app.models import FunnelConfig, MarketProject, ProjectTractorRequirement, ProjectTrailerRequirement, User
 from app.services.org_tree import market_sub_departments, market_tree_ids
 
 
@@ -102,3 +102,98 @@ def build_funnel(db: Session, dept_id: str | None = None) -> dict:
         # 市场部直接子部门（二级部门）列表，供前端渲染筛选标签；随组织变化同步更新
         "deptOptions": market_sub_departments(db),
     }
+
+
+def build_demand_analysis(db: Session, dept_id: str | None = None) -> dict:
+    """车辆需求分析：车头按(车型+电池容量)组合、挂车按车型分行统计实际录入的需求明细。
+
+    - 车头需求：每种(车型, 电池容量)组合的汇总需求数量（辆）。
+    - 挂车需求：每种车型的「总数量」（辆）与「预估消化数量」（辆）= Σ(需求数量 × 项目所在阶段转化概率)。
+    - 同时按阶段切分（byStage，key 为字符串 stage）与全量（all）两套，供前端按阶段筛选标签切换。
+
+    只按角色权限开放，不做数据范围裁剪（与驾驶舱其余模块同一口径）。
+    dept_id：指定二级部门时只统计该部门负责人名下的项目；为 None 时统计市场部子树全部负责人。
+    """
+    market_ids = market_tree_ids(db)
+    owner_dept = _owner_dept_map(db, market_ids)
+
+    if dept_id:
+        keep = {name for name, did in owner_dept.items() if did == dept_id}
+    else:
+        keep = {name for name, did in owner_dept.items() if did in market_ids}
+
+    projects = db.scalars(select(MarketProject)).all()
+    # 仅纳入「负责人属于统计范围」的项目，记录其阶段
+    proj_stage: dict[str, int] = {}
+    for p in projects:
+        if p.owner not in keep:
+            continue
+        proj_stage[p.id] = int(p.stage)
+
+    probs = load_probs(db)
+
+    tractor_reqs = db.scalars(select(ProjectTractorRequirement)).all()
+    trailer_reqs = db.scalars(select(ProjectTrailerRequirement)).all()
+
+    # 车头：按 (车型, 电池容量) 组合，分别按阶段与全量聚合数量
+    tractor_by_stage: dict[int, dict[tuple[str, str], int]] = {}
+    tractor_all: dict[tuple[str, str], int] = {}
+    for r in tractor_reqs:
+        s = proj_stage.get(r.project_id)
+        if s is None:
+            continue
+        key = (r.model or "未填", r.battery or "未填")
+        tractor_all[key] = tractor_all.get(key, 0) + int(r.qty)
+        tractor_by_stage.setdefault(s, {})
+        tractor_by_stage[s][key] = tractor_by_stage[s].get(key, 0) + int(r.qty)
+
+    # 挂车：按车型，分别按阶段与全量聚合；digest = qty × 项目所在阶段转化概率
+    trailer_by_stage: dict[int, dict[str, dict[str, float]]] = {}
+    trailer_all: dict[str, dict[str, float]] = {}
+    for r in trailer_reqs:
+        s = proj_stage.get(r.project_id)
+        if s is None:
+            continue
+        key = r.model or "未填"
+        q = int(r.qty)
+        d = q * probs.get(s, s / 100.0)
+        agg = trailer_all.get(key, {"qty": 0.0, "digest": 0.0})
+        agg["qty"] += q
+        agg["digest"] += d
+        trailer_all[key] = agg
+        ts = trailer_by_stage.setdefault(s, {})
+        ta = ts.get(key, {"qty": 0.0, "digest": 0.0})
+        ta["qty"] += q
+        ta["digest"] += d
+        ts[key] = ta
+
+    stages_meta = [{"stage": m["stage"], "label": m["label"], "prob": probs[m["stage"]]} for m in MARKET_STAGES]
+
+    def sort_tractor(d: dict[tuple[str, str], int]):
+        # 数量降序，数量相同按车型、电池容量字典序，结果稳定
+        return sorted(d.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1]))
+
+    def sort_trailer(d: dict[str, dict[str, float]]):
+        return sorted(d.items(), key=lambda kv: (-kv[1]["qty"], kv[0]))
+
+    tractor = {
+        "all": [{"model": k[0], "battery": k[1], "qty": v} for k, v in sort_tractor(tractor_all)],
+        "byStage": {
+            str(s): [{"model": k[0], "battery": k[1], "qty": v} for k, v in sort_tractor(d)]
+            for s, d in tractor_by_stage.items()
+        },
+    }
+    trailer = {
+        "all": [
+            {"model": k, "qty": int(v["qty"]), "digest": round(v["digest"], 1)}
+            for k, v in sort_trailer(trailer_all)
+        ],
+        "byStage": {
+            str(s): [
+                {"model": k, "qty": int(v["qty"]), "digest": round(v["digest"], 1)}
+                for k, v in sort_trailer(d)
+            ]
+            for s, d in trailer_by_stage.items()
+        },
+    }
+    return {"stages": stages_meta, "tractor": tractor, "trailer": trailer}
