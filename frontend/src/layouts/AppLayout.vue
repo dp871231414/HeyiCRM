@@ -203,7 +203,7 @@ type MenuItem = {
 const ALL_MENUS: MenuItem[] = [
   { name: 'dashboard', label: '经营驾驶舱', perm: 'dashboard.view', icon: ICONS.dashboard },
   { name: 'tasks', label: '任务管理', perm: 'task.view', icon: ICONS.tasks },
-  { name: 'market', label: '项目管理', perm: 'market.view', icon: ICONS.market },
+  { name: 'market', label: '市场项目管理', perm: 'market.view', icon: ICONS.market },
   { name: 'metrics', label: '指标维护', perm: 'metric.view', icon: ICONS.metrics },
   {
     label: '系统配置',

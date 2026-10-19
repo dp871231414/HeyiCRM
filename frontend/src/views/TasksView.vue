@@ -172,13 +172,13 @@
           <input v-model.trim="form.parent" class="input" maxlength="40" placeholder="如：完成全年营收目标 10.2 亿" />
         </div>
         <div>
-          <label class="label">任务组<span class="req">*</span><span class="text-slate-400 font-normal">（不选默认「空」，展示「名称 责任人」）</span></label>
+          <label class="label">任务组<span class="req">*</span><span class="text-slate-400 font-normal">（相关任务可设置归属于同一个任务组，便于集中跟踪；不选则归为「空」）</span></label>
           <div v-if="addingTaskGroup" class="flex items-center gap-2">
             <input
               v-model.trim="newTaskGroupName"
               class="input"
               maxlength="25"
-              placeholder="输入新任务组名称（≤25字）"
+              placeholder="输入新任务组名称（最多 25 字）"
               @keyup.enter="confirmAddTaskGroup"
             />
             <button class="btn-ghost" :disabled="addingTaskGroupBusy" @click="confirmAddTaskGroup">
@@ -207,7 +207,7 @@
                   <input
                     v-model="tgKeyword"
                     class="input !py-1.5 text-sm"
-                    placeholder="正则搜索任务组（如 华东|营收）"
+                    placeholder="搜索任务组（如 华东、营收）"
                     @input="onTgSearch"
                   />
                 </div>
@@ -474,7 +474,7 @@
     <ModalDialog :open="importOpen" title="批量导入" width="lg" @close="importOpen = false">
       <div class="space-y-4">
         <p class="text-sm text-slate-500">
-          先下载标准模板填写，再上传。模板中「任务分类」列会对应到任务组（任务组不存在时自动新建）。
+          先下载标准模板，在「任务组」列填写名称即可；若该任务组不存在，上传后会自动创建。填好后上传文件完成批量导入。
         </p>
         <div class="flex flex-wrap items-center gap-3">
           <button class="btn-ghost" @click="download(taskApi.templateUrl(), '重点任务导入标准模板.xlsx')">下载模板</button>

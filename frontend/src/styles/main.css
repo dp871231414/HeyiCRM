@@ -247,7 +247,7 @@ body {
   box-shadow: -6px 0 12px -8px rgba(15, 23, 42, 0.18);
 }
 
-/* 项目管理：项目名称列冻结（紧邻项目ID右侧，参考任务管理的冻结列做法）。
+/* 市场项目管理：项目名称列冻结（紧邻项目ID右侧，参考任务管理的冻结列做法）。
    left 与 .col-id(min-width:96px) 对齐，避免滚动时 ID 与名称之间露出空隙。 */
 .col-pname {
   position: sticky;

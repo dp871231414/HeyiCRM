@@ -47,7 +47,7 @@ const router = createRouter({
           path: 'market',
           name: 'market',
           component: () => import('@/views/ProjectsView.vue'),
-          meta: { title: '项目管理', perm: 'market.view' },
+          meta: { title: '市场项目管理', perm: 'market.view' },
         },
         {
           path: 'metrics',
