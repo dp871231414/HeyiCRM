@@ -18,7 +18,7 @@ DOC_BUNDLES: dict[str, tuple[str, str]] = {
     "prd": ("产品需求文档.md", "markdown"),
     "tech": ("技术文档.md", "markdown"),
     "test": ("测试文档.md", "markdown"),
-    "design": ("设计文档.md", "markdown"),
+    "visual": ("视觉交互文档.md", "markdown"),
     "skill": ("skill文档.md", "markdown"),
     "devnotes": ("项目开发说明.md", "markdown"),
 }
@@ -27,11 +27,24 @@ DOC_TITLES: dict[str, str] = {
     "prd": "产品需求文档",
     "tech": "技术文档",
     "test": "测试文档",
-    "design": "设计文档",
+    "visual": "视觉交互文档",
     "skill": "Skill 文档",
     "devnotes": "项目开发说明",
 }
-DOC_ORDER: list[str] = ["usage", "prd", "tech", "test", "design", "skill", "devnotes"]
+DOC_ORDER: list[str] = ["usage", "prd", "tech", "test", "visual", "skill", "devnotes"]
+
+# 每个内置文档归属的分组（与数据字典 doc_group 的取值一致）。
+# 使用说明面向终端用户 -> 用户文档；其余为开发/实施文档 -> 开发文档。
+# 用户新建文档未指定分组时默认「默认文档」，但内置文档的分组由 seed / sync 统一维护。
+DOC_GROUPS: dict[str, str] = {
+    "usage": "用户文档",
+    "prd": "开发文档",
+    "tech": "开发文档",
+    "test": "开发文档",
+    "visual": "开发文档",
+    "skill": "开发文档",
+    "devnotes": "开发文档",
+}
 
 
 def read_bundle(key: str) -> str | None:

@@ -14,7 +14,7 @@ export const PAGE_PERM: Record<string, string> = {
   market: 'market.view',
   dict: 'sys.config.view',
   downloads: 'download.view',
-  doc: 'sys.config.view',
+  doc: 'doc.view',
 }
 
 const router = createRouter({
@@ -77,7 +77,7 @@ const router = createRouter({
           path: 'doc',
           name: 'doc',
           component: () => import('@/views/DocView.vue'),
-          meta: { title: '使用说明', perm: 'sys.config.view' },
+          meta: { title: '文档中心', perm: 'doc.view' },
         },
         {
           path: 'forbidden',

@@ -19,7 +19,7 @@ from app.constants import DEFAULT_PERMS_FOR_ALL
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
-from app.docs_meta import DOC_ORDER, DOC_TITLES, DOC_BUNDLES, read_bundle
+from app.docs_meta import DOC_ORDER, DOC_TITLES, DOC_BUNDLES, DOC_GROUPS, read_bundle
 from app.models import (
     TaskGroup,
     MarketProject,
@@ -164,7 +164,7 @@ TASKS = [
 
 ROLES = [
     dict(id="admin", name="系统管理员", description="全部菜单与操作权限，可管理账号与角色", scope="all", is_system=True,
-         permissions=["dashboard.view", "dashboard.config", "task.view", "task.detail", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.detail", "market.edit", "market.import", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete", "sys.config.view", "sys.config.edit"]),
+         permissions=["dashboard.view", "dashboard.config", "task.view", "task.detail", "task.edit", "task.delete", "task.import", "metric.view", "metric.edit", "metric.edit_company", "metric.edit_project", "project.create", "project.edit", "project.delete", "metric.import", "market.view", "market.detail", "market.edit", "market.import", "market.delete", "account.view", "account.edit", "account.role", "account.import", "account.delete", "sys.config.view", "sys.config.edit", "doc.view", "doc.edit", "doc.create", "doc.sync"]),
     dict(id="dept_head", name="部门负责人", description="本部门及下属部门的任务与指标全权", scope="dept_sub", is_system=True,
          permissions=["dashboard.view", "task.view", "task.detail", "task.edit", "task.import", "metric.view", "metric.edit", "metric.edit_project", "metric.import", "market.view", "market.detail", "market.edit", "market.import"]),
     dict(id="member", name="普通成员", description="仅维护本人任务与指标", scope="self", is_system=True,
@@ -186,10 +186,12 @@ MARKET_PROJECTS = [
 # 系统配置 · 数据字典预设（按 code 幂等 upsert：已存在的字典不覆盖用户修改，仅补建缺失的字典）
 # code 为固定编码，前端按 code 取车辆型号 / 挂车型号 / 电池容量，填充项目需求子列表下拉项。
 # battery_capacity 的枚举值从线上环境同步（用户已在线上配置：400度/423度/600度/352度）。
+# doc_group 为文档中心分组字典（默认文档 / 用户文档 / 开发文档）。
 SYS_DICTS = [
     dict(code="vehicle_model", name="车辆型号", items=["6*4牵引车", "4*2牵引车", "矿卡", "自卸车"]),
     dict(code="trailer_model", name="挂车型号", items=["侧翻挂", "高栏挂", "后翻挂"]),
     dict(code="battery_capacity", name="电池容量", items=["400度", "423度", "600度", "352度"]),
+    dict(code="doc_group", name="文档分组", items=["默认文档", "用户文档", "开发文档"]),
 ]
 
 # 演示账号（不含平台管理员，管理员始终单独创建）。仅 SEED_DEMO=1 时灌入。
@@ -530,13 +532,30 @@ def seed_docs(db: Session) -> None:
     """文档中心初始行：按 doc_key 幂等创建；若 bundled_docs 存在对应源文件则一并载入初始内容。
 
     后续「每次迭代」由 POST /system/docs/sync 从 bundled_docs 重新拉取最新文档内容写入数据库。
+    内置文档的分组按 DOC_GROUPS 统一维护（如设计文档合并入技术文档后不再单独存在）。
     """
     for key in DOC_ORDER:
-        if db.scalar(select(SystemDoc).where(SystemDoc.doc_key == key)):
+        existing = db.scalar(select(SystemDoc).where(SystemDoc.doc_key == key))
+        if existing:
+            # 已存在的内置文档：同步其分组（与 DOC_GROUPS 对齐）
+            if key in DOC_GROUPS:
+                existing.doc_group = DOC_GROUPS[key]
             continue
         content = read_bundle(key) or ""
         fmt = DOC_BUNDLES.get(key, (None, "markdown"))[1]
-        db.add(SystemDoc(doc_key=key, title=DOC_TITLES.get(key, key), fmt=fmt, content=content))
+        db.add(
+            SystemDoc(
+                doc_key=key,
+                title=DOC_TITLES.get(key, key),
+                fmt=fmt,
+                doc_group=DOC_GROUPS.get(key, "默认文档"),
+                content=content,
+            )
+        )
+    # 设计文档已合并入技术文档，清理历史遗留的 design 行（幂等，仅删内置 design 文档）
+    legacy = db.scalar(select(SystemDoc).where(SystemDoc.doc_key == "design"))
+    if legacy:
+        db.delete(legacy)
 
 
 def main() -> None:
@@ -575,6 +594,14 @@ def main() -> None:
         sd_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(sys_dict)")).fetchall()}
         if "status" not in sd_existing:
             conn.execute(text("ALTER TABLE sys_dict ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'"))
+        # system_doc.doc_group：文档中心分组字段，老库补 ALTER（默认「默认文档」，已有内置文档在 seed_docs 时按 DOC_GROUPS 重新归组）
+        doc_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(system_doc)")).fetchall()}
+        if "doc_group" not in doc_existing:
+            conn.execute(text("ALTER TABLE system_doc ADD COLUMN doc_group VARCHAR(32) NOT NULL DEFAULT '默认文档'"))
+        # role.doc_groups：文档中心分组可见范围（两级权限第二级），老库补 ALTER（默认空数组=全部分组）
+        role_existing = {r[1] for r in conn.execute(text("PRAGMA table_info(role)")).fetchall()}
+        if "doc_groups" not in role_existing:
+            conn.execute(text("ALTER TABLE role ADD COLUMN doc_groups TEXT NOT NULL DEFAULT '[]'"))
     with SessionLocal() as db:
         created = seed(db, reset=reset)
     print(f"[seed] 完成（reset={reset}）: {created}")

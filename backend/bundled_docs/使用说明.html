@@ -132,7 +132,7 @@
 <body>
 <header class="top">
   <h1>和毅车队经营看板 · 使用说明</h1>
-  <p>面向总部运营、部门负责人与一线人员的操作指南 · 按功能模块讲解「输出方式 → 输出结果」· 版本 v1.0（含 Round 35）</p>
+  <p>面向总部运营、部门负责人与一线人员的操作指南 · 按功能模块讲解「输出方式 → 输出结果」· 版本 v1.1（含 Round 37）</p>
 </header>
 
 <nav class="toc">
@@ -144,6 +144,7 @@
   <a href="#m5">⑤ 数据字典</a>
   <a href="#m6">⑥ 系统管理</a>
   <a href="#m7">⑦ 下载中心</a>
+  <a href="#m8">⑧ 文档中心</a>
 </nav>
 
 <div class="wrap">
@@ -442,7 +443,7 @@
             <li>字典卡片展示：编码 / 名称 / <b>状态（启用/停用）</b> / 枚举值列表。</li>
             <li><b>已存在配置不允许删除，只能启用/停用</b>（Round 31）；停用后枚举不再出现在关联下拉。</li>
           </ul>
-          <div class="note">常用编码：vehicle_model（车型）、trailer_model（挂车型号）、battery_capacity（电池容量）。</div>
+          <div class="note">常用编码：vehicle_model（车型）、trailer_model（挂车型号）、battery_capacity（电池容量）、<b>doc_group（文档分组：默认文档 / 用户文档 / 开发文档，供文档中心归类与分组权限使用）</b>。</div>
         </div>
       </div>
     </div>
@@ -463,7 +464,8 @@
             <li>「设置 — 账号管理」三页签：账号 / 组织结构 / 角色权限。</li>
             <li>新增账号填名称、账号、密码、部门、<b>角色与 scope（必填）</b>、状态；启用/停用；删除前预检引用。</li>
             <li>组织结构树新增/编辑部门（市场部 D01、根 CO 锁定不可删）。</li>
-            <li>角色权限页从 <span class="kbd">GET /permissions</span> 拉取权限树勾选配置。</li>
+            <li>角色权限页从 <span class="kbd">GET /permissions</span> 拉取权限树勾选配置（菜单 + 按钮级，含文档中心 doc.view / doc.edit / doc.create / doc.sync）。</li>
+            <li>在角色表单中配置<b>「文档分组可见范围」</b>多选（来自数据字典 doc_group）；留空=可看全部分组，勾选后仅能查看所选分组的文档（两级权限的第二级）。</li>
           </ol>
         </div>
         <div class="io what">
@@ -510,26 +512,28 @@
   <section id="m8">
     <div class="module-head">
       <div class="num">8</div>
-      <h2>文档中心（使用说明）</h2>
-      <span class="perm">sys.config.view</span>
+      <h2>文档中心</h2>
+      <span class="perm">doc.view</span>
     </div>
     <div class="card">
       <div class="grid2">
         <div class="io how">
           <div class="lab">▸ 输出方式</div>
           <ol>
-            <li>进入「系统配置 → 使用说明」，打开文档中心。</li>
-            <li>左侧为文档列表（使用说明 / 产品需求文档 / 技术文档 / 测试文档 / 设计文档 / Skill 文档 / 项目开发说明），点击切换。</li>
-            <li>管理员可点「同步最新」从源码刷新全部文档，或点「编辑」修改当前文档内容（版本号自动 +1）。</li>
+            <li>点击左侧独立菜单「<b>文档中心</b>」进入（权限点 <span class="kbd">doc.view</span>，不再挂在系统配置下）。</li>
+            <li>左侧文档列表<b>按分组归类</b>展示（分组取值来自数据字典「文档分组」：默认文档 / 用户文档 / 开发文档）。内置七篇归属：使用说明→用户文档，其余（产品需求 / 技术 / 测试 / 视觉交互 / Skill / 项目开发说明）→ 开发文档；新建文档缺省归入「默认文档」。</li>
+            <li>点击文档切换右侧内容。管理员可执行：<b>新建</b>（<span class="kbd">doc.create</span>）、<b>同步最新</b>（<span class="kbd">doc.sync</span>，从源码刷新全部内置文档）、<b>编辑</b>（<span class="kbd">doc.edit</span>）。</li>
+            <li>点「编辑」后，<b>内容编辑区上方</b>出现「分组」下拉与「文档标题」输入框（改标题时后台 doc_key 不变，历史链接不失效）；内容改动后版本号自动 +1。</li>
           </ol>
         </div>
         <div class="io what">
           <div class="lab">▸ 输出结果</div>
           <ul>
             <li>右侧展示所选文档内容：HTML 类（如本使用说明）以富文本渲染，Markdown 类转为排版后的网页。</li>
-            <li>每篇显示<b>版本</b>与<b>更新时间</b>，内容随系统迭代自动同步至数据库。</li>
+            <li>每篇显示<b>分组</b>、<b>版本</b>与<b>更新时间</b>，内容随系统迭代由源码自动同步至数据库。</li>
+            <li><b>两级权限</b>：先卡 <span class="kbd">doc.view</span>（能否进入），再卡角色「文档分组可见范围」<span class="kbd">doc_groups</span>（空=全部，非空=仅列示分组）。例如仅授予 <span class="kbd">doc.view</span> + <span class="kbd">doc_groups=['用户文档']</span> 的角色，只能看到「使用说明」，看不到开发类文档。</li>
           </ul>
-          <div class="note">本页本身即「使用说明」文档，存于数据库，每次迭代由源码自动更新；其余六类文档同理可在系统内统一查阅。</div>
+          <div class="note">原「设计文档」已合并进技术文档，并由「视觉交互文档」取代其交互/视觉规范职责；文档中心现含七篇：使用说明 / 产品需求文档 / 技术文档 / 测试文档 / 视觉交互文档 / Skill 文档 / 项目开发说明。本页即「使用说明」文档本身，存于数据库并随迭代自动更新。</div>
         </div>
       </div>
     </div>
@@ -542,7 +546,7 @@
 </div>
 
 <footer>
-  和毅车队经营看板 · 使用说明 v1.0 ｜ 基于 Round 30–35 功能汇总 ｜ 生成于 2026-10-18
+  和毅车队经营看板 · 使用说明 v1.1 ｜ 基于 Round 30–37 功能汇总 ｜ 生成于 2026-10-19
 </footer>
 </body>
 </html>

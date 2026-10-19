@@ -20,6 +20,9 @@ class Role(Base):
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # 权限 key 数组，如 ["dashboard.view", "task.view", ...]
     permissions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    # 文档中心分组可见范围（两级权限的第二级）：允许查看的文档分组列表；
+    # 为空表示「全部分组」（如管理员）。与 doc.view 菜单权限配合使用。
+    doc_groups: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

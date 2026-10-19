@@ -57,6 +57,7 @@ def create_role(
         scope=payload.scope if payload.scope in SCOPES else "self",
         is_system=bool(payload.isSystem),
         permissions=perms,
+        doc_groups=list(payload.docGroups or []),
     )
     db.add(role)
     write_log(db, user, "create", "role", role.id, {"name": name, "perms": perms}, request)
@@ -93,6 +94,9 @@ def update_role(
     # 内置标记可配置：不传则保持原值，避免前端未携带时被误清空
     if payload.isSystem is not None:
         role.is_system = bool(payload.isSystem)
+    # 文档分组可见范围：不传则保持原值
+    if payload.docGroups is not None:
+        role.doc_groups = list(payload.docGroups)
     write_log(db, user, "update", "role", role_id, {"name": name}, request)
     db.commit()
     db.refresh(role)

@@ -213,7 +213,7 @@ const ALL_MENUS: MenuItem[] = [
       { name: 'dict', label: '数据字典', perm: 'sys.config.view', icon: ICONS.dict },
       { name: 'accounts', label: '账号管理', perm: 'account.view', icon: ICONS.accounts },
       { name: 'downloads', label: '下载中心', perm: 'download.view', icon: ICONS.download },
-      { name: 'doc', label: '使用说明', perm: 'sys.config.view', icon: ICONS.doc },
+      { name: 'doc', label: '文档中心', perm: 'doc.view', icon: ICONS.doc },
     ],
   },
 ]

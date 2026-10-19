@@ -177,7 +177,7 @@ def test_role_delete_blocked_when_in_use(client, admin_headers):
 
 def test_permissions_catalog(client, admin_headers):
     data = client.get("/api/v1/permissions", headers=admin_headers).json()
-    assert len(data["groups"]) == 7
+    assert len(data["groups"]) == 8
     assert {g["menu"] for g in data["groups"]} == {
         "dashboard",
         "task",
@@ -185,8 +185,13 @@ def test_permissions_catalog(client, admin_headers):
         "market",
         "account",
         "system",
+        "doc",
         "download",
     }
+    # 文档中心两级权限：菜单 doc.view + 按钮（编辑/新建/同步）
+    doc_group = next(g for g in data["groups"] if g["menu"] == "doc")
+    doc_keys = {i["key"] for i in doc_group["items"]}
+    assert doc_keys == {"doc.view", "doc.edit", "doc.create", "doc.sync"}
     assert {s["value"] for s in data["scopes"]} == {"self", "dept", "dept_sub", "all"}
 
 

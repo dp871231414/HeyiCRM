@@ -415,6 +415,25 @@
             </div>
           </div>
         </div>
+
+        <div>
+          <label class="label">文档分组可见范围</label>
+          <p class="text-[11px] text-slate-400 mb-2">
+            文档中心按「菜单权限 + 分组」两级控制：需先勾选上方「文档中心」菜单权限；此处勾选可查看的文档分组，
+            <span class="text-slate-500">不勾选任何分组 = 可查看全部分组</span>。
+          </p>
+          <div class="flex flex-wrap gap-x-5 gap-y-2 border border-slate-200 rounded-lg px-3.5 py-3">
+            <label v-for="g in docGroupOptions" :key="g" class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                class="w-4 h-4 accent-brand-600"
+                :checked="roleForm.docGroups.includes(g)"
+                @change="toggleDocGroup(g, ($event.target as HTMLInputElement).checked)"
+              />
+              <span class="text-xs text-slate-600">{{ g }}</span>
+            </label>
+          </div>
+        </div>
         <p v-if="roleError" class="text-sm text-bad-600">{{ roleError }}</p>
       </div>
       <template #footer>
@@ -437,7 +456,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 
-import { downloadFile, orgApi, roleApi, userApi } from '@/api'
+import { downloadFile, dictApi, orgApi, roleApi, userApi } from '@/api'
 import ModalDialog from '@/components/ModalDialog.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -473,6 +492,8 @@ const roles = ref<RoleItem[]>([])
 const users = ref<UserItem[]>([])
 const catalog = ref<PermCatalog | null>(null)
 const scopes = computed(() => catalog.value?.scopes ?? [])
+/** 文档分组字典（doc_group）：用于角色表单「文档分组可见范围」多选 */
+const docGroupOptions = ref<string[]>(['默认文档', '用户文档', '开发文档'])
 
 /**
  * 把某个菜单下的动作权限按子分组归类，供角色表单分块展示。
@@ -515,7 +536,7 @@ const orgForm = reactive({ id: '', name: '', head: '', parentId: 'CO' })
 
 const roleFormOpen = ref(false)
 const roleError = ref('')
-const roleForm = reactive<{ id: string; name: string; description: string; scope: ScopeKey; permissions: string[]; isSystem: boolean }>({ id: '', name: '', description: '', scope: 'self', permissions: [], isSystem: false })
+const roleForm = reactive<{ id: string; name: string; description: string; scope: ScopeKey; permissions: string[]; isSystem: boolean; docGroups: string[] }>({ id: '', name: '', description: '', scope: 'self', permissions: [], isSystem: false, docGroups: [] })
 
 const deleteMsg = ref('')
 const deleteBlocked = ref(false)
@@ -584,6 +605,22 @@ async function loadCatalog() {
   } catch {
     /* 忽略 */
   }
+}
+
+/** 加载文档分组字典（doc_group），供角色表单选择可见范围 */
+async function loadDocGroups() {
+  try {
+    const dicts = await dictApi.list('doc_group')
+    const d = dicts.find((x) => x.code === 'doc_group')
+    if (d && d.items.length) docGroupOptions.value = d.items.map((i) => i.value)
+  } catch {
+    /* 字典取不到时用默认值 */
+  }
+}
+
+function toggleDocGroup(g: string, checked: boolean) {
+  if (checked) roleForm.docGroups = Array.from(new Set([...roleForm.docGroups, g]))
+  else roleForm.docGroups = roleForm.docGroups.filter((x) => x !== g)
 }
 
 /* ---------------- 账号 ---------------- */
@@ -731,9 +768,9 @@ function askDeleteOrg(o: OrgNode) {
 function openRoleForm(r?: RoleItem) {
   roleError.value = ''
   if (r) {
-    Object.assign(roleForm, { id: r.id, name: r.name, description: r.description, scope: r.scope, permissions: [...r.permissions], isSystem: !!r.isSystem })
+    Object.assign(roleForm, { id: r.id, name: r.name, description: r.description, scope: r.scope, permissions: [...r.permissions], isSystem: !!r.isSystem, docGroups: [...(r.docGroups ?? [])] })
   } else {
-    Object.assign(roleForm, { id: '', name: '', description: '', scope: 'self', permissions: ['dashboard.view'], isSystem: false })
+    Object.assign(roleForm, { id: '', name: '', description: '', scope: 'self', permissions: ['dashboard.view'], isSystem: false, docGroups: [] })
   }
   roleFormOpen.value = true
 }
@@ -768,7 +805,7 @@ async function saveRole() {
   }
   saving.value = 'role'
   try {
-    const payload = { name: roleForm.name, description: roleForm.description, scope: roleForm.scope, permissions: roleForm.permissions, isSystem: roleForm.isSystem }
+    const payload = { name: roleForm.name, description: roleForm.description, scope: roleForm.scope, permissions: roleForm.permissions, isSystem: roleForm.isSystem, docGroups: roleForm.docGroups }
     if (roleForm.id) await roleApi.update(roleForm.id, payload)
     else await roleApi.create(payload)
     app.toast('已保存')
@@ -877,6 +914,7 @@ async function submitImport() {
 
 onMounted(async () => {
   await loadCatalog()
+  await loadDocGroups()
   await Promise.all([loadOrgs(), loadRoles(), loadUsers()])
 })
 </script>

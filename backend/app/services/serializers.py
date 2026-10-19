@@ -43,6 +43,7 @@ def role_out(db: Session, role: Role, user_count: int | None = None) -> dict:
         "scopeLabel": SCOPES.get(role.scope, role.scope),
         "isSystem": bool(role.is_system),
         "permissions": list(role.permissions or []),
+        "docGroups": list(role.doc_groups or []),
         "userCount": int(user_count),
     }
 

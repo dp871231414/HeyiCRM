@@ -86,6 +86,8 @@ export interface RoleItem {
   scopeLabel: string
   isSystem: boolean
   permissions: string[]
+  /** 文档中心分组可见范围（空数组 = 全部文档分组） */
+  docGroups: string[]
   userCount: number
 }
 
@@ -491,15 +493,26 @@ export interface SysDict {
 }
 
 /* ---------------- 系统配置 · 文档中心 ---------------- */
-export type DocKey = 'usage' | 'prd' | 'tech' | 'test' | 'design' | 'skill' | 'devnotes'
+export type DocKey = 'usage' | 'prd' | 'tech' | 'test' | 'visual' | 'skill' | 'devnotes'
 
 export interface SystemDoc {
   key: DocKey
   title: string
   fmt: 'markdown' | 'html'
   content: string
+  /** 文档分组（来自数据字典 doc_group：默认文档 / 用户文档 / 开发文档） */
+  group: string
   /** 已渲染、可直接 v-html / iframe 的内容 */
   html: string | null
   version: number
   updatedAt: string | null
+}
+
+/** 新建文档入参（后端 key 可省略、自动生成） */
+export interface SystemDocCreate {
+  key?: string
+  title: string
+  fmt?: 'markdown' | 'html'
+  content?: string
+  group?: string
 }

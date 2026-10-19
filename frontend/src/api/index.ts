@@ -23,6 +23,7 @@ import type {
   SummaryResult,
   SysDict,
   SystemDoc,
+  SystemDocCreate,
   TaskItem,
   TaskProgressItem,
   TaskProgressListOut,
@@ -208,13 +209,16 @@ export const dictApi = {
 
 /* ---------------- 系统配置 · 文档中心 ---------------- */
 export const docApi = {
-  /** 列出全部文档（含渲染后的 html），用于「使用说明」菜单与文档中心 */
+  /** 列出当前角色可见分组的全部文档（含渲染后的 html），用于「文档中心」菜单 */
   list: () => http.get<SystemDoc[]>('/system/docs').then((r) => r.data),
   get: (key: string) => http.get<SystemDoc>(`/system/docs/${key}`).then((r) => r.data),
-  /** 编辑文档内容（仅 sys.config.edit） */
-  update: (key: string, payload: { title?: string; fmt?: string; content?: string }) =>
+  /** 编辑文档（doc.edit）：可改标题 / 格式 / 分组 / 内容；doc_key 保持不变 */
+  update: (key: string, payload: { title?: string; fmt?: string; content?: string; group?: string }) =>
     http.put<SystemDoc>(`/system/docs/${key}`, payload).then((r) => r.data),
-  /** 从后端 bundled_docs/ 同步最新文档内容到数据库（每次迭代自动更新） */
+  /** 新建文档（doc.create）：分组必填（缺省默认文档），key 可省略由后端生成 */
+  create: (payload: SystemDocCreate) =>
+    http.post<SystemDoc>('/system/docs', payload).then((r) => r.data),
+  /** 从后端 bundled_docs/ 同步最新文档内容到数据库（doc.sync，每次迭代自动更新） */
   sync: () => http.post<{ ok: boolean; synced: number }>('/system/docs/sync').then((r) => r.data),
 }
 

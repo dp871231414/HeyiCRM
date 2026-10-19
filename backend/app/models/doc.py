@@ -23,6 +23,10 @@ class SystemDoc(Base):
     doc_key: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(128), nullable=False)
     fmt: Mapped[str] = mapped_column(String(16), default="markdown", nullable=False)
+    # 文档分组：每个文档必须有分组，新文档默认归入「默认文档」；
+    # 取值来自数据字典 doc_group（默认文档 / 用户文档 / 开发文档）。
+    # 文档中心按「菜单(doc.view) + 分组(doc_groups)」两级控制可见范围。
+    doc_group: Mapped[str] = mapped_column(String(32), default="默认文档", server_default="默认文档", nullable=False)
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
