@@ -27,7 +27,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
     background: var(--bg);
     color: var(--ink);
-    line-height: 1.7;
+    line-height: 1.75;
     font-size: 15px;
   }
   header.top {
@@ -37,7 +37,7 @@
   }
   header.top h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: .5px; }
   header.top p { margin: 0; opacity: .9; font-size: 14px; }
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px 64px; }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 24px 64px; }
   nav.toc {
     position: sticky; top: 0; z-index: 20;
     background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
@@ -61,51 +61,30 @@
     display: grid; place-items: center; font-size: 15px;
   }
   .module-head h2 { margin: 0; font-size: 20px; }
-  .module-head .perm {
-    margin-left: auto; font-size: 12px; color: var(--slate);
-    background: var(--brand-soft); padding: 4px 10px; border-radius: 999px;
-  }
   .card {
     background: var(--card); border: 1px solid var(--line);
     border-radius: var(--radius); box-shadow: var(--shadow);
     padding: 20px 22px; margin: 0 0 16px;
   }
-  .card h3 {
-    margin: 0 0 12px; font-size: 16px; color: var(--ink);
-    display: flex; align-items: center; gap: 8px;
+  .lead { color: var(--muted); font-size: 14.5px; margin: 0 0 14px; }
+  .block-title {
+    font-size: 14px; font-weight: 700; color: var(--brand);
+    margin: 16px 0 6px; display: flex; align-items: center; gap: 8px;
   }
-  .tag {
-    font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
-    background: var(--brand-soft); color: var(--brand);
+  .block-title.view { color: var(--green); }
+  .steps { margin: 0 0 4px; padding-left: 22px; }
+  .steps li { margin: 7px 0; }
+  .view {
+    border-left: 3px solid var(--green); background: #ecfdf5;
+    padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; color: var(--slate);
+    margin: 8px 0;
   }
-  .tag.out { background: #ecfdf5; color: var(--green); }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
-  .io {
-    border: 1px dashed var(--line); border-radius: 12px; padding: 14px 16px;
-    background: #fcfdff;
+  .view b { color: var(--ink); }
+  .note {
+    border-left: 3px solid var(--brand); background: var(--brand-soft);
+    padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; color: var(--slate);
+    margin: 10px 0;
   }
-  .io .lab {
-    font-size: 12px; font-weight: 700; letter-spacing: .5px;
-    text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
-  }
-  .io.how .lab { color: var(--brand); }
-  .io.what .lab { color: var(--green); }
-  .io ol, .io ul { margin: 0; padding-left: 18px; }
-  .io li { margin: 5px 0; }
-  .io p { margin: 6px 0; }
-  .kbd {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    background: #f1f5f9; border: 1px solid var(--line); border-radius: 6px;
-    padding: 1px 7px; font-size: 13px; color: #0f172a;
-  }
-  table.sample {
-    width: 100%; border-collapse: collapse; margin: 10px 0 4px; font-size: 13.5px;
-  }
-  table.sample th, table.sample td {
-    border: 1px solid var(--line); padding: 7px 10px; text-align: left;
-  }
-  table.sample th { background: #f8fafc; color: var(--slate); font-weight: 600; }
   .badge {
     display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px;
     border-radius: 999px; border: 1px solid transparent;
@@ -115,24 +94,20 @@
   .b-near { background: #fef3c7; color: #b45309; }
   .b-risk { background: #fee2e2; color: #b91c1c; }
   .b-none { background: #f1f5f9; color: #64748b; }
-  .note {
-    border-left: 3px solid var(--brand); background: var(--brand-soft);
-    padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13.5px; color: var(--slate);
-    margin: 8px 0;
+  table.sample {
+    width: 100%; border-collapse: collapse; margin: 10px 0 4px; font-size: 13.5px;
   }
-  .code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
-    background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 10px 12px;
-    overflow-x: auto; margin: 8px 0;
+  table.sample th, table.sample td {
+    border: 1px solid var(--line); padding: 7px 10px; text-align: left;
   }
+  table.sample th { background: #f8fafc; color: var(--slate); font-weight: 600; }
   footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px; }
-  .pill { display:inline-block; background:#f1f5f9; border:1px solid var(--line); border-radius:999px; padding:2px 10px; font-size:12px; color:var(--slate); margin:2px 4px 2px 0;}
 </style>
 </head>
 <body>
 <header class="top">
   <h1>合一车队经营看板 · 使用说明</h1>
-  <p>面向总部运营、部门负责人与一线人员的操作指南 · 按功能模块讲解「输出方式 → 输出结果」</p>
+  <p>面向业务人员的使用指南 · 按模块介绍在哪里录入数据、在哪里查看结果</p>
 </header>
 
 <nav class="toc">
@@ -154,29 +129,33 @@
     <div class="module-head">
       <div class="num">0</div>
       <h2>登录与权限基础</h2>
-      <span class="perm">通用</span>
     </div>
     <div class="card">
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>打开系统地址，进入登录页，输入管理员分配的 <span class="kbd">账号</span> 与 <span class="kbd">密码</span>。</li>
-            <li>点击登录，系统下发会话 Cookie（HttpOnly），无需手动携带令牌。</li>
-            <li>登录后左侧菜单仅显示当前账号有权限的模块；按钮按角色权限显隐。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>进入系统首页（经营驾驶舱或指标页，取决于权限）。</li>
-            <li>顶部可见当前会计周期与「年度时间进度」。</li>
-            <li>无权模块在菜单中不可见；越权操作返回 403。</li>
-          </ul>
-          <div class="note">登录失败统一提示「账号或密码错误」，不泄露账号是否存在；停用账号返回 403。可在「偏好」中设置行高（default / high / ultra）。</div>
-        </div>
+      <p class="lead">本系统按账号分配功能权限。登录后，你只能看到自己有权使用的菜单，没有权限的功能不会出现，也无法操作。</p>
+
+      <div class="block-title">▸ 怎么登录</div>
+      <ol class="steps">
+        <li>打开系统网址，进入登录页。</li>
+        <li>输入管理员分配给你的<b>账号</b>和<b>密码</b>，点击登录即可，之后无需再做其他操作。</li>
+      </ol>
+
+      <div class="block-title view">▸ 登录后能看到什么</div>
+      <div class="view">
+        左侧菜单只显示你有权限的功能；不同账号看到的菜单可能不一样。
       </div>
-      <p style="margin-top:12px"><span class="pill">scope 四档</span> <span class="pill">self 本人</span><span class="pill">dept 本部门</span><span class="pill">dept_sub 本部及下属</span><span class="pill">all 全公司</span>　仅作用于「任务」与「项目管理（商机）」；驾驶舱与指标按角色权限全公司口径开放。</p>
+
+      <div class="block-title">▸ 关于"数据范围"（权限的一种）</div>
+      <p class="lead">每个账号可以设置不同的<b>数据查看范围</b>，决定你能看到多少数据，共有四种：</p>
+      <ol class="steps">
+        <li><b>本人</b>：只能看自己负责的数据。</li>
+        <li><b>本部门</b>：能看到本部门的全部数据。</li>
+        <li><b>本部门及下属部门</b>：能看到本部门及其下属部门的全部数据。</li>
+        <li><b>全公司</b>：能看到公司全部数据。</li>
+      </ol>
+      <div class="note">这个"数据范围"只影响「任务」和「项目管理（商机）」两个模块；经营驾驶舱和指标类页面按公司整体口径展示，不受它限制。</div>
+
+      <div class="block-title">▸ 注意事项</div>
+      <div class="note">账号或密码错误时，系统统一提示"账号或密码错误"；账号被停用后无法登录。你可以在"偏好"里调整页面的行高，让表格看起来更紧凑或更宽松。</div>
     </div>
   </section>
 
@@ -185,77 +164,27 @@
     <div class="module-head">
       <div class="num">1</div>
       <h2>核心指标 · 年度目标</h2>
-      <span class="perm">metric.view</span>
     </div>
-
     <div class="card">
-      <h3><span class="tag">模块一 · 公司整体目标</span></h3>
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>进入「核心指标 · 年度目标」页（菜单 <span class="kbd">指标</span>）。</li>
-            <li>顶部用 <b>月份选择器</b> 切换统计周期（年度目标按年存储，各月度周期共用）。</li>
-            <li>在「年度目标」「累计完成值」「回款」列直接填写（需 <span class="kbd">metric.edit_company</span> 且为公司视角），改动单元格变黄，点击该行「保存修改」。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>表格展示：<b>指标 / 年度目标 / 累计完成值 / 完成率 / 回款 / 回款率 / 状态</b>。</li>
-            <li>完成率以百分比展示，并标注 <span class="kbd">vs 时间进度</span> 差值（领先/落后）。</li>
-            <li>状态用进度徽章：
-              <span class="badge b-done">已达成</span><span class="badge b-ahead">领先</span><span class="badge b-near">偏慢</span><span class="badge b-risk">滞后</span><span class="badge b-none">未录入</span>。</li>
-          </ul>
-          <div class="note">达成状态唯一口径：达成率 ≥1 为「已达成」；达成率÷时间进度 ≥1 为「领先」；0.7~1 为「偏慢」；&lt;0.7 为「滞后」；未录值「未录入」。</div>
-        </div>
-      </div>
-    </div>
+      <p class="lead">这一页用来录入和查看公司的年度经营目标完成情况，包括整体目标、各类监控指标，以及各项目公司的指标。数据在「指标」菜单维护，结果直接在本页查看。</p>
 
-    <div class="card">
-      <h3><span class="tag">模块二 · 指标监控</span></h3>
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>同一页面下方「二、指标监控」区块（需 <span class="kbd">metric.edit</span> 可编辑）。</li>
-            <li>在卡片输入框填写<b>当期快照</b>值，点击「保存」。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>多列卡片网格，每张显示<b>指标名 / 当期值 / 单位 / 上期值</b>。</li>
-            <li><b>无目标值、不判红黄绿灯</b>，仅按当期快照录入（如运营车辆数等期末快照类指标）。</li>
-          </ul>
-        </div>
-      </div>
-    </div>
+      <div class="block-title">▸ 操作流程</div>
+      <ol class="steps">
+        <li>在左侧菜单点击「指标」，进入核心指标页面。</li>
+        <li>页面上方用<b>月份选择器</b>切换你想查看的统计周期。</li>
+        <li>录入公司整体目标：在「年度目标」「累计完成值」「回款」等列直接填写数字（需要录入权限），单元格变黄后点击该行「保存修改」。</li>
+        <li>页面下方还有两块：<b>指标监控</b>（填写当期快照值，如运营车辆数）和<b>项目公司指标</b>（按项目公司分行录入目标与实际，可新增/编辑/删除公司）。</li>
+      </ol>
 
-    <div class="card">
-      <h3><span class="tag">模块三 · 项目公司指标</span></h3>
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>「三、项目公司指标」区块，点 <span class="kbd">+ 新增项目公司</span>（需 <span class="kbd">project.create</span>）。</li>
-            <li>填写公司名称、负责人、年度目标（可留空后续补录），保存。</li>
-            <li>在表格中为目标/实际/回款列填值，按公司「保存」；可「编辑 / 删除」（需对应权限）。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>按项目公司分行的表格，列含各指标<b>目标 / 累计完成 / 达成 / 回款率</b> 及公司<b>完成率</b>。</li>
-            <li>删除前弹出影响预检：年度目标 N 条、累计完成 N 条、关联任务 N 条、账号 N 个（账号停用不删）。</li>
-          </ul>
-          <table class="sample">
-            <tr><th>项目公司</th><th>目标</th><th>累计完成</th><th>达成</th><th>完成率</th></tr>
-            <tr><td>合一重卡运营</td><td>100</td><td>62</td><td>62%</td><td><span class="badge b-near">偏慢</span></td></tr>
-          </table>
-        </div>
+      <div class="block-title view">▸ 你能看到的结果</div>
+      <div class="view">
+        系统自动计算完成率、回款率，并用状态标签标注：
+        <span class="badge b-done">已达成</span><span class="badge b-ahead">领先</span><span class="badge b-near">偏慢</span><span class="badge b-risk">滞后</span><span class="badge b-none">未录入</span>。
+        标签含义：已达成=目标完成；领先=进度快于时间进度；偏慢/滞后=进度落后于时间进度；未录入=还没填数据。
       </div>
-      <div class="note">部门/班组视角下指标目标无独立数据，页面给出说明性空态。编辑权限按三块各自独立，只看权限点、不按数据范围限制。</div>
+
+      <div class="block-title">▸ 注意事项</div>
+      <div class="note">删除项目公司前，系统会提示关联的目标、任务、账号数量；如果已被其他数据引用，则不能直接删除。部门/班组人员在此页看不到独立的目标数据，页面会给出相应说明。</div>
     </div>
   </section>
 
@@ -264,97 +193,30 @@
     <div class="module-head">
       <div class="num">2</div>
       <h2>经营驾驶舱</h2>
-      <span class="perm">dashboard.view</span>
     </div>
-
     <div class="card">
-      <h3><span class="tag">市场项目概览 · 三漏斗</span></h3>
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>进入「经营驾驶舱」，选择统计周期、组织视角，可选二级部门筛选。</li>
-            <li>查看「市场项目概览」三张漏斗：<b>项目数 / 车头需求 / 挂车需求</b>。</li>
-            <li>可在阶段筛选标签间切换（带转化率后缀），默认「全部」。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>每个阶段展示 <b>当前数量口径</b>（不向上累计）：<span class="kbd">阶段 / 转化率 / 项目数 / 车头数 / 挂车数</span>。</li>
-            <li>给出<b>加权销量预测</b>（车头 / 挂车，整数）：各项目需求数 × 该阶段转化概率之和。</li>
-            <li>部门筛选仅统计该部门负责人名下项目。</li>
-          </ul>
-          <div class="note">阶段：10 项目导入 / 25 市场尽调 / 50 初审通过 / 75 联合评审通过 / 90 签约落地 / 100 交车投运。转化概率默认=阶段值/100，可在「转化概率配置」中修改。</div>
-        </div>
-      </div>
-    </div>
+      <p class="lead">经营驾驶舱用图形方式展示市场项目的商机分布和车辆需求预测，帮助一眼看清全局。数据主要来自「项目管理」里登记的商机，结果在驾驶舱以漏斗和表格呈现。</p>
 
-    <div class="card">
-      <h3><span class="tag">车头需求漏斗（原「车辆需求漏斗」）</span></h3>
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>在驾驶舱「市场项目概览」中，以<b>车头需求</b>维度绘制漏斗。</li>
-            <li>阶段口径同三漏斗，点击阶段标签筛选。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>展示各阶段<b>车头需求数量</b>的漏斗形态，直观看商机在各阶段的转化分布。</li>
-          </ul>
-        </div>
-      </div>
-    </div>
+      <div class="block-title">▸ 操作流程</div>
+      <ol class="steps">
+        <li>在左侧菜单点击「经营驾驶舱」，选择统计周期、组织视角，可按二级部门筛选。</li>
+        <li>查看「市场项目概览」三张漏斗：<b>项目数 / 车头需求 / 挂车需求</b>，点击阶段标签可切换查看不同阶段的分布。</li>
+        <li>查看「车辆需求分析」：左表看车头需求（按车型×电池容量汇总），右表看挂车需求（按车型汇总）。</li>
+        <li>如需调整预测口径，有相应权限的人员可在右上「转化概率配置」里修改各阶段的转化率，保存后全系统生效。</li>
+      </ol>
 
-    <div class="card">
-      <h3><span class="tag">车辆需求分析（车头 × 电池容量 / 挂车 × 车型）</span></h3>
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>在驾驶舱市场项目概览下找到「车辆需求分析」模块。</li>
-            <li>上方阶段筛选标签（含「流失」，置于交车/投运后）点击切换，默认「全部」。</li>
-            <li>左右两张表各自独立滚动查看。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li><b>左表（车头需求）</b>：按（车辆型号 × 电池容量）组合汇总，列：车辆型号 / 电池容量 / <b>总需求数(辆)</b> / <b>预估消化数量(辆)</b>。</li>
-            <li><b>右表（挂车需求）</b>：按车型汇总，列：挂车型号 / 总需求数(辆) / 预估消化数量(辆)。</li>
-            <li><b>预估消化数量</b> = Σ(该组合下各项目需求 × 项目阶段转化概率)，四舍五入取整。</li>
-            <li>表格仅行分割线、无竖线，简洁透亮。</li>
-          </ul>
-          <table class="sample">
-            <tr><th>车辆型号</th><th>电池容量</th><th>总需求数(辆)</th><th>预估消化数量(辆)</th></tr>
-            <tr><td>6×4牵引车</td><td>423度</td><td>10</td><td>3</td></tr>
-            <tr><td>4×2牵引车</td><td>400度</td><td>6</td><td>2</td></tr>
-          </table>
-          <div class="note">「流失」阶段转化率 0%，计入总需求但预估消化为 0，且不出现在销售漏斗中。</div>
-        </div>
+      <div class="block-title view">▸ 你能看到的结果</div>
+      <div class="view">
+        <b>每个阶段</b>展示当前数量、转化率、项目数、车头/挂车数；系统给出<b>加权销量预测</b>（车头、挂车，整数辆）= 各项目需求 × 该阶段转化概率之和；「预估消化数量」= 总需求 × 转化概率，四舍五入取整。
       </div>
-    </div>
+      <table class="sample">
+        <tr><th>车辆型号</th><th>电池容量</th><th>总需求数(辆)</th><th>预估消化数量(辆)</th></tr>
+        <tr><td>6×4牵引车</td><td>423度</td><td>10</td><td>3</td></tr>
+        <tr><td>4×2牵引车</td><td>400度</td><td>6</td><td>2</td></tr>
+      </table>
 
-    <div class="card">
-      <h3><span class="tag">转化概率配置</span></h3>
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>驾驶舱右上「转化概率配置」入口（需 <span class="kbd">dashboard.config</span>）。</li>
-            <li>修改 6 个阶段的转化率，整份保存。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>全系统共用一份 <span class="kbd">funnel_config</span>，保存后立即影响三漏斗的<b>加权销量预测</b>。</li>
-          </ul>
-        </div>
-      </div>
+      <div class="block-title">▸ 注意事项</div>
+      <div class="note">阶段依次是：项目导入 → 市场尽调 → 初审通过 → 联合评审通过 → 签约落地 → 交车投运；另有「流失」阶段转化率 0%，不计入销量预测，也不出现在销售漏斗中。电池容量选项来自系统字典（400 / 423 / 600 / 352 度）。</div>
     </div>
   </section>
 
@@ -363,28 +225,25 @@
     <div class="module-head">
       <div class="num">3</div>
       <h2>项目管理（商机）</h2>
-      <span class="perm">market.view</span>
     </div>
     <div class="card">
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>进入「项目管理」，用关键词 / 阶段筛选，列表分页浏览。</li>
-            <li>「新建」填写：名称、描述、<b>项目进展（必填）</b>、车头需求（车型 × <b>电池容量</b> 下拉 × 数量）、挂车需求（车型 × 数量）、阶段、责任人、部门。</li>
-            <li>阶段可设为「流失」(0%)；保存后进展按时间轴追加，不可直接改进展快照。</li>
-            <li>「导出」生成下载记录；「导入」按模板批量录入。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>列表展示：项目ID / 名称 / 进展 / 阶段（含「流失」标签）/ 车头数量 / 挂车数量 / 责任人 / 部门 / 创建人 / 时间。</li>
-            <li>详情页含<b>进展时间轴</b>，新增进展追加展示。</li>
-            <li>车头/挂车数量 = 明细 qty 自动汇总；电池容量取自数据字典（400/423/600/352度）。</li>
-          </ul>
-        </div>
+      <p class="lead">这里用来登记和跟踪市场项目（商机），是经营驾驶舱车辆需求数据的来源。项目在「项目管理」页面维护，列表和详情里查看结果。</p>
+
+      <div class="block-title">▸ 操作流程</div>
+      <ol class="steps">
+        <li>在左侧菜单点击「项目管理」，可用关键词或阶段筛选、分页浏览。</li>
+        <li>点击「新建」登记项目：填写名称、描述、<b>项目进展（必填）</b>、车头需求（车型×电池容量×数量）、挂车需求（车型×数量）、阶段、责任人、部门。</li>
+        <li>登记后可在详情页追加「进展」记录，记录会按时间顺序展示。</li>
+        <li>点击「导出」可下载数据；点击「导入」可按模板批量录入。</li>
+      </ol>
+
+      <div class="block-title view">▸ 你能看到的结果</div>
+      <div class="view">
+        项目列表展示名称、进展、阶段、车头/挂车数量、责任人、部门、创建人、时间；详情页有<b>进展时间轴</b>；车头/挂车数量由明细自动汇总。
       </div>
+
+      <div class="block-title">▸ 注意事项</div>
+      <div class="note">阶段可选「流失」，表示该项目未成交；删除项目会同时清除它的进展与需求明细，请谨慎操作。</div>
     </div>
   </section>
 
@@ -393,29 +252,26 @@
     <div class="module-head">
       <div class="num">4</div>
       <h2>任务管理</h2>
-      <span class="perm">task.view</span>
     </div>
     <div class="card">
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>进入「任务管理」，支持平铺 / 按部门分组视图，按关键词、部门、状态筛选。</li>
-            <li>新建任务：选任务组（可内联新增/改名/删除）、责任人、是否异常、目标/已完成/单位、计划起止、描述、进展。</li>
-            <li>在任务上「+ 进展」追加时间轴记录；「导出 / 导入」走下载中心 / 模板。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>列表展示：完成进度、状态等级、剩余天数、异常标记、责任人、部门等。</li>
-            <li>状态由系统判定：
-              <span class="badge b-done">已完成</span><span class="badge b-risk">异常/风险</span><span class="badge b-near">临期</span><span class="badge b-none">正常</span><span class="badge b-risk">逾期</span>。</li>
-            <li>「部门任务完成度」汇总各部门 total/done/overdue/risk 与完成率。</li>
-          </ul>
-          <div class="note">系统内置一个默认「未分组」任务组，不可删除；任务进展以时间轴方式追加，编辑任务本身不会改动已记录的进展快照。</div>
-        </div>
+      <p class="lead">这里用来登记和跟踪日常工作任务的完成情况。任务在「任务管理」页面维护，列表里直接查看进度与状态。</p>
+
+      <div class="block-title">▸ 操作流程</div>
+      <ol class="steps">
+        <li>在左侧菜单点击「任务管理」，支持平铺或按部门分组查看，可按关键词、部门、状态筛选。</li>
+        <li>点击「新建任务」：选择任务组（可现场新增/改名/删除）、填写责任人、是否异常、目标/已完成/单位、计划起止、描述、进展。</li>
+        <li>在任务上点击「+ 进展」追加进度记录；「导出 / 导入」走下载中心或模板。</li>
+      </ol>
+
+      <div class="block-title view">▸ 你能看到的结果</div>
+      <div class="view">
+        列表展示完成进度、状态、剩余天数、异常标记、责任人、部门；系统自动判定状态：
+        <span class="badge b-done">已完成</span><span class="badge b-risk">异常/风险</span><span class="badge b-near">临期</span><span class="badge b-none">正常</span><span class="badge b-risk">逾期</span>。
+        页面还会汇总各部门的任务完成度。
       </div>
+
+      <div class="block-title">▸ 注意事项</div>
+      <div class="note">系统内置一个"未分组"任务组，不能删除；任务进展以时间轴方式追加，修改任务本身不会改变已记录的进展历史。</div>
     </div>
   </section>
 
@@ -424,27 +280,23 @@
     <div class="module-head">
       <div class="num">5</div>
       <h2>数据字典</h2>
-      <span class="perm">sys.config.view</span>
     </div>
     <div class="card">
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>进入「设置 — 数据字典」，查看一级字典及其枚举值。</li>
-            <li>编辑枚举值（整份替换）；对已有配置点「停用 / 启用」（需 <span class="kbd">sys.config.edit</span>）。</li>
-            <li>电池容量字典含：400度 / 423度 / 600度 / 352度，被项目管理车头需求下拉消费。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>字典卡片展示：编码 / 名称 / <b>状态（启用/停用）</b> / 枚举值列表。</li>
-            <li><b>已存在配置不允许删除，只能启用/停用</b>；停用后枚举不再出现在关联下拉。</li>
-          </ul>
-          <div class="note">常用编码：vehicle_model（车型）、trailer_model（挂车型号）、battery_capacity（电池容量）、<b>doc_group（文档分组：默认文档 / 用户文档 / 开发文档，供文档中心归类与分组权限使用）</b>。</div>
-        </div>
+      <p class="lead">数据字典是系统里各类下拉选项的"总目录"，例如车型、电池容量、文档分组等。它在「设置 — 数据字典」查看和维护。</p>
+
+      <div class="block-title">▸ 操作流程</div>
+      <ol class="steps">
+        <li>在「设置 — 数据字典」查看各字典及其选项值。</li>
+        <li>有相应权限的人员可编辑选项值（整份替换），或对已有选项「停用 / 启用」。</li>
+      </ol>
+
+      <div class="block-title view">▸ 你能看到的结果</div>
+      <div class="view">
+        每个字典展示编码、名称、<b>状态（启用/停用）</b>和选项列表。
       </div>
+
+      <div class="block-title">▸ 注意事项</div>
+      <div class="note">已经存在的选项不能删除，只能停用；停用后该选项不再出现在相关下拉框。常用字典包括：车型、挂车型号、电池容量（400 / 423 / 600 / 352 度）、文档分组（默认文档 / 用户文档 / 开发文档）。</div>
     </div>
   </section>
 
@@ -453,30 +305,25 @@
     <div class="module-head">
       <div class="num">6</div>
       <h2>系统管理（账号 / 组织 / 角色）</h2>
-      <span class="perm">account.view</span>
     </div>
     <div class="card">
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>「设置 — 账号管理」三页签：账号 / 组织结构 / 角色权限。</li>
-            <li>新增账号填名称、账号、密码、部门、<b>角色与 scope（必填）</b>、状态；启用/停用；删除前预检引用。</li>
-            <li>组织结构树新增/编辑部门（市场部 D01、根 CO 锁定不可删）。</li>
-            <li>角色权限页展示权限树供勾选配置（菜单 + 按钮级，含文档中心 doc.view / doc.edit / doc.create / doc.sync）。</li>
-            <li>在「权限配置」面板内，<b>文档中心</b>菜单的「菜单权限 / 操作权限」勾选区下方，紧跟展示<b>「文档分组可见范围」</b>多选（来自数据字典 doc_group，仅勾选文档中心菜单时出现）；留空=可看全部分组，勾选后仅能查看所选分组的文档（两级权限的第二级）。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>账号列表按部门/状态筛选；删除预检显示被任务/项目/指标/账号引用情况，被引用则阻断。</li>
-            <li>组织结构树显示部门层级、人数、任务数。</li>
-            <li>角色权限树展示菜单与按钮权限勾选，内置角色不可删，默认权限自动兜底。</li>
-          </ul>
-          <div class="note">scope 必填四档之一；数据范围仅作用于任务与项目管理（商机）。</div>
-        </div>
+      <p class="lead">这里管理系统的使用者、部门架构和权限角色。相关操作都在「设置 — 账号管理」里完成。</p>
+
+      <div class="block-title">▸ 操作流程</div>
+      <ol class="steps">
+        <li>「设置 — 账号管理」有三个页签：<b>账号</b>、<b>组织结构</b>、<b>角色权限</b>。</li>
+        <li><b>账号页签</b>：新增账号填写姓名、登录账号、密码、部门、角色、<b>数据范围（必填）</b>、状态；可启用/停用；删除前会检查是否被引用。</li>
+        <li><b>组织结构页签</b>：新增/编辑部门，形成部门层级。</li>
+        <li><b>角色权限页签</b>：勾选角色能使用的菜单和功能，并设置该角色默认可看的数据范围。</li>
+      </ol>
+
+      <div class="block-title view">▸ 你能看到的结果</div>
+      <div class="view">
+        账号列表可按部门/状态筛选；组织结构树显示部门层级、人数、任务数；角色展示其菜单与功能权限。
       </div>
+
+      <div class="block-title">▸ 注意事项</div>
+      <div class="note">数据范围共四种（<b>本人 / 本部门 / 本部门及下属 / 全公司</b>），决定该角色能看哪些任务与项目数据；内置角色不能删除。文档中心还有一个"文档分组可见范围"设置也在角色权限里——勾选「文档中心」菜单后，下方会出现可查看的文档分组（留空=可看全部，勾选=只看所选分组）。</div>
     </div>
   </section>
 
@@ -485,24 +332,19 @@
     <div class="module-head">
       <div class="num">7</div>
       <h2>下载中心</h2>
-      <span class="perm">download.view</span>
     </div>
     <div class="card">
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>在列表/任务/市场项目页点「导出」，系统<b>不直接下载</b>，而是生成一条下载记录。</li>
-            <li>进入「下载中心」，找到对应记录，点「下载」或「删除」。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>下载记录表：记录ID / 文件名 / 对象 / 创建人 / 时间 / 操作。</li>
-            <li><b>仅本人可见、可下载、可删除</b>（按创建人隔离）。</li>
-          </ul>
-        </div>
+      <p class="lead">从各页面导出的文件，统一在下载中心管理和下载。文件在「下载中心」查看和获取。</p>
+
+      <div class="block-title">▸ 操作流程</div>
+      <ol class="steps">
+        <li>在任务、项目等页面点击「导出」，系统会生成一条下载记录（不会立刻下载）。</li>
+        <li>进入「下载中心」，找到对应记录，点击「下载」或「删除」。</li>
+      </ol>
+
+      <div class="block-title view">▸ 你能看到的结果</div>
+      <div class="view">
+        下载记录表显示文件名、来源、创建人、时间；你<b>只能看到自己导出的记录</b>，也只可下载、删除自己的记录。
       </div>
     </div>
   </section>
@@ -512,29 +354,24 @@
     <div class="module-head">
       <div class="num">8</div>
       <h2>文档中心</h2>
-      <span class="perm">doc.view</span>
     </div>
     <div class="card">
-      <div class="grid2">
-        <div class="io how">
-          <div class="lab">▸ 输出方式</div>
-          <ol>
-            <li>点击左侧独立菜单「<b>文档中心</b>」进入（权限点 <span class="kbd">doc.view</span>）。</li>
-            <li>左侧文档列表<b>按分组归类</b>展示（分组取值来自数据字典「文档分组」：默认文档 / 用户文档 / 开发文档）。内置七篇归属：使用说明→用户文档，其余（产品需求 / 技术 / 测试 / 视觉交互 / Skill / 项目开发说明）→ 开发文档；新建文档缺省归入「默认文档」。</li>
-            <li>点击文档切换右侧内容。管理员可执行：<b>新建</b>（<span class="kbd">doc.create</span>）、<b>同步最新</b>（<span class="kbd">doc.sync</span>）、<b>编辑</b>（<span class="kbd">doc.edit</span>）。</li>
-            <li>点「编辑」后，<b>内容编辑区上方</b>出现「分组」下拉与「文档标题」输入框；内容改动后版本号自动 +1。</li>
-          </ol>
-        </div>
-        <div class="io what">
-          <div class="lab">▸ 输出结果</div>
-          <ul>
-            <li>右侧展示所选文档内容：HTML 类（如本使用说明）以富文本渲染，Markdown 类转为排版后的网页。</li>
-            <li>每篇显示<b>分组</b>、<b>版本</b>与<b>更新时间</b>，内容随系统更新保持最新。</li>
-            <li><b>两级权限</b>：先卡 <span class="kbd">doc.view</span>（能否进入），再卡角色「文档分组可见范围」<span class="kbd">doc_groups</span>（空=全部，非空=仅列示分组）。例如仅授予 <span class="kbd">doc.view</span> + <span class="kbd">doc_groups=['用户文档']</span> 的角色，只能看到「使用说明」，看不到开发类文档。</li>
-          </ul>
-          <div class="note">文档中心内置七篇：使用说明（用户文档）/ 产品需求文档 / 技术文档 / 测试文档 / 视觉交互文档 / Skill 文档 / 项目开发说明（开发文档）；新建文档默认归入「默认文档」分组。</div>
-        </div>
+      <p class="lead">文档中心集中存放各类使用文档，按分组归类，方便随时查阅。文档在「文档中心」菜单查看，管理员可在此维护。</p>
+
+      <div class="block-title">▸ 操作流程</div>
+      <ol class="steps">
+        <li>在左侧菜单点击「文档中心」进入。</li>
+        <li>左侧按分组列出文档（分组如：默认文档 / 用户文档 / 开发文档），点击切换查看右侧内容。</li>
+        <li>有相应权限的管理员可「新建」文档、「同步最新」（把系统内置文档更新到最新）、「编辑」（修改分组或标题、内容）。</li>
+      </ol>
+
+      <div class="block-title view">▸ 你能看到的结果</div>
+      <div class="view">
+        右侧展示所选文档内容；每篇标注<b>分组</b>、<b>版本</b>、<b>更新时间</b>。内置文档包括：使用说明（用户文档）、产品需求文档、技术文档、测试文档、视觉交互文档、Skill 文档、项目开发说明（开发文档）。
       </div>
+
+      <div class="block-title">▸ 注意事项</div>
+      <div class="note">文档分两级控制查看权限——先要能进入文档中心，再看角色「文档分组可见范围」允许的分组（留空=全部，勾选=只看所选）。例如某角色只能看"用户文档"分组，就只会看到本使用说明，看不到开发类文档。</div>
     </div>
   </section>
 
