@@ -31,7 +31,7 @@
 - 文档源文件在 `docs/`：`产品需求文档.md` / `技术文档.md` / `测试文档.md` / `视觉交互文档.md` / `使用说明.html` / `skill文档.md` / `项目开发说明.md`（Round 37 起 `设计文档.md` 已合并入 `技术文档.md`，并新增 `视觉交互文档.md`）。
 - 每次迭代：更新上述源文件 → 复制到 `backend/bundled_docs/` → 调 `POST /system/docs/sync` 写入 `system_doc` 表 → 前端「文档中心」从库读取渲染。
 - **分组（Round 37）**：每篇文档归属一个分组（数据字典 `doc_group`：默认/用户/开发文档）；`docs_meta.DOC_GROUPS` 维护内置文档分组（`usage`→用户文档，其余→开发文档）。
-- **两级权限（Round 37）**：菜单 `doc.view`（能否进文档中心）+ 分组 `Role.doc_groups`（能看哪些分组，空=全部）；编辑 `doc.edit` / 新建 `doc.create` / 同步 `doc.sync` 为按钮级权限。
+- **两级权限（Round 37）**：菜单 `doc.view`（能否进文档中心）+ 分组 `Role.doc_groups`（能看哪些分组，空=全部）；编辑 `doc.edit` / 新建 `doc.create` / 同步 `doc.sync` 为按钮级权限。角色编辑弹窗中「文档分组可见范围」多选位于「权限配置」面板内、文档中心菜单勾选区下方（`<template v-if="g.menu==='doc'">`）。
 - 这实现了「每次迭代自动更新产品需求/技术/测试/视觉交互/Skill/项目开发说明文档」与「使用说明内容存库、按分组受控可见」。
 
 ## 6. 记忆纪律

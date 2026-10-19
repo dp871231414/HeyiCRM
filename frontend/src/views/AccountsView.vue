@@ -412,26 +412,29 @@
                   </label>
                 </div>
               </div>
+            <!-- 文档分组可见范围：置于「文档中心」菜单权限的操作权限下方，整体仍属权限配置板块；分组选项随 doc_group 字典动态扩展 -->
+            <template v-if="g.menu === 'doc'">
+              <div class="mt-3 ml-6 border-t border-slate-100 pt-3">
+                <label class="label">文档分组可见范围</label>
+                <p class="text-[11px] text-slate-400 mb-2">
+                  文档中心按「菜单权限 + 分组」两级控制：需先勾选上方「文档中心」菜单权限；此处勾选可查看的文档分组，
+                  <span class="text-slate-500">不勾选任何分组 = 可查看全部分组</span>。
+                </p>
+                <div class="flex flex-wrap gap-x-5 gap-y-2">
+                  <label v-for="grp in docGroupOptions" :key="grp" class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      class="w-4 h-4 accent-brand-600"
+                      :checked="roleForm.docGroups.includes(grp)"
+                      :disabled="!isMenuChecked(g.menu)"
+                      @change="toggleDocGroup(grp, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span class="text-xs text-slate-600">{{ grp }}</span>
+                  </label>
+                </div>
+              </div>
+            </template>
             </div>
-          </div>
-        </div>
-
-        <div>
-          <label class="label">文档分组可见范围</label>
-          <p class="text-[11px] text-slate-400 mb-2">
-            文档中心按「菜单权限 + 分组」两级控制：需先勾选上方「文档中心」菜单权限；此处勾选可查看的文档分组，
-            <span class="text-slate-500">不勾选任何分组 = 可查看全部分组</span>。
-          </p>
-          <div class="flex flex-wrap gap-x-5 gap-y-2 border border-slate-200 rounded-lg px-3.5 py-3">
-            <label v-for="g in docGroupOptions" :key="g" class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                class="w-4 h-4 accent-brand-600"
-                :checked="roleForm.docGroups.includes(g)"
-                @change="toggleDocGroup(g, ($event.target as HTMLInputElement).checked)"
-              />
-              <span class="text-xs text-slate-600">{{ g }}</span>
-            </label>
           </div>
         </div>
         <p v-if="roleError" class="text-sm text-bad-600">{{ roleError }}</p>
