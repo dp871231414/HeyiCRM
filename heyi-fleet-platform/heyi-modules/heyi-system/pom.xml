@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.heyi</groupId>
+        <artifactId>heyi-modules</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <artifactId>heyi-system</artifactId>
+    <packaging>jar</packaging>
+    <name>heyi-system</name>
+    <description>系统域：组织 / 角色 / 账号 / 数据字典 / 登录鉴权</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.heyi</groupId>
+            <artifactId>heyi-public</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

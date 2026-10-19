@@ -1,0 +1,19 @@
+# Redis 配置（会话持久化 + 业务缓存）
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      # 本地 Redis 未设置密码；如启用请在启动参数传 REDIS_PASSWORD
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 5s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+# 业务缓存 key 统一前缀（技术方案约定前缀 lb）
+app:
+  cache-prefix: lb

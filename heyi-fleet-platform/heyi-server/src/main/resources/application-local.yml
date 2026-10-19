@@ -1,0 +1,7 @@
+spring:
+  config:
+    import:
+      - classpath:config/local/common.yml
+      - classpath:config/local/sa-token.yml
+      - classpath:config/local/mysql.yml
+      - classpath:config/local/redis.yml

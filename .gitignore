@@ -36,6 +36,14 @@ dist/
 # ===== 原型（独立仓库，不纳入正式工程）=====
 经营看板/
 
+# ===== Java / Maven（heyi-fleet-platform）=====
+target/
+heyi-fleet-platform/**/target/
+*.class
+*.jar
+dependency-reduced-pom.xml
+.flattened-pom.xml
+
 # ===== 发布应用标记（内部产物）=====
 *.genie
 

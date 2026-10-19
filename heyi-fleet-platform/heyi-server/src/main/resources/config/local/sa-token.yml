@@ -1,0 +1,9 @@
+# Sa-Token 配置（引入 sa-token-redis-jackson 后，会话与 token 持久化到 Redis）
+sa-token:
+  token-name: satoken
+  timeout: 2592000
+  active-timeout: -1
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-log: false

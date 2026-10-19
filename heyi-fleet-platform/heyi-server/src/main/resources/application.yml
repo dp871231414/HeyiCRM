@@ -1,0 +1,8 @@
+server:
+  port: ${APP_PORT:8081}
+
+spring:
+  application:
+    name: heyi-fleet-platform
+  profiles:
+    active: ${APP_ENV:local}
